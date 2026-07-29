@@ -19,7 +19,10 @@ export async function loadLearningPack(): Promise<LearningPack> {
   try {
     const snapshot = await getDoc(doc(firebaseDb, 'learningPacks', 'default'))
     const remotePack = snapshot.data()
-    return isLearningPack(remotePack) ? remotePack : fallbackLearningPack
+    return isLearningPack(remotePack) &&
+      remotePack.version === fallbackLearningPack.version
+      ? remotePack
+      : fallbackLearningPack
   } catch {
     return fallbackLearningPack
   }

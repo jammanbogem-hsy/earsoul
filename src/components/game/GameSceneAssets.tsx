@@ -1,5 +1,6 @@
 import { useLayoutEffect, useMemo, useRef } from 'react'
 import {
+  DoubleSide,
   InstancedMesh,
   Object3D,
   Quaternion,
@@ -24,19 +25,21 @@ export interface GardenSetDressingProps {
   receiveShadow?: boolean
 }
 
+type VectorTuple = [number, number, number]
+
 const PAPER = '#FFFDF7'
-const INK = '#334155'
-const WOOD = '#B77949'
-const LIGHT_WOOD = '#E6B978'
-const LEAF = '#4D9B5F'
-const DARK_LEAF = '#357A4A'
-const GOLD = '#F2C94C'
+const INK = '#273548'
+const TRACK = '#EBD8B2'
+const WOOD = '#A96F45'
+const GOLD = '#F8C84A'
+const LEAF = '#3F995B'
+const PALETTE = ['#FF6B6B', '#38BDF8', '#FBBF24', '#2DD4BF', '#A78BFA']
 const UP = new Vector3(0, 1, 0)
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5))
 
 function Paint({
   color,
-  roughness = 0.72,
+  roughness = 0.74,
 }: {
   color: string
   roughness?: number
@@ -45,449 +48,432 @@ function Paint({
     <meshStandardMaterial
       color={color}
       roughness={roughness}
-      metalness={0.01}
+      metalness={0.015}
     />
   )
 }
 
-function GlyphBars({
-  symbol,
-  color = PAPER,
+function BoxPart({
+  color,
+  position = [0, 0, 0],
+  rotation = [0, 0, 0],
+  scale = [1, 1, 1],
+  shadow = true,
 }: {
-  symbol?: string
-  color?: string
+  color: string
+  position?: VectorTuple
+  rotation?: VectorTuple
+  scale?: VectorTuple
+  shadow?: boolean
 }) {
-  const bar = (
-    key: string,
-    position: [number, number, number],
-    scale: [number, number, number],
-  ) => (
-    <mesh key={key} position={position} scale={scale}>
+  return (
+    <mesh
+      castShadow={shadow}
+      position={position}
+      rotation={rotation}
+      scale={scale}
+    >
       <boxGeometry />
-      <Paint color={color} roughness={0.6} />
+      <Paint color={color} />
     </mesh>
   )
-
-  if (symbol === 'ㅏ') {
-    return (
-      <>
-        {bar('stem', [-0.08, 0, 0.43], [0.1, 0.62, 0.06])}
-        {bar('arm', [0.14, 0.02, 0.43], [0.42, 0.1, 0.06])}
-      </>
-    )
-  }
-
-  if (symbol === 'ㅗ') {
-    return (
-      <>
-        {bar('base', [0, -0.12, 0.43], [0.62, 0.1, 0.06])}
-        {bar('stem', [0, 0.12, 0.43], [0.1, 0.48, 0.06])}
-      </>
-    )
-  }
-
-  if (symbol === '10') {
-    return (
-      <>
-        {bar('one', [-0.2, 0, 0.43], [0.09, 0.58, 0.06])}
-        <mesh position={[0.2, 0, 0.43]}>
-          <torusGeometry args={[0.2, 0.065, 6, 16]} />
-          <Paint color={color} roughness={0.6} />
-        </mesh>
-      </>
-    )
-  }
-
-  if (symbol === '♪') {
-    return (
-      <>
-        {bar('note-stem', [0.13, 0.08, 0.43], [0.08, 0.56, 0.06])}
-        {bar('note-arm', [-0.01, 0.32, 0.43], [0.34, 0.08, 0.06])}
-        <mesh position={[-0.01, -0.25, 0.43]} scale={[0.22, 0.16, 0.08]}>
-          <sphereGeometry args={[1, 8, 6]} />
-          <Paint color={color} roughness={0.6} />
-        </mesh>
-      </>
-    )
-  }
-
-  return bar('one', [0, 0, 0.43], [0.1, 0.58, 0.06])
 }
 
-function GlyphTile({ item }: { item: LearningObject }) {
+function RunnerLace({ color }: { color: string }) {
   return (
-    <group>
-      <mesh castShadow scale={[0.82, 0.82, 0.34]}>
-        <boxGeometry />
-        <Paint color={item.color} />
+    <group rotation={[Math.PI / 2, 0, 0.18]}>
+      <mesh position={[-0.18, 0, 0]}>
+        <torusGeometry args={[0.33, 0.055, 6, 18, Math.PI * 1.6]} />
+        <Paint color={color} roughness={0.55} />
       </mesh>
-      <GlyphBars symbol={item.symbol} />
-    </group>
-  )
-}
-
-function PencilModel({
-  color,
-  compact,
-}: {
-  color: string
-  compact: boolean
-}) {
-  return (
-    <group rotation={[0, 0, Math.PI / 2]}>
-      <mesh castShadow>
-        <cylinderGeometry args={[0.16, 0.16, 1.12, 6]} />
-        <Paint color={color} />
+      <mesh position={[0.18, 0.04, 0]} rotation={[0, 0, Math.PI]}>
+        <torusGeometry args={[0.33, 0.055, 6, 18, Math.PI * 1.6]} />
+        <Paint color={color} roughness={0.55} />
       </mesh>
-      <mesh castShadow position={[0, 0.69, 0]}>
-        <coneGeometry args={[0.17, 0.26, 6]} />
-        <Paint color="#EBC79B" roughness={0.84} />
-      </mesh>
-      {!compact && (
-        <mesh castShadow position={[0, -0.63, 0]}>
-          <cylinderGeometry args={[0.17, 0.17, 0.14, 6]} />
-          <Paint color="#F49ABB" />
-        </mesh>
-      )}
-    </group>
-  )
-}
-
-function BookModel({
-  color,
-  thick = false,
-}: {
-  color: string
-  thick?: boolean
-}) {
-  return (
-    <group rotation={[0, 0.18, -0.05]}>
-      <mesh castShadow scale={[0.9, thick ? 0.4 : 0.24, 0.7]}>
-        <boxGeometry />
-        <Paint color={color} />
-      </mesh>
-      <mesh
-        castShadow
-        position={[0.04, thick ? 0.22 : 0.14, 0]}
-        scale={[0.8, 0.06, 0.61]}
-      >
-        <boxGeometry />
-        <Paint color={PAPER} roughness={0.9} />
-      </mesh>
-      <mesh
-        position={[-0.43, 0, 0]}
-        scale={[0.07, thick ? 0.45 : 0.28, 0.72]}
-      >
-        <boxGeometry />
-        <Paint color={INK} />
-      </mesh>
-    </group>
-  )
-}
-
-function SeedModel({ color }: { color: string }) {
-  return (
-    <group rotation={[0, 0, -0.35]}>
-      <mesh castShadow scale={[0.55, 0.34, 0.38]}>
-        <dodecahedronGeometry args={[1, 0]} />
-        <Paint color={color} roughness={0.9} />
-      </mesh>
-      <mesh position={[0.08, 0.32, 0]} scale={[0.05, 0.35, 0.05]}>
-        <boxGeometry />
-        <Paint color="#68452F" />
-      </mesh>
-    </group>
-  )
-}
-
-function AppleModel({
-  color,
-  compact,
-}: {
-  color: string
-  compact: boolean
-}) {
-  return (
-    <group>
-      <mesh castShadow scale={[0.56, 0.52, 0.54]}>
-        <dodecahedronGeometry args={[1, 1]} />
-        <Paint color={color} />
-      </mesh>
-      <mesh position={[0, 0.55, 0]} rotation={[0, 0, -0.18]}>
-        <cylinderGeometry args={[0.045, 0.055, 0.34, 6]} />
-        <Paint color="#6B4933" />
-      </mesh>
-      {!compact && (
-        <mesh
-          castShadow
-          position={[0.18, 0.58, 0]}
-          rotation={[0, 0, -0.5]}
-          scale={[0.25, 0.08, 0.14]}
-        >
-          <sphereGeometry args={[1, 8, 6]} />
-          <Paint color={LEAF} />
-        </mesh>
-      )}
-    </group>
-  )
-}
-
-function PlantModel({
-  color,
-  compact,
-}: {
-  color: string
-  compact: boolean
-}) {
-  return (
-    <group>
-      <mesh castShadow position={[0, -0.25, 0]}>
-        <cylinderGeometry args={[0.36, 0.48, 0.5, 8]} />
-        <Paint color={color} />
-      </mesh>
-      <mesh position={[0, 0.23, 0]}>
-        <cylinderGeometry args={[0.035, 0.045, 0.68, 6]} />
-        <Paint color={DARK_LEAF} />
-      </mesh>
-      <mesh
-        castShadow
-        position={[-0.18, 0.28, 0]}
-        rotation={[0, 0, 0.55]}
-        scale={[0.3, 0.11, 0.18]}
-      >
-        <sphereGeometry args={[1, 8, 6]} />
-        <Paint color={LEAF} />
-      </mesh>
-      {!compact && (
-        <mesh
-          castShadow
-          position={[0.18, 0.45, 0]}
-          rotation={[0, 0, -0.55]}
-          scale={[0.3, 0.11, 0.18]}
-        >
-          <sphereGeometry args={[1, 8, 6]} />
-          <Paint color="#62B86E" />
-        </mesh>
-      )}
-    </group>
-  )
-}
-
-function ClockModel({ color }: { color: string }) {
-  return (
-    <group rotation={[Math.PI / 2, 0, 0]}>
-      <mesh castShadow>
-        <cylinderGeometry args={[0.54, 0.54, 0.2, 16]} />
-        <Paint color={color} />
-      </mesh>
-      <mesh position={[0, -0.12, 0]}>
-        <circleGeometry args={[0.43, 16]} />
-        <Paint color={PAPER} roughness={0.9} />
-      </mesh>
-      <mesh position={[0, -0.14, 0.1]} scale={[0.05, 0.05, 0.36]}>
-        <boxGeometry />
-        <Paint color={INK} />
-      </mesh>
-      <mesh
-        position={[0.13, -0.145, 0]}
-        rotation={[0, 0.6, 0]}
-        scale={[0.27, 0.05, 0.05]}
-      >
-        <boxGeometry />
-        <Paint color={INK} />
-      </mesh>
-    </group>
-  )
-}
-
-function WaterDropModel({ color }: { color: string }) {
-  return (
-    <group>
-      <mesh castShadow position={[0, -0.15, 0]} scale={[0.5, 0.58, 0.5]}>
-        <dodecahedronGeometry args={[1, 1]} />
-        <Paint color={color} roughness={0.42} />
-      </mesh>
-      <mesh castShadow position={[0, 0.49, 0]}>
-        <coneGeometry args={[0.34, 0.72, 10]} />
-        <Paint color={color} roughness={0.42} />
-      </mesh>
-    </group>
-  )
-}
-
-function PencilCupModel({
-  color,
-  compact,
-}: {
-  color: string
-  compact: boolean
-}) {
-  const pencilColors = ['#FFD166', '#4D96FF', '#EF7189']
-
-  return (
-    <group>
-      <mesh castShadow position={[0, -0.16, 0]}>
-        <cylinderGeometry args={[0.4, 0.46, 0.65, 10]} />
-        <Paint color={color} />
-      </mesh>
-      {pencilColors.slice(0, compact ? 1 : 3).map((pencilColor, index) => (
-        <mesh
-          key={pencilColor}
-          castShadow
-          position={[(index - 1) * 0.16, 0.37 + index * 0.04, 0]}
-          rotation={[0, 0, (index - 1) * 0.13]}
-        >
-          <cylinderGeometry args={[0.055, 0.055, 0.82, 6]} />
-          <Paint color={pencilColor} />
-        </mesh>
+      {[-0.5, 0.5].map((x) => (
+        <BoxPart
+          key={x}
+          color={PAPER}
+          position={[x, -0.06, 0]}
+          scale={[0.16, 0.08, 0.08]}
+        />
       ))}
     </group>
   )
 }
 
-function GlobeModel({
+function Badge({
   color,
-  compact,
+  medal = false,
 }: {
   color: string
-  compact: boolean
+  medal?: boolean
 }) {
   return (
     <group>
-      <mesh castShadow position={[0, 0.12, 0]}>
-        <icosahedronGeometry args={[0.52, 2]} />
-        <Paint color={color} roughness={0.5} />
-      </mesh>
-      {!compact && (
+      {medal && (
         <>
-          <mesh
-            position={[0.22, 0.27, 0.46]}
-            scale={[0.2, 0.13, 0.05]}
-          >
-            <sphereGeometry args={[1, 7, 5]} />
-            <Paint color="#62B86E" />
-          </mesh>
-          <mesh
-            position={[-0.3, 0.02, 0.39]}
-            scale={[0.16, 0.24, 0.05]}
-          >
-            <sphereGeometry args={[1, 7, 5]} />
-            <Paint color={LEAF} />
-          </mesh>
+          <BoxPart
+            color="#4D96FF"
+            position={[-0.17, 0.42, 0]}
+            rotation={[0, 0, -0.26]}
+            scale={[0.22, 0.64, 0.09]}
+          />
+          <BoxPart
+            color="#FF6B6B"
+            position={[0.17, 0.42, 0]}
+            rotation={[0, 0, 0.26]}
+            scale={[0.22, 0.64, 0.09]}
+          />
         </>
       )}
-      <mesh rotation={[0, 0, 0.25]}>
-        <torusGeometry args={[0.62, 0.035, 6, 24]} />
-        <Paint color={GOLD} />
+      <mesh castShadow rotation={[Math.PI / 2, 0, 0]}>
+        <cylinderGeometry args={[medal ? 0.48 : 0.42, 0.48, 0.18, 10]} />
+        <Paint color={color} roughness={0.52} />
       </mesh>
-      <mesh position={[0, -0.58, 0]}>
-        <cylinderGeometry args={[0.3, 0.38, 0.13, 10]} />
+      <mesh position={[0, 0, 0.12]} rotation={[0, 0, Math.PI / 4]}>
+        <octahedronGeometry args={[medal ? 0.24 : 0.2, 0]} />
+        <Paint color={PAPER} />
+      </mesh>
+    </group>
+  )
+}
+
+function Gem({
+  color,
+  scale = 1,
+}: {
+  color: string
+  scale?: number
+}) {
+  return (
+    <mesh castShadow scale={scale} rotation={[0.08, 0.2, -0.06]}>
+      <octahedronGeometry args={[0.52, 0]} />
+      <Paint color={color} roughness={0.28} />
+    </mesh>
+  )
+}
+
+function Wristband({ color }: { color: string }) {
+  return (
+    <group rotation={[Math.PI / 2, 0.12, 0]}>
+      <mesh castShadow>
+        <torusGeometry args={[0.42, 0.13, 7, 20]} />
+        <Paint color={color} roughness={0.58} />
+      </mesh>
+      <BoxPart color={PAPER} position={[0, 0.42, 0]} scale={[0.2, 0.1, 0.08]} />
+    </group>
+  )
+}
+
+function KeyCharm({ color }: { color: string }) {
+  return (
+    <group rotation={[0, 0, -0.45]}>
+      <mesh castShadow position={[0, 0.3, 0]}>
+        <torusGeometry args={[0.24, 0.09, 7, 18]} />
+        <Paint color={color} roughness={0.4} />
+      </mesh>
+      <BoxPart color={color} position={[0, -0.12, 0]} scale={[0.12, 0.62, 0.12]} />
+      <BoxPart
+        color={color}
+        position={[0.16, -0.36, 0]}
+        scale={[0.3, 0.12, 0.12]}
+      />
+      <BoxPart
+        color={color}
+        position={[0.11, -0.2, 0]}
+        scale={[0.22, 0.1, 0.12]}
+      />
+    </group>
+  )
+}
+
+function DrinkCan({
+  color,
+  compact = false,
+}: {
+  color: string
+  compact?: boolean
+}) {
+  return (
+    <group>
+      <mesh castShadow>
+        <cylinderGeometry args={[0.35, 0.35, 0.9, 12]} />
+        <Paint color={color} roughness={0.46} />
+      </mesh>
+      <mesh position={[0, 0.47, 0]}>
+        <cylinderGeometry args={[0.33, 0.33, 0.06, 12]} />
+        <Paint color="#D5DEE8" roughness={0.32} />
+      </mesh>
+      {!compact && (
+        <mesh position={[0.08, 0.51, 0]} rotation={[Math.PI / 2, 0, 0]}>
+          <torusGeometry args={[0.08, 0.025, 5, 12]} />
+          <Paint color={INK} />
+        </mesh>
+      )}
+      <BoxPart
+        color={PAPER}
+        position={[0, 0, 0.36]}
+        rotation={[0, 0, -0.18]}
+        scale={[0.18, 0.42, 0.04]}
+      />
+    </group>
+  )
+}
+
+function WaterBottle({
+  color,
+  compact = false,
+}: {
+  color: string
+  compact?: boolean
+}) {
+  return (
+    <group>
+      <mesh castShadow position={[0, -0.08, 0]}>
+        <cylinderGeometry args={[0.32, 0.4, 0.92, 10]} />
+        <meshStandardMaterial
+          color={color}
+          roughness={0.35}
+          metalness={0.01}
+          transparent
+          opacity={0.9}
+        />
+      </mesh>
+      <mesh castShadow position={[0, 0.49, 0]}>
+        <cylinderGeometry args={[0.2, 0.23, 0.22, 10]} />
+        <Paint color={INK} roughness={0.48} />
+      </mesh>
+      {!compact && (
+        <mesh position={[0.24, 0.45, 0]} rotation={[Math.PI / 2, 0, 0]}>
+          <torusGeometry args={[0.18, 0.045, 6, 14, Math.PI * 1.45]} />
+          <Paint color={INK} />
+        </mesh>
+      )}
+    </group>
+  )
+}
+
+function Stopwatch({ color }: { color: string }) {
+  return (
+    <group>
+      <mesh castShadow rotation={[Math.PI / 2, 0, 0]}>
+        <cylinderGeometry args={[0.48, 0.48, 0.18, 14]} />
+        <Paint color={color} roughness={0.48} />
+      </mesh>
+      <mesh position={[0, 0, 0.11]}>
+        <circleGeometry args={[0.38, 16]} />
+        <Paint color={PAPER} />
+      </mesh>
+      <BoxPart color={INK} position={[0, 0.1, 0.15]} scale={[0.05, 0.42, 0.04]} />
+      <BoxPart
+        color={INK}
+        position={[0.12, -0.02, 0.15]}
+        rotation={[0, 0, -0.65]}
+        scale={[0.28, 0.05, 0.04]}
+      />
+      <BoxPart color={INK} position={[0, 0.56, 0]} scale={[0.22, 0.18, 0.16]} />
+      <mesh position={[0, 0.74, 0]} rotation={[Math.PI / 2, 0, 0]}>
+        <torusGeometry args={[0.15, 0.045, 5, 14]} />
         <Paint color={INK} />
       </mesh>
     </group>
   )
 }
 
-function AbacusModel({
+function RunningCap({
   color,
-  compact,
+  pin = false,
 }: {
   color: string
-  compact: boolean
+  pin?: boolean
 }) {
-  const beads = compact ? 4 : 8
+  if (pin) return <Badge color={color} />
 
+  return (
+    <group position={[0, -0.2, 0]}>
+      <mesh castShadow>
+        <sphereGeometry
+          args={[0.54, 12, 7, 0, Math.PI * 2, 0, Math.PI / 2]}
+        />
+        <Paint color={color} />
+      </mesh>
+      <BoxPart
+        color={color}
+        position={[0, 0.02, 0.42]}
+        scale={[0.62, 0.08, 0.46]}
+      />
+      <BoxPart color={PAPER} position={[0, 0.2, 0.5]} scale={[0.2, 0.08, 0.05]} />
+    </group>
+  )
+}
+
+function Sunglasses({ color }: { color: string }) {
   return (
     <group>
-      <mesh castShadow position={[0, 0.45, 0]} scale={[1.05, 0.13, 0.18]}>
-        <boxGeometry />
-        <Paint color={color} />
-      </mesh>
-      <mesh castShadow position={[0, -0.45, 0]} scale={[1.05, 0.13, 0.18]}>
-        <boxGeometry />
-        <Paint color={color} />
-      </mesh>
-      {[-0.48, 0.48].map((x) => (
-        <mesh
-          key={x}
-          castShadow
-          position={[x, 0, 0]}
-          scale={[0.13, 0.82, 0.18]}
-        >
-          <boxGeometry />
-          <Paint color={color} />
-        </mesh>
-      ))}
-      {[-0.24, 0, 0.24].map((y) => (
-        <mesh key={y} position={[0, y, 0]} rotation={[0, 0, Math.PI / 2]}>
-          <cylinderGeometry args={[0.025, 0.025, 0.88, 6]} />
-          <Paint color={INK} />
-        </mesh>
-      ))}
-      {Array.from({ length: beads }, (_, index) => {
-        const row = index % 3
-        const column = Math.floor(index / 3)
-        return (
-          <mesh
-            key={`bead-${index}`}
-            position={[-0.24 + column * 0.2, -0.24 + row * 0.24, 0]}
-            rotation={[Math.PI / 2, 0, 0]}
-          >
-            <cylinderGeometry args={[0.09, 0.09, 0.13, 8]} />
-            <Paint color={['#FF7B66', '#4169D8', '#F2C94C'][row]} />
+      {[-0.32, 0.32].map((x) => (
+        <group key={x} position={[x, 0, 0]}>
+          <mesh castShadow>
+            <torusGeometry args={[0.27, 0.075, 7, 18]} />
+            <Paint color={color} roughness={0.4} />
           </mesh>
-        )
-      })}
+          <mesh position={[0, 0, 0.02]}>
+            <circleGeometry args={[0.22, 16]} />
+            <meshStandardMaterial
+              color="#6E70C9"
+              roughness={0.2}
+              transparent
+              opacity={0.74}
+            />
+          </mesh>
+        </group>
+      ))}
+      <BoxPart color={color} scale={[0.22, 0.07, 0.07]} />
+      <BoxPart
+        color={color}
+        position={[-0.64, 0, -0.18]}
+        rotation={[0, -0.55, 0]}
+        scale={[0.4, 0.07, 0.07]}
+      />
+      <BoxPart
+        color={color}
+        position={[0.64, 0, -0.18]}
+        rotation={[0, 0.55, 0]}
+        scale={[0.4, 0.07, 0.07]}
+      />
     </group>
   )
 }
 
-function RainbowModel({
+function Wristwatch({ color }: { color: string }) {
+  return (
+    <group>
+      <BoxPart color={color} scale={[0.34, 1.25, 0.12]} />
+      <mesh castShadow position={[0, 0, 0.12]} rotation={[Math.PI / 2, 0, 0]}>
+        <cylinderGeometry args={[0.4, 0.4, 0.2, 12]} />
+        <Paint color={INK} roughness={0.4} />
+      </mesh>
+      <mesh position={[0, 0, 0.24]}>
+        <circleGeometry args={[0.3, 14]} />
+        <Paint color={PAPER} />
+      </mesh>
+      <BoxPart
+        color={color}
+        position={[0.08, 0.06, 0.28]}
+        rotation={[0, 0, -0.5]}
+        scale={[0.2, 0.045, 0.035]}
+      />
+    </group>
+  )
+}
+
+function Headphones({
   color,
-  compact,
+  giant = false,
 }: {
   color: string
-  compact: boolean
+  giant?: boolean
 }) {
-  const colors = compact ? [color] : ['#FF7B66', '#F2C94C', '#45A7A0']
-
+  const size = giant ? 1.2 : 1
   return (
-    <group position={[0, -0.15, 0]}>
-      {colors.map((bandColor, index) => (
-        <mesh key={bandColor}>
-          <torusGeometry
-            args={[0.48 + index * 0.16, 0.075, 6, 24, Math.PI]}
-          />
-          <Paint color={bandColor} />
-        </mesh>
+    <group scale={size}>
+      <mesh rotation={[0, 0, -Math.PI * 0.12]}>
+        <torusGeometry args={[0.5, 0.09, 7, 22, Math.PI * 1.25]} />
+        <Paint color={color} />
+      </mesh>
+      {[-0.49, 0.49].map((x) => (
+        <group key={x} position={[x, -0.2, 0]}>
+          <BoxPart color={INK} scale={[0.2, 0.44, 0.27]} />
+          <BoxPart color={color} position={[0, 0, 0.18]} scale={[0.15, 0.34, 0.13]} />
+        </group>
       ))}
-      <mesh position={[-0.65, 0, 0]} scale={[0.22, 0.13, 0.23]}>
-        <sphereGeometry args={[1, 8, 6]} />
-        <Paint color={PAPER} />
-      </mesh>
-      <mesh position={[0.65, 0, 0]} scale={[0.22, 0.13, 0.23]}>
-        <sphereGeometry args={[1, 8, 6]} />
-        <Paint color={PAPER} />
-      </mesh>
     </group>
   )
 }
 
-function FractionBoard({ color }: { color: string }) {
+function GiftBox({
+  color,
+  large = false,
+}: {
+  color: string
+  large?: boolean
+}) {
+  const width = large ? 1.25 : 0.9
   return (
-    <group rotation={[Math.PI / 2, 0, 0]}>
-      <mesh castShadow>
-        <cylinderGeometry args={[0.58, 0.58, 0.18, 20]} />
+    <group>
+      <BoxPart
+        color={color}
+        position={[0, -0.12, 0]}
+        scale={[width, large ? 0.72 : 0.62, large ? 0.9 : 0.72]}
+      />
+      <BoxPart
+        color={PAPER}
+        position={[0, 0.25, 0]}
+        scale={[width + 0.08, 0.16, large ? 0.98 : 0.8]}
+      />
+      <BoxPart
+        color={GOLD}
+        position={[0, 0.02, 0.42]}
+        scale={[0.16, 0.8, 0.05]}
+      />
+    </group>
+  )
+}
+
+function RunningShoe({
+  color,
+  compact = false,
+}: {
+  color: string
+  compact?: boolean
+}) {
+  return (
+    <group rotation={[0, -0.14, 0]}>
+      <BoxPart
+        color={PAPER}
+        position={[0.08, -0.3, 0]}
+        scale={[1.24, 0.2, 0.58]}
+      />
+      <BoxPart
+        color={color}
+        position={[-0.24, -0.02, 0]}
+        rotation={[0, 0, -0.08]}
+        scale={[0.68, 0.48, 0.5]}
+      />
+      <mesh castShadow position={[0.38, -0.11, 0]} scale={[0.48, 0.28, 0.47]}>
+        <dodecahedronGeometry args={[1, 0]} />
         <Paint color={color} />
       </mesh>
+      <BoxPart
+        color={INK}
+        position={[-0.52, 0.18, 0]}
+        rotation={[0, 0, -0.08]}
+        scale={[0.16, 0.64, 0.48]}
+      />
+      {!compact &&
+        [-0.18, 0.02, 0.22].map((x) => (
+          <BoxPart
+            key={x}
+            color={PAPER}
+            position={[x, 0.22, 0.29]}
+            rotation={[Math.PI / 2, 0, 0]}
+            scale={[0.08, 0.44, 0.04]}
+          />
+        ))}
+    </group>
+  )
+}
+
+function PlayBall({ color }: { color: string }) {
+  return (
+    <group>
+      <mesh castShadow>
+        <icosahedronGeometry args={[0.58, 2]} />
+        <Paint color={color} roughness={0.48} />
+      </mesh>
       {[0, Math.PI / 2].map((rotation) => (
-        <mesh
-          key={rotation}
-          position={[0, -0.11, 0]}
-          rotation={[0, rotation, 0]}
-          scale={[1.02, 0.05, 0.05]}
-        >
-          <boxGeometry />
+        <mesh key={rotation} rotation={[rotation, 0, Math.PI / 4]}>
+          <torusGeometry args={[0.55, 0.035, 5, 24]} />
           <Paint color={PAPER} />
         </mesh>
       ))}
@@ -495,274 +481,223 @@ function FractionBoard({ color }: { color: string }) {
   )
 }
 
-function SolarSystemModel({ compact }: { compact: boolean }) {
-  const planets = compact
-    ? [[0.6, 0, 0] as const]
-    : ([
-        [0.48, 0, 0],
-        [-0.68, 0, 0.16],
-        [0.25, 0, -0.78],
-      ] as const)
-
+function Skateboard({ color }: { color: string }) {
   return (
-    <group>
-      <mesh castShadow>
-        <icosahedronGeometry args={[0.28, 1]} />
-        <Paint color="#F7A531" roughness={0.5} />
-      </mesh>
-      {[0.52, 0.72, 0.92].slice(0, compact ? 1 : 3).map((radius) => (
-        <mesh key={radius} rotation={[Math.PI / 2, 0, 0]}>
-          <torusGeometry args={[radius, 0.018, 5, 28]} />
-          <Paint color="#8EA3B7" />
-        </mesh>
-      ))}
-      {planets.map((position, index) => (
-        <mesh key={`planet-${index}`} castShadow position={position}>
-          <icosahedronGeometry args={[0.1 + index * 0.025, 1]} />
-          <Paint color={['#4D96FF', '#65A30D', '#E879A8'][index]} />
-        </mesh>
-      ))}
+    <group rotation={[0.08, 0.12, -0.04]}>
+      <BoxPart color={color} scale={[1.28, 0.14, 0.48]} />
+      {[-0.42, 0.42].flatMap((x) =>
+        [-0.28, 0.28].map((z) => (
+          <mesh
+            key={`${x}-${z}`}
+            castShadow
+            position={[x, -0.2, z]}
+            rotation={[Math.PI / 2, 0, 0]}
+          >
+            <cylinderGeometry args={[0.12, 0.12, 0.12, 8]} />
+            <Paint color={INK} />
+          </mesh>
+        )),
+      )}
+      <BoxPart color={PAPER} position={[0, 0.1, 0]} scale={[0.28, 0.03, 0.28]} />
     </group>
   )
 }
 
-function BookStack({ color }: { color: string }) {
+function GemCluster({ color }: { color: string }) {
   return (
     <group>
-      {[0, 1, 2].map((index) => (
-        <mesh
+      <group position={[0, 0.15, 0]} scale={1.05}>
+        <Gem color={color} />
+      </group>
+      <group position={[-0.4, -0.18, 0.12]} scale={0.7}>
+        <Gem color="#38BDF8" />
+      </group>
+      <group position={[0.42, -0.16, 0.05]} scale={0.76}>
+        <Gem color="#F472B6" />
+      </group>
+    </group>
+  )
+}
+
+function TreasureBox({
+  color,
+  large = false,
+  compact = false,
+}: {
+  color: string
+  large?: boolean
+  compact?: boolean
+}) {
+  const width = large ? 1.25 : 1
+  return (
+    <group>
+      <BoxPart
+        color={color}
+        position={[0, -0.22, 0]}
+        scale={[width, large ? 0.72 : 0.58, large ? 0.88 : 0.72]}
+      />
+      <mesh
+        castShadow
+        position={[0, large ? 0.32 : 0.24, 0]}
+        rotation={[0, 0, Math.PI / 2]}
+        scale={[large ? 0.48 : 0.4, width, large ? 0.88 : 0.72]}
+      >
+        <cylinderGeometry
+          args={[0.5, 0.5, 1, compact ? 6 : 10, 1, false, 0, Math.PI]}
+        />
+        <Paint color={color} />
+      </mesh>
+      <BoxPart
+        color={GOLD}
+        position={[0, -0.05, large ? 0.47 : 0.39]}
+        scale={[0.18, 0.72, 0.06]}
+      />
+      <BoxPart
+        color={INK}
+        position={[0, -0.03, large ? 0.52 : 0.44]}
+        scale={[0.12, 0.18, 0.04]}
+      />
+    </group>
+  )
+}
+
+function HydrationPack({
+  color,
+  compact = false,
+}: {
+  color: string
+  compact?: boolean
+}) {
+  return (
+    <group>
+      <BoxPart color={color} scale={[0.8, 1.02, 0.48]} />
+      <BoxPart
+        color={INK}
+        position={[0, 0.02, 0.3]}
+        scale={[0.52, 0.56, 0.12]}
+      />
+      {!compact &&
+        [-0.48, 0.48].map((x) => (
+          <mesh key={x} castShadow position={[x, -0.05, 0]}>
+            <cylinderGeometry args={[0.15, 0.17, 0.62, 8]} />
+            <Paint color="#38BDF8" roughness={0.4} />
+          </mesh>
+        ))}
+      <mesh position={[0, 0.62, 0]} rotation={[Math.PI / 2, 0, 0]}>
+        <torusGeometry args={[0.22, 0.05, 6, 14, Math.PI]} />
+        <Paint color={INK} />
+      </mesh>
+    </group>
+  )
+}
+
+function Trophy({ color }: { color: string }) {
+  return (
+    <group>
+      <mesh castShadow position={[0, 0.2, 0]}>
+        <cylinderGeometry args={[0.34, 0.52, 0.72, 12]} />
+        <Paint color={color} roughness={0.38} />
+      </mesh>
+      {[-0.48, 0.48].map((x) => (
+        <mesh key={x} position={[x, 0.3, 0]} rotation={[Math.PI / 2, 0, 0]}>
+          <torusGeometry args={[0.28, 0.07, 6, 16, Math.PI]} />
+          <Paint color={color} roughness={0.38} />
+        </mesh>
+      ))}
+      <BoxPart color={color} position={[0, -0.3, 0]} scale={[0.16, 0.45, 0.16]} />
+      <BoxPart color={INK} position={[0, -0.55, 0]} scale={[0.72, 0.16, 0.5]} />
+    </group>
+  )
+}
+
+function FinishGate({ color }: { color: string }) {
+  return (
+    <group>
+      {[-0.62, 0.62].map((x, index) => (
+        <group key={x}>
+          <BoxPart
+            color={index ? '#38BDF8' : '#FF6B6B'}
+            position={[x, -0.05, 0]}
+            scale={[0.18, 1.35, 0.18]}
+          />
+          <BoxPart
+            color={PAPER}
+            position={[x, -0.05, 0.1]}
+            scale={[0.2, 0.14, 0.04]}
+          />
+        </group>
+      ))}
+      <BoxPart color={color} position={[0, 0.62, 0]} scale={[1.4, 0.34, 0.2]} />
+      <BoxPart color={GOLD} position={[0, 0.62, 0.14]} scale={[0.34, 0.2, 0.05]} />
+    </group>
+  )
+}
+
+function DrinkCrate({
+  color,
+  compact = false,
+}: {
+  color: string
+  compact?: boolean
+}) {
+  const cans = compact ? 2 : 6
+  return (
+    <group>
+      <BoxPart color={color} position={[0, -0.2, 0]} scale={[1.2, 0.62, 0.92]} />
+      <BoxPart color={INK} position={[0, 0.1, 0.5]} scale={[0.84, 0.22, 0.05]} />
+      {Array.from({ length: cans }, (_, index) => (
+        <group
           key={index}
-          castShadow
-          position={[(index - 1) * 0.06, -0.28 + index * 0.28, 0]}
-          rotation={[0, (index - 1) * 0.1, 0]}
-          scale={[1, 0.24, 0.68]}
+          position={[
+            -0.36 + (index % 3) * 0.36,
+            0.25,
+            index > 2 ? -0.2 : 0.2,
+          ]}
+          scale={0.38}
         >
-          <boxGeometry />
-          <Paint color={[color, '#4169D8', '#FF7B66'][index]} />
-        </mesh>
+          <DrinkCan color={PALETTE[index % PALETTE.length]} compact />
+        </group>
       ))}
     </group>
   )
 }
 
-function TelescopeModel({
+function CrewKiosk({
   color,
-  compact,
+  compact = false,
 }: {
   color: string
-  compact: boolean
+  compact?: boolean
 }) {
   return (
     <group>
-      <group rotation={[0, 0, -0.65]} position={[0, 0.32, 0]}>
-        <mesh castShadow>
-          <cylinderGeometry args={[0.17, 0.22, 1.08, 10]} />
-          <Paint color={color} />
-        </mesh>
-        <mesh position={[0, 0.58, 0]}>
-          <cylinderGeometry args={[0.22, 0.22, 0.16, 10]} />
-          <Paint color="#4D96FF" roughness={0.35} />
-        </mesh>
-      </group>
-      {!compact &&
-        [-0.28, 0.28].map((x) => (
-          <mesh
-            key={x}
-            castShadow
-            position={[x, -0.34, 0]}
-            rotation={[0, 0, x * 0.9]}
-          >
-            <cylinderGeometry args={[0.035, 0.045, 0.78, 6]} />
-            <Paint color={LIGHT_WOOD} />
-          </mesh>
-        ))}
-    </group>
-  )
-}
-
-function CalendarModel({
-  color,
-  compact,
-}: {
-  color: string
-  compact: boolean
-}) {
-  return (
-    <group>
-      <mesh castShadow scale={[0.9, 0.72, 0.18]}>
-        <boxGeometry />
-        <Paint color={PAPER} />
-      </mesh>
-      <mesh position={[0, 0.26, 0.2]} scale={[0.82, 0.19, 0.05]}>
-        <boxGeometry />
-        <Paint color={color} />
-      </mesh>
-      {!compact &&
-        [-0.24, 0, 0.24].flatMap((x) =>
-          [-0.08, -0.3].map((y) => (
-            <mesh
-              key={`${x}-${y}`}
-              position={[x, y, 0.2]}
-              scale={[0.1, 0.08, 0.05]}
-            >
-              <boxGeometry />
-              <Paint color="#B6C4D2" />
-            </mesh>
-          )),
-        )}
-      {[-0.28, 0.28].map((x) => (
-        <mesh key={x} position={[x, 0.49, 0.06]}>
-          <torusGeometry args={[0.08, 0.025, 5, 12]} />
-          <Paint color={INK} />
-        </mesh>
-      ))}
-    </group>
-  )
-}
-
-function GeometryKit({ color }: { color: string }) {
-  return (
-    <group>
-      <mesh castShadow position={[0, -0.25, 0]} scale={[1, 0.42, 0.78]}>
-        <boxGeometry />
-        <Paint color={color} />
-      </mesh>
-      <mesh castShadow position={[-0.28, 0.2, 0]}>
-        <coneGeometry args={[0.22, 0.55, 4]} />
-        <Paint color="#FF7B66" />
-      </mesh>
-      <mesh castShadow position={[0.05, 0.17, 0]} scale={0.32}>
-        <boxGeometry />
-        <Paint color="#4169D8" />
-      </mesh>
-      <mesh castShadow position={[0.35, 0.18, 0]} scale={0.23}>
-        <icosahedronGeometry args={[1, 1]} />
-        <Paint color="#45A7A0" />
-      </mesh>
-    </group>
-  )
-}
-
-function VowelBoard({ color }: { color: string }) {
-  return (
-    <group>
-      <mesh castShadow scale={[1.05, 0.72, 0.16]}>
-        <boxGeometry />
-        <Paint color={color} />
-      </mesh>
-      <group position={[-0.32, 0, 0.2]} scale={0.54}>
-        <GlyphBars symbol="ㅏ" />
-      </group>
-      <group position={[0.34, 0, 0.2]} scale={0.54}>
-        <GlyphBars symbol="ㅗ" />
-      </group>
-    </group>
-  )
-}
-
-function SaturnModel({ color }: { color: string }) {
-  return (
-    <group rotation={[0.18, 0, -0.2]}>
-      <mesh castShadow>
-        <icosahedronGeometry args={[0.5, 2]} />
-        <Paint color={color} />
-      </mesh>
-      <mesh rotation={[Math.PI / 2, 0, 0]}>
-        <torusGeometry args={[0.72, 0.1, 6, 28]} />
-        <Paint color="#EECF91" />
-      </mesh>
-    </group>
-  )
-}
-
-function LibraryCart({
-  color,
-  compact,
-}: {
-  color: string
-  compact: boolean
-}) {
-  return (
-    <group>
-      <mesh castShadow position={[0, -0.18, 0]} scale={[1.05, 0.48, 0.72]}>
-        <boxGeometry />
-        <Paint color={color} />
-      </mesh>
-      {!compact &&
-        [-0.32, 0, 0.32].map((x, index) => (
-          <mesh
-            key={x}
-            castShadow
-            position={[x, 0.27 + (index % 2) * 0.05, 0]}
-            scale={[0.22, 0.58, 0.5]}
-          >
-            <boxGeometry />
-            <Paint color={['#4D96FF', '#F2C94C', '#FF7B66'][index]} />
-          </mesh>
-        ))}
-      {[-0.36, 0.36].map((x) => (
-        <mesh
-          key={x}
-          position={[x, -0.52, 0.25]}
-          rotation={[Math.PI / 2, 0, 0]}
-        >
-          <cylinderGeometry args={[0.13, 0.13, 0.12, 10]} />
-          <Paint color={INK} />
-        </mesh>
-      ))}
+      <BoxPart color={color} position={[0, -0.15, 0]} scale={[1.3, 1.12, 0.82]} />
+      <BoxPart
+        color={PAPER}
+        position={[0, 0.1, 0.44]}
+        scale={[0.86, 0.54, 0.08]}
+      />
+      <BoxPart color="#FF6B6B" position={[0, 0.65, 0.45]} scale={[1.48, 0.2, 0.18]} />
+      {!compact && (
+        <group position={[0, 0.1, 0.56]} scale={0.48}>
+          <WaterBottle color="#38BDF8" compact />
+        </group>
+      )}
+      <BoxPart color={WOOD} position={[0, -0.64, 0.36]} scale={[1.46, 0.18, 0.32]} />
     </group>
   )
 }
 
 function FallbackShape({ item }: { item: LearningObject }) {
-  if (item.shape === 'sphere') {
-    return (
-      <mesh castShadow>
-        <icosahedronGeometry args={[0.56, 1]} />
-        <Paint color={item.color} />
-      </mesh>
-    )
-  }
-
-  if (item.shape === 'cylinder') {
-    return (
-      <mesh castShadow>
-        <cylinderGeometry args={[0.48, 0.55, 0.92, 10]} />
-        <Paint color={item.color} />
-      </mesh>
-    )
-  }
-
-  if (item.shape === 'cone') {
-    return (
-      <mesh castShadow>
-        <coneGeometry args={[0.58, 0.96, 3]} />
-        <Paint color={item.color} />
-      </mesh>
-    )
-  }
-
-  if (item.shape === 'torus') {
-    return (
-      <mesh castShadow>
-        <torusGeometry args={[0.5, 0.17, 7, 20]} />
-        <Paint color={item.color} />
-      </mesh>
-    )
-  }
-
-  return (
-    <mesh castShadow scale={[0.82, 0.66, 0.72]}>
-      <boxGeometry />
-      <Paint color={item.color} />
-    </mesh>
-  )
+  if (item.shape === 'sphere') return <Gem color={item.color} />
+  if (item.shape === 'torus') return <Wristband color={item.color} />
+  if (item.shape === 'cylinder') return <DrinkCan color={item.color} />
+  return <GiftBox color={item.color} />
 }
 
 /**
- * A deterministic, texture-free representation of a learning collectible.
- * Keep the local origin at the object's center so the same mesh can be used
- * both in the world and as a surface attachment.
+ * Original, texture-free running-park collectibles. Each item keeps a strong
+ * silhouette at the four external tier scales used by GameCanvas.
  */
 export function LearningObjectMesh({
   item,
@@ -771,106 +706,96 @@ export function LearningObjectMesh({
   const compact = detail === 'attached'
 
   switch (item.id) {
-    case 'vowel-a':
-    case 'vowel-o':
-    case 'number-one':
-    case 'number-ten':
-    case 'music-block':
-      return <GlyphTile item={item} />
-    case 'triangle':
+    case 'runner-lace':
+      return <RunnerLace color={item.color} />
+    case 'crew-badge':
+      return <Badge color={item.color} />
+    case 'treasure-shard':
+    case 'tiny-gem':
+      return <Gem color={item.color} />
+    case 'wristband':
+      return <Wristband color={item.color} />
+    case 'key-charm':
+      return <KeyCharm color={item.color} />
+    case 'mini-can':
+      return <DrinkCan color={item.color} compact={compact} />
+    case 'cap-pin':
+      return <RunningCap color={item.color} pin />
+    case 'water-bottle':
+      return <WaterBottle color={item.color} compact={compact} />
+    case 'stopwatch':
+      return <Stopwatch color={item.color} />
+    case 'running-cap':
+      return <RunningCap color={item.color} />
+    case 'sunglasses':
+      return <Sunglasses color={item.color} />
+    case 'wristwatch':
+      return <Wristwatch color={item.color} />
+    case 'headphones':
+      return <Headphones color={item.color} />
+    case 'small-box':
+      return <GiftBox color={item.color} />
+    case 'running-shoe':
+      return <RunningShoe color={item.color} compact={compact} />
+    case 'crew-medal':
+      return <Badge color={item.color} medal />
+    case 'play-ball':
+      return <PlayBall color={item.color} />
+    case 'skateboard':
+      return <Skateboard color={item.color} />
+    case 'gem-cluster':
+      return <GemCluster color={item.color} />
+    case 'treasure-box':
+      return <TreasureBox color={item.color} compact={compact} />
+    case 'hydration-pack':
+      return <HydrationPack color={item.color} compact={compact} />
+    case 'running-shoe-pair':
       return (
-        <mesh castShadow>
-          <coneGeometry args={[0.58, 0.98, 3]} />
-          <Paint color={item.color} />
-        </mesh>
-      )
-    case 'eraser':
-      return (
-        <group rotation={[0, 0.16, -0.12]}>
-          <mesh castShadow scale={[0.86, 0.42, 0.55]}>
-            <boxGeometry />
-            <Paint color={item.color} />
-          </mesh>
-          <mesh position={[0.18, 0, 0]} scale={[0.32, 0.44, 0.57]}>
-            <boxGeometry />
-            <Paint color={PAPER} />
-          </mesh>
+        <group>
+          <group position={[-0.3, 0, 0.24]} rotation={[0, -0.14, 0]} scale={0.72}>
+            <RunningShoe color={item.color} compact={compact} />
+          </group>
+          <group position={[0.3, 0, -0.24]} rotation={[0, 0.14, 0]} scale={0.72}>
+            <RunningShoe color="#FF6B6B" compact={compact} />
+          </group>
         </group>
       )
-    case 'cube':
+    case 'giant-sneaker':
       return (
-        <mesh castShadow scale={0.68} rotation={[0.08, 0.22, 0.04]}>
-          <boxGeometry />
-          <Paint color={item.color} />
-        </mesh>
+        <group scale={1.12}>
+          <RunningShoe color={item.color} compact={compact} />
+        </group>
       )
-    case 'pencil-yellow':
-      return <PencilModel color={item.color} compact={compact} />
-    case 'circle':
-      return (
-        <mesh castShadow>
-          <torusGeometry args={[0.5, 0.16, 8, 24]} />
-          <Paint color={item.color} />
-        </mesh>
-      )
-    case 'seed':
-      return <SeedModel color={item.color} />
-    case 'apple':
-      return <AppleModel color={item.color} compact={compact} />
-    case 'book-korean':
-      return <BookModel color={item.color} />
-    case 'plant-pot':
-      return <PlantModel color={item.color} compact={compact} />
-    case 'clock':
-      return <ClockModel color={item.color} />
-    case 'water-drop':
-      return <WaterDropModel color={item.color} />
-    case 'pencil-cup':
-      return <PencilCupModel color={item.color} compact={compact} />
-    case 'globe':
-      return <GlobeModel color={item.color} compact={compact} />
-    case 'dictionary':
-      return <BookModel color={item.color} thick />
-    case 'abacus':
-      return <AbacusModel color={item.color} compact={compact} />
-    case 'rainbow-arch':
-      return <RainbowModel color={item.color} compact={compact} />
-    case 'fraction-board':
-      return <FractionBoard color={item.color} />
-    case 'solar-model':
-      return <SolarSystemModel compact={compact} />
-    case 'books-stack':
-      return <BookStack color={item.color} />
-    case 'telescope':
-      return <TelescopeModel color={item.color} compact={compact} />
-    case 'calendar':
-      return <CalendarModel color={item.color} compact={compact} />
-    case 'geometry-kit':
-      return <GeometryKit color={item.color} />
-    case 'vowel-board':
-      return <VowelBoard color={item.color} />
-    case 'planet-saturn':
-      return <SaturnModel color={item.color} />
-    case 'library-box':
-      return <LibraryCart color={item.color} compact={compact} />
+    case 'trophy-cup':
+      return <Trophy color={item.color} />
+    case 'finish-banner':
+      return <FinishGate color={item.color} />
+    case 'giant-headphones':
+      return <Headphones color={item.color} giant />
+    case 'drink-crate':
+      return <DrinkCrate color={item.color} compact={compact} />
+    case 'treasure-chest':
+      return <TreasureBox color={item.color} large compact={compact} />
+    case 'crew-kiosk':
+      return <CrewKiosk color={item.color} compact={compact} />
     default:
       return <FallbackShape item={item} />
   }
 }
 
 /**
- * Place this component inside the rolling orb group. Its deterministic
- * Fibonacci-sphere slot keeps the collectible fixed to the orb as it rotates.
+ * Mount inside the rolling-orb group. Fibonacci-sphere slots and a stable
+ * item-id yaw keep all collected models anchored while the ball rotates.
  */
 export function AttachedObjectMesh({
   item,
   index,
   orbRadius,
-  slotCount = 12,
+  slotCount = 30,
 }: AttachedObjectMeshProps) {
   const transform = useMemo(() => {
-    const safeSlotCount = Math.max(1, slotCount)
-    const slot = ((index % safeSlotCount) + 0.5) / safeSlotCount
+    const slots = Math.max(1, slotCount)
+    const slot = ((index % slots) + 0.5) / slots
     const y = 1 - slot * 2
     const ring = Math.sqrt(Math.max(0, 1 - y * y))
     const theta = index * GOLDEN_ANGLE
@@ -879,24 +804,24 @@ export function AttachedObjectMesh({
       y,
       Math.sin(theta) * ring,
     ).normalize()
-    const position = normal.clone().multiplyScalar(orbRadius * 0.965)
+    const position = normal.clone().multiplyScalar(orbRadius * 0.97)
     const orientation = new Quaternion().setFromUnitVectors(UP, normal)
-    const idSeed = Array.from(item.id).reduce(
-      (sum, character) => sum + character.charCodeAt(0),
+    const seed = Array.from(item.id).reduce(
+      (total, character) => total + character.charCodeAt(0),
       0,
     )
-    const yaw = ((idSeed % 16) / 16) * Math.PI * 2
-    orientation.multiply(new Quaternion().setFromAxisAngle(UP, yaw))
+    orientation.multiply(
+      new Quaternion().setFromAxisAngle(UP, ((seed % 24) / 24) * Math.PI * 2),
+    )
     const scale =
-      Math.max(0.11, Math.min(0.34, orbRadius * 0.14)) *
-      (0.92 + Math.min(item.size, 1.5) * 0.08)
+      Math.max(0.065, Math.min(0.2, orbRadius * 0.092)) *
+      (0.9 + Math.min(item.size, 1.5) * 0.06)
 
     return { orientation, position, scale }
   }, [index, item.id, item.size, orbRadius, slotCount])
 
   return (
     <group
-      name={`attached-${item.id}`}
       position={transform.position}
       quaternion={transform.orientation}
       scale={transform.scale}
@@ -908,9 +833,22 @@ export function AttachedObjectMesh({
 
 interface InstanceSpec {
   color: string
-  position: [number, number, number]
-  scale: [number, number, number]
+  position: VectorTuple
+  scale: VectorTuple
   rotationY?: number
+}
+
+function setInstances(mesh: InstancedMesh, specs: InstanceSpec[]) {
+  const dummy = new Object3D()
+
+  specs.forEach((spec, index) => {
+    dummy.position.set(...spec.position)
+    dummy.rotation.set(0, spec.rotationY ?? 0, 0)
+    dummy.scale.set(...spec.scale)
+    dummy.updateMatrix()
+    mesh.setMatrixAt(index, dummy.matrix)
+  })
+  mesh.instanceMatrix.needsUpdate = true
 }
 
 function InstancedBoxBatch({
@@ -927,17 +865,7 @@ function InstancedBoxBatch({
   const mesh = useRef<InstancedMesh>(null)
 
   useLayoutEffect(() => {
-    if (!mesh.current) return
-    const dummy = new Object3D()
-
-    specs.forEach((spec, index) => {
-      dummy.position.set(...spec.position)
-      dummy.rotation.set(0, spec.rotationY ?? 0, 0)
-      dummy.scale.set(...spec.scale)
-      dummy.updateMatrix()
-      mesh.current?.setMatrixAt(index, dummy.matrix)
-    })
-    mesh.current.instanceMatrix.needsUpdate = true
+    if (mesh.current) setInstances(mesh.current, specs)
   }, [specs])
 
   return (
@@ -986,34 +914,26 @@ function InstancedBoxes({
   )
 }
 
-function InstancedCanopyBatch({
+function InstancedPolyhedraBatch({
   specs,
   color,
+  castShadow = true,
 }: {
   specs: InstanceSpec[]
   color: string
+  castShadow?: boolean
 }) {
   const mesh = useRef<InstancedMesh>(null)
 
   useLayoutEffect(() => {
-    if (!mesh.current) return
-    const dummy = new Object3D()
-
-    specs.forEach((spec, index) => {
-      dummy.position.set(...spec.position)
-      dummy.rotation.set(0, spec.rotationY ?? 0, 0)
-      dummy.scale.set(...spec.scale)
-      dummy.updateMatrix()
-      mesh.current?.setMatrixAt(index, dummy.matrix)
-    })
-    mesh.current.instanceMatrix.needsUpdate = true
+    if (mesh.current) setInstances(mesh.current, specs)
   }, [specs])
 
   return (
     <instancedMesh
       ref={mesh}
       args={[undefined, undefined, specs.length]}
-      castShadow
+      castShadow={castShadow}
     >
       <dodecahedronGeometry args={[0.5, 0]} />
       <meshStandardMaterial color={color} roughness={0.92} metalness={0} />
@@ -1021,7 +941,13 @@ function InstancedCanopyBatch({
   )
 }
 
-function InstancedCanopies({ specs }: { specs: InstanceSpec[] }) {
+function InstancedPolyhedra({
+  specs,
+  castShadow = true,
+}: {
+  specs: InstanceSpec[]
+  castShadow?: boolean
+}) {
   const colorGroups = useMemo(
     () =>
       Array.from(new Set(specs.map((spec) => spec.color))).map((color) => ({
@@ -1034,36 +960,16 @@ function InstancedCanopies({ specs }: { specs: InstanceSpec[] }) {
   return (
     <>
       {colorGroups.map((group) => (
-        <InstancedCanopyBatch
+        <InstancedPolyhedraBatch
           key={group.color}
           specs={group.specs}
           color={group.color}
+          castShadow={castShadow}
         />
       ))}
     </>
   )
 }
-
-const TREE_POSITIONS: ReadonlyArray<[number, number]> = [
-  [-8.8, -7.6],
-  [-8.9, 0],
-  [-8.4, 7.4],
-  [-3.3, 9],
-  [3.5, 9],
-  [8.5, 7.2],
-  [8.9, 0],
-  [8.4, -7.4],
-  [3.2, -9],
-  [-3.5, -9],
-]
-
-const SHELVES: ReadonlyArray<{
-  position: [number, number]
-  rotationY: number
-}> = [
-  { position: [-7.8, -4.2], rotationY: Math.PI / 2 },
-  { position: [7.8, 4.2], rotationY: -Math.PI / 2 },
-]
 
 function rotateOffset(
   x: number,
@@ -1076,209 +982,247 @@ function rotateOffset(
 }
 
 /**
- * A low-poly, nonviolent learning garden/playroom. Repeated scenery uses
- * instancing, all layouts are module constants, and no frame-loop work occurs.
+ * A deterministic 58–60 unit running park. Track markers, trees, bushes,
+ * benches, gear racks and stepping blocks are instanced for mobile rendering.
  */
 export function GardenSetDressing({
-  floorSize = 23,
+  floorSize = 60,
   receiveShadow = true,
 }: GardenSetDressingProps) {
+  const parkSize = Math.max(58, Math.min(60, floorSize))
   const scenery = useMemo(() => {
-    const trunks: InstanceSpec[] = TREE_POSITIONS.map(([x, z], index) => ({
-      color: index % 2 ? WOOD : '#9A643D',
-      position: [x, 0.65, z],
-      scale: [0.36, 1.3, 0.36],
-    }))
-    const canopies: InstanceSpec[] = TREE_POSITIONS.flatMap(
-      ([x, z], index) => [
+    const edgeRadius = parkSize * 0.468
+    const treeCount = 22
+    const trunks: InstanceSpec[] = []
+    const leaves: InstanceSpec[] = []
+    const bushes: InstanceSpec[] = []
+
+    Array.from({ length: treeCount }, (_, index) => {
+      const angle = (index / treeCount) * Math.PI * 2
+      const radius = edgeRadius - (index % 3) * 0.65
+      const x = Math.cos(angle) * radius
+      const z = Math.sin(angle) * radius
+      trunks.push({
+        color: index % 2 ? WOOD : '#8C5B3C',
+        position: [x, 0.78, z],
+        scale: [0.38, 1.56, 0.38],
+        rotationY: angle,
+      })
+      leaves.push(
         {
-          color: index % 2 ? LEAF : DARK_LEAF,
-          position: [x, 1.75, z] as [number, number, number],
-          scale: [1.45, 1.2, 1.35] as [number, number, number],
-        },
-        {
-          color: index % 2 ? '#66B76B' : '#56A35A',
-          position: [x + 0.38, 2.18, z - 0.12] as [
-            number,
-            number,
-            number,
-          ],
-          scale: [0.9, 0.82, 0.88] as [number, number, number],
-        },
-      ],
-    )
-    const floorTiles: InstanceSpec[] = Array.from(
-      { length: 24 },
-      (_, index) => {
-        const angle = (index / 24) * Math.PI * 2
-        const radius = index % 2 ? 5.1 : 7.05
-        return {
-          color: index % 3 === 0 ? '#C9E8BF' : '#D8EFCF',
-          position: [
-            Math.cos(angle) * radius,
-            0.025,
-            Math.sin(angle) * radius,
-          ],
-          scale: [0.62, 0.025, 0.62],
+          color: index % 2 ? LEAF : '#327D50',
+          position: [x, 2.2, z],
+          scale: [1.5, 1.28, 1.42],
           rotationY: angle,
+        },
+        {
+          color: index % 2 ? '#63B967' : '#52A963',
+          position: [x + Math.cos(angle + 0.7) * 0.55, 2.7, z + Math.sin(angle + 0.7) * 0.55],
+          scale: [0.95, 0.88, 0.92],
+          rotationY: angle,
+        },
+      )
+      if (index % 2 === 0) {
+        const bushAngle = angle + Math.PI / treeCount
+        const bushRadius = edgeRadius - 2.2
+        bushes.push({
+          color: index % 4 ? '#5BBE69' : '#43A85A',
+          position: [
+            Math.cos(bushAngle) * bushRadius,
+            0.42,
+            Math.sin(bushAngle) * bushRadius,
+          ],
+          scale: [1.15, 0.75, 1.05],
+          rotationY: bushAngle,
+        })
+      }
+    })
+
+    const routeMarkers: InstanceSpec[] = Array.from(
+      { length: 40 },
+      (_, index) => {
+        const angle = (index / 40) * Math.PI * 2
+        return {
+          color: PALETTE[index % PALETTE.length],
+          position: [
+            Math.cos(angle) * 19.5 * 1.24,
+            0.05,
+            Math.sin(angle) * 19.5,
+          ],
+          scale: [0.38, 0.05, 0.72],
+          rotationY: -angle,
         }
       },
     )
-    const shelfWood: InstanceSpec[] = []
-    const shelfBooks: InstanceSpec[] = []
 
-    SHELVES.forEach((shelf, shelfIndex) => {
-      const [baseX, baseZ] = shelf.position
-      const woodParts = [
-        { x: -0.95, y: 0.95, z: 0, scale: [0.14, 1.9, 0.54] },
-        { x: 0.95, y: 0.95, z: 0, scale: [0.14, 1.9, 0.54] },
-        { x: 0, y: 0.12, z: 0, scale: [1.9, 0.14, 0.54] },
-        { x: 0, y: 0.95, z: 0, scale: [1.9, 0.12, 0.54] },
-        { x: 0, y: 1.8, z: 0, scale: [1.9, 0.14, 0.54] },
+    const benchParts: InstanceSpec[] = []
+    Array.from({ length: 8 }, (_, index) => {
+      const angle = (index / 8) * Math.PI * 2 + Math.PI / 8
+      const baseX = Math.cos(angle) * 14.8
+      const baseZ = Math.sin(angle) * 14.8
+      const yaw = -angle
+      const parts = [
+        { x: 0, y: 0.45, z: 0, scale: [1.75, 0.16, 0.5], color: WOOD },
+        { x: 0, y: 0.92, z: 0.22, scale: [1.75, 0.62, 0.14], color: WOOD },
+        { x: -0.62, y: 0.2, z: 0, scale: [0.12, 0.5, 0.38], color: INK },
+        { x: 0.62, y: 0.2, z: 0, scale: [0.12, 0.5, 0.38], color: INK },
       ]
 
-      woodParts.forEach((part) => {
-        const [offsetX, offsetZ] = rotateOffset(
-          part.x,
-          part.z,
-          shelf.rotationY,
-        )
-        shelfWood.push({
-          color: shelfIndex ? LIGHT_WOOD : WOOD,
+      parts.forEach((part) => {
+        const [offsetX, offsetZ] = rotateOffset(part.x, part.z, yaw)
+        benchParts.push({
+          color: part.color,
           position: [baseX + offsetX, part.y, baseZ + offsetZ],
-          scale: part.scale as [number, number, number],
-          rotationY: shelf.rotationY,
-        })
-      })
-
-      Array.from({ length: 8 }, (_, index) => {
-        const row = index < 4 ? 0 : 1
-        const localX = -0.63 + (index % 4) * 0.42
-        const localZ = -0.03
-        const [offsetX, offsetZ] = rotateOffset(
-          localX,
-          localZ,
-          shelf.rotationY,
-        )
-        shelfBooks.push({
-          color: ['#4D96FF', '#FF7B66', '#F2C94C', '#45A7A0'][index % 4],
-          position: [
-            baseX + offsetX,
-            0.52 + row * 0.85,
-            baseZ + offsetZ,
-          ],
-          scale: [0.28, 0.65, 0.38],
-          rotationY: shelf.rotationY,
+          scale: part.scale as VectorTuple,
+          rotationY: yaw,
         })
       })
     })
 
-    const playBlocks: InstanceSpec[] = Array.from(
-      { length: 14 },
+    const rackParts: InstanceSpec[] = []
+    const gear: InstanceSpec[] = []
+    const racks = [
+      { x: -21.5, z: -4.5, yaw: Math.PI / 2 },
+      { x: 21.5, z: 4.5, yaw: -Math.PI / 2 },
+      { x: -5, z: 21.7, yaw: 0 },
+      { x: 5, z: -21.7, yaw: Math.PI },
+    ]
+
+    racks.forEach((rack, rackIndex) => {
+      const frame = [
+        { x: -0.95, y: 0.92, z: 0, scale: [0.14, 1.84, 0.52] },
+        { x: 0.95, y: 0.92, z: 0, scale: [0.14, 1.84, 0.52] },
+        { x: 0, y: 0.18, z: 0, scale: [1.9, 0.14, 0.52] },
+        { x: 0, y: 0.98, z: 0, scale: [1.9, 0.12, 0.52] },
+        { x: 0, y: 1.72, z: 0, scale: [1.9, 0.14, 0.52] },
+      ]
+      frame.forEach((part) => {
+        const [offsetX, offsetZ] = rotateOffset(part.x, part.z, rack.yaw)
+        rackParts.push({
+          color: rackIndex % 2 ? '#DFAE70' : WOOD,
+          position: [rack.x + offsetX, part.y, rack.z + offsetZ],
+          scale: part.scale as VectorTuple,
+          rotationY: rack.yaw,
+        })
+      })
+      Array.from({ length: 8 }, (_, index) => {
+        const row = index < 4 ? 0 : 1
+        const localX = -0.64 + (index % 4) * 0.43
+        const [offsetX, offsetZ] = rotateOffset(localX, -0.02, rack.yaw)
+        gear.push({
+          color: PALETTE[(index + rackIndex) % PALETTE.length],
+          position: [
+            rack.x + offsetX,
+            0.52 + row * 0.78,
+            rack.z + offsetZ,
+          ],
+          scale: [0.28, 0.52, 0.34],
+          rotationY: rack.yaw,
+        })
+      })
+    })
+
+    const steppingBlocks: InstanceSpec[] = Array.from(
+      { length: 18 },
+      (_, index) => ({
+        color: PALETTE[index % PALETTE.length],
+        position: [-8.5 + index, 0.13 + (index % 3) * 0.04, -12.3 + Math.sin(index * 0.8) * 0.8],
+        scale: [0.58, 0.24, 0.58],
+        rotationY: index * 0.22,
+      }),
+    )
+
+    const plazaDots: InstanceSpec[] = Array.from(
+      { length: 20 },
       (_, index) => {
-        const column = index % 7
-        const row = Math.floor(index / 7)
+        const angle = (index / 20) * Math.PI * 2
+        const radius = index % 2 ? 4.8 : 7.1
         return {
-          color: ['#FF7B66', '#4169D8', '#F2C94C', '#45A7A0'][index % 4],
-          position: [-1.65 + column * 0.55, 0.24 + row * 0.42, 8.25],
-          scale: [0.42, 0.42, 0.42],
-          rotationY: (index % 3) * 0.12,
+          color: index % 2 ? '#CBE9C5' : '#BDE1B7',
+          position: [Math.cos(angle) * radius, 0.028, Math.sin(angle) * radius],
+          scale: [0.72, 0.03, 0.72],
+          rotationY: angle,
         }
       },
     )
 
     return {
-      canopies,
-      floorTiles,
-      playBlocks,
-      shelfBooks,
-      shelfWood,
+      benchParts,
+      bushes,
+      gear,
+      leaves,
+      plazaDots,
+      rackParts,
+      routeMarkers,
+      steppingBlocks,
       trunks,
     }
-  }, [])
+  }, [parkSize])
 
   return (
     <group>
       <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow={receiveShadow}>
-        <planeGeometry args={[floorSize, floorSize]} />
-        <Paint color="#DFF3D8" roughness={0.96} />
+        <planeGeometry args={[parkSize, parkSize]} />
+        <Paint color="#D9F1D3" roughness={0.98} />
+      </mesh>
+
+      <mesh
+        rotation={[-Math.PI / 2, 0, 0]}
+        position={[0, 0.016, 0]}
+        scale={[1.24, 1, 1]}
+        receiveShadow={receiveShadow}
+      >
+        <ringGeometry args={[18.15, 20.2, 96]} />
+        <meshStandardMaterial color={TRACK} roughness={0.96} side={DoubleSide} />
       </mesh>
       <mesh
         rotation={[-Math.PI / 2, 0, 0]}
-        position={[0, 0.012, 0]}
-        receiveShadow={receiveShadow}
-      >
-        <ringGeometry args={[3.6, 4.35, 48]} />
-        <Paint color="#F3DEB2" roughness={0.96} />
-      </mesh>
-      <mesh
-        position={[0, 0.018, 0]}
-        scale={[0.72, 0.035, 8.8]}
-        receiveShadow={receiveShadow}
-      >
-        <boxGeometry />
-        <Paint color="#EED6A5" roughness={0.96} />
-      </mesh>
-      <mesh
         position={[0, 0.02, 0]}
-        scale={[8.8, 0.035, 0.72]}
         receiveShadow={receiveShadow}
       >
+        <ringGeometry args={[8.1, 9.35, 64]} />
+        <meshStandardMaterial color="#F4E5C7" roughness={0.96} side={DoubleSide} />
+      </mesh>
+      <mesh position={[0, 0.018, 0]} scale={[0.9, 0.035, 23.5]}>
         <boxGeometry />
-        <Paint color="#EED6A5" roughness={0.96} />
+        <Paint color="#EEDCB8" roughness={0.96} />
+      </mesh>
+      <mesh position={[0, 0.02, 0]} scale={[23.5, 0.035, 0.9]}>
+        <boxGeometry />
+        <Paint color="#EEDCB8" roughness={0.96} />
+      </mesh>
+      <mesh
+        rotation={[-Math.PI / 2, 0, 0]}
+        position={[0, 0.028, 0]}
+        receiveShadow={receiveShadow}
+      >
+        <circleGeometry args={[3.4, 40]} />
+        <meshStandardMaterial color="#BFE6DA" roughness={0.92} side={DoubleSide} />
       </mesh>
 
       <InstancedBoxes
-        specs={scenery.floorTiles}
+        specs={scenery.routeMarkers}
+        castShadow={false}
+        receiveShadow={receiveShadow}
+      />
+      <InstancedBoxes
+        specs={scenery.plazaDots}
         castShadow={false}
         receiveShadow={receiveShadow}
       />
       <InstancedBoxes specs={scenery.trunks} />
-      <InstancedCanopies specs={scenery.canopies} />
-      <InstancedBoxes specs={scenery.shelfWood} />
-      <InstancedBoxes specs={scenery.shelfBooks} />
-      <InstancedBoxes specs={scenery.playBlocks} />
+      <InstancedPolyhedra specs={scenery.leaves} />
+      <InstancedPolyhedra specs={scenery.bushes} />
+      <InstancedBoxes specs={scenery.benchParts} />
+      <InstancedBoxes specs={scenery.rackParts} />
+      <InstancedBoxes specs={scenery.gear} />
+      <InstancedBoxes specs={scenery.steppingBlocks} />
 
-      <group position={[-5.8, 0, 7.8]}>
-        <mesh castShadow position={[0, 0.55, 0]}>
-          <cylinderGeometry args={[0.52, 0.7, 0.8, 8]} />
-          <Paint color="#E68A56" />
-        </mesh>
-        <mesh position={[0, 1.2, 0]}>
-          <cylinderGeometry args={[0.06, 0.07, 0.72, 6]} />
-          <Paint color={DARK_LEAF} />
-        </mesh>
-        {[-0.35, 0.35].map((x) => (
-          <mesh
-            key={x}
-            castShadow
-            position={[x, 1.35, 0]}
-            rotation={[0, 0, x > 0 ? -0.55 : 0.55]}
-            scale={[0.42, 0.14, 0.26]}
-          >
-            <sphereGeometry args={[1, 8, 6]} />
-            <Paint color={LEAF} />
-          </mesh>
-        ))}
+      <group position={[-20.8, 0, 14.4]}>
+        <CrewKiosk color="#16A34A" />
       </group>
-
-      <group position={[5.8, 0, -7.8]}>
-        <mesh castShadow position={[0, 0.48, 0]} scale={[1.4, 0.82, 0.24]}>
-          <boxGeometry />
-          <Paint color="#4D96FF" />
-        </mesh>
-        <mesh position={[-0.37, 0.51, 0.27]} scale={[0.16, 0.16, 0.04]}>
-          <boxGeometry />
-          <Paint color={PAPER} />
-        </mesh>
-        <mesh position={[0, 0.51, 0.27]} scale={[0.16, 0.16, 0.04]}>
-          <sphereGeometry args={[1, 8, 6]} />
-          <Paint color={PAPER} />
-        </mesh>
-        <mesh position={[0.37, 0.51, 0.27]} scale={[0.16, 0.16, 0.04]}>
-          <coneGeometry args={[1, 1, 3]} />
-          <Paint color={PAPER} />
-        </mesh>
+      <group position={[20.8, 0, -14.4]} rotation={[0, Math.PI, 0]}>
+        <CrewKiosk color="#0EA5E9" />
       </group>
     </group>
   )

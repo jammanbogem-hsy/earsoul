@@ -8,11 +8,11 @@ export function Brand({ compact = false }: BrandProps) {
       <span className="brand-mark" aria-hidden="true">
         <span className="brand-mark__orbit brand-mark__orbit--one" />
         <span className="brand-mark__orbit brand-mark__orbit--two" />
-        <span className="brand-mark__core">가</span>
+        <span className="brand-mark__core">런</span>
       </span>
       <span className="brand-copy">
-        <strong>배움별 굴리기</strong>
-        {!compact && <small>굴리고, 발견하고, 한 뼘 더 자라요</small>}
+        <strong>러닝크루 롤링</strong>
+        {!compact && <small>굴리고, 모으고, 콤보를 이어가요</small>}
       </span>
     </div>
   )

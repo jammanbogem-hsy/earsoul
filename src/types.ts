@@ -24,6 +24,7 @@ export interface LearningObject {
 }
 
 export interface LearningPack {
+  version?: number
   title: string
   objects: LearningObject[]
 }
@@ -34,6 +35,7 @@ export interface GameSession {
   updatedAt: number
   completedAt?: number
   score: number
+  bestCombo: number
   collectedIds: string[]
   collectedLabels: string[]
   durationSeconds: number

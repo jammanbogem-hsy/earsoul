@@ -29,7 +29,7 @@ function RouteView({ path }: { path: AppPath }) {
         fallback={
           <div className="route-loader" role="status">
             <M3CircularProgress />
-            배움 정원을 불러오고 있어요…
+            러닝 파크를 불러오고 있어요…
           </div>
         }
       >

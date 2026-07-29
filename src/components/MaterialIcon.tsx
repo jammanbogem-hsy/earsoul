@@ -6,12 +6,15 @@ import arrowUpward from '@material-symbols/svg-400/rounded/arrow_upward.svg'
 import calculate from '@material-symbols/svg-400/rounded/calculate.svg'
 import changeHistory from '@material-symbols/svg-400/rounded/change_history.svg'
 import check from '@material-symbols/svg-400/rounded/check.svg'
+import diamond from '@material-symbols/svg-400/rounded/diamond.svg'
+import directionsRun from '@material-symbols/svg-400/rounded/directions_run.svg'
 import filter4 from '@material-symbols/svg-400/rounded/filter_4.svg'
 import home from '@material-symbols/svg-400/rounded/home.svg'
 import keyboardArrowLeft from '@material-symbols/svg-400/rounded/keyboard_arrow_left.svg'
 import keyboardArrowRight from '@material-symbols/svg-400/rounded/keyboard_arrow_right.svg'
 import keyboardArrowUp from '@material-symbols/svg-400/rounded/keyboard_arrow_up.svg'
 import localFlorist from '@material-symbols/svg-400/rounded/local_florist.svg'
+import localDrink from '@material-symbols/svg-400/rounded/local_drink.svg'
 import looksOne from '@material-symbols/svg-400/rounded/looks_one.svg'
 import looksTwo from '@material-symbols/svg-400/rounded/looks_two.svg'
 import looks3 from '@material-symbols/svg-400/rounded/looks_3.svg'
@@ -27,6 +30,7 @@ import science from '@material-symbols/svg-400/rounded/science.svg'
 import sentimentSatisfied from '@material-symbols/svg-400/rounded/sentiment_satisfied.svg'
 import star from '@material-symbols/svg-400/rounded/star-fill.svg'
 import textFields from '@material-symbols/svg-400/rounded/text_fields.svg'
+import timer from '@material-symbols/svg-400/rounded/timer.svg'
 import trendingUp from '@material-symbols/svg-400/rounded/trending_up.svg'
 import volumeOff from '@material-symbols/svg-400/rounded/volume_off.svg'
 import volumeUp from '@material-symbols/svg-400/rounded/volume_up.svg'
@@ -40,12 +44,15 @@ const iconSources = {
   calculate,
   change_history: changeHistory,
   check,
+  diamond,
+  directions_run: directionsRun,
   filter_4: filter4,
   home,
   keyboard_arrow_left: keyboardArrowLeft,
   keyboard_arrow_right: keyboardArrowRight,
   keyboard_arrow_up: keyboardArrowUp,
   local_florist: localFlorist,
+  local_drink: localDrink,
   looks_one: looksOne,
   looks_two: looksTwo,
   looks_3: looks3,
@@ -61,6 +68,7 @@ const iconSources = {
   sentiment_satisfied: sentimentSatisfied,
   star,
   text_fields: textFields,
+  timer,
   trending_up: trendingUp,
   volume_off: volumeOff,
   volume_up: volumeUp,

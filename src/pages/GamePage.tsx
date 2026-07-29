@@ -22,6 +22,10 @@ import {
 import { loadLearningPack } from '../data/contentRepository'
 import { fallbackLearningPack } from '../data/learningPack'
 import {
+  advanceCombo,
+  type ComboState,
+} from '../game/combo'
+import {
   calculateBallRadius,
   finishSession,
   readSession,
@@ -76,10 +80,14 @@ const coachSteps: {
 }[] = [
   {
     icon: 'play_arrow',
-    title: '작은 조각부터 굴려 모아요',
-    body: '방향키·WASD 또는 왼쪽 조이스틱으로 배움별을 굴려요. 1단계 조각에 닿으면 같은 모양이 별에 붙어요.',
+    title: '바라보는 방향을 따라 굴려요',
+    body: 'W·S(ㅈ·ㄴ)는 앞뒤, A·D(ㅁ·ㅇ)는 지금 보는 방향의 좌우로 움직여요. 조이스틱도 같은 방식이에요.',
   },
 ]
+
+function getCurrentTimestamp() {
+  return Date.now()
+}
 
 export function GamePage() {
   const navigate = useAppNavigate()
@@ -98,8 +106,20 @@ export function GamePage() {
     body: string
     tone: 'learned' | 'wait'
   } | null>(null)
+  const [comboMultiplier, setComboMultiplier] = useState(1)
+  const [scoreFeedback, setScoreFeedback] = useState<{
+    id: number
+    points: number
+  } | null>(null)
   const toastTimer = useRef<number | undefined>(undefined)
-  const coachSeen = sessionStorage.getItem('earsoul-coach-v3-seen') === 'true'
+  const comboTimer = useRef<number | undefined>(undefined)
+  const scoreFeedbackTimer = useRef<number | undefined>(undefined)
+  const comboStateRef = useRef<ComboState>({
+    count: 0,
+    lastCollectedAt: 0,
+  })
+  const scoreFeedbackId = useRef(0)
+  const coachSeen = sessionStorage.getItem('earsoul-coach-v4-seen') === 'true'
   const [coachStep, setCoachStep] = useState(coachSeen ? -1 : 0)
   const reducedMotion =
     sessionStorage.getItem('earsoul-reduced-motion') === 'true'
@@ -120,6 +140,7 @@ export function GamePage() {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape' && coachStep < 0) {
+        setControlVector({ x: 0, z: 0 })
         setPaused((current) => !current)
       }
     }
@@ -130,6 +151,10 @@ export function GamePage() {
   useEffect(
     () => () => {
       if (toastTimer.current) window.clearTimeout(toastTimer.current)
+      if (comboTimer.current) window.clearTimeout(comboTimer.current)
+      if (scoreFeedbackTimer.current) {
+        window.clearTimeout(scoreFeedbackTimer.current)
+      }
     },
     [],
   )
@@ -162,12 +187,50 @@ export function GamePage() {
     const current = sessionRef.current
     if (!current || current.collectedIds.includes(item.id)) return
 
-    const next = recordCollection(current, item)
+    const collectedAt = getCurrentTimestamp()
+    const comboStep = advanceCombo(comboStateRef.current, collectedAt)
+    const { multiplier } = comboStep
+    const awardedPoints = item.points * multiplier
+    const next = recordCollection(current, item, {
+      multiplier,
+      combo: multiplier,
+    })
+
+    comboStateRef.current = {
+      count: comboStep.count,
+      lastCollectedAt: comboStep.lastCollectedAt,
+    }
+    setComboMultiplier(multiplier)
+    if (comboTimer.current) window.clearTimeout(comboTimer.current)
+    comboTimer.current = window.setTimeout(() => {
+      comboStateRef.current = {
+        count: 0,
+        lastCollectedAt: 0,
+      }
+      setComboMultiplier(1)
+    }, Math.max(0, comboStep.expiresAt - collectedAt))
+
+    scoreFeedbackId.current += 1
+    setScoreFeedback({
+      id: scoreFeedbackId.current,
+      points: awardedPoints,
+    })
+    if (scoreFeedbackTimer.current) {
+      window.clearTimeout(scoreFeedbackTimer.current)
+    }
+    scoreFeedbackTimer.current = window.setTimeout(
+      () => setScoreFeedback(null),
+      1100,
+    )
+
     sessionRef.current = next
     setSession(next)
     playChime(soundEnabled)
     showToast({
-      title: `새 조각이 붙었어요 · ${item.label}`,
+      title:
+        multiplier > 1
+          ? `x${multiplier} 콤보 · ${item.label} +${awardedPoints}`
+          : `${item.label} +${awardedPoints}`,
       body: item.fact,
       tone: 'learned',
     })
@@ -182,7 +245,7 @@ export function GamePage() {
     showToast(
       {
         title: `아직은 인사만 · ${item.label}`,
-        body: `${itemTier.level}단계 ${itemTier.label}이에요. 별을 조금 더 키우면 붙일 수 있어요.`,
+        body: `${itemTier.level}단계 ${itemTier.label}이에요. 러닝볼을 조금 더 키우면 붙일 수 있어요.`,
         tone: 'wait',
       },
       1800,
@@ -240,12 +303,12 @@ export function GamePage() {
             <strong>{reachableTier.level}</strong>
           </span>
           <div className="game-size-status__copy">
-            <span>지금 모을 조각</span>
+            <span>지금 모을 아이템</span>
             <strong>{reachableTier.label}</strong>
             <M3LinearProgress
               className="game-size-progress"
-              aria-label="붙인 조각"
-              aria-valuetext={`${pack.objects.length}개 중 ${session.collectedIds.length}개를 별에 붙였어요`}
+              aria-label="붙인 아이템"
+              aria-valuetext={`${pack.objects.length}개 중 ${session.collectedIds.length}개를 러닝볼에 붙였어요`}
               value={progress}
             />
           </div>
@@ -253,7 +316,7 @@ export function GamePage() {
             <strong>{session.collectedIds.length}</strong>
             <small>/{pack.objects.length}</small>
           </span>
-          <ol className="game-tier-legend" aria-label="조각 크기 네 단계">
+          <ol className="game-tier-legend" aria-label="아이템 크기 네 단계">
             {SIZE_TIERS.map((tier) => (
               <li
                 key={tier.level}
@@ -277,10 +340,46 @@ export function GamePage() {
         </section>
 
         <div className="game-hud__actions">
-          <div className="game-score" aria-live="polite">
-            <MaterialIcon name="star" />
-            <span>모은 빛</span>
-            <strong>{session.score.toLocaleString()}</strong>
+          <div className="game-score-stack">
+            <div
+              className={`game-score ${
+                scoreFeedback ? 'is-increasing' : ''
+              }`}
+              aria-label={`점수 ${session.score.toLocaleString()}점`}
+            >
+              <MaterialIcon name="star" />
+              <span>점수</span>
+              <strong>{session.score.toLocaleString()}</strong>
+              {scoreFeedback && (
+                <span
+                  key={scoreFeedback.id}
+                  className="game-score__gain"
+                  aria-hidden="true"
+                >
+                  +{scoreFeedback.points}
+                </span>
+              )}
+            </div>
+            <div
+              className={`game-combo ${
+                comboMultiplier > 1 ? 'is-active' : ''
+              }`}
+              role="status"
+              aria-live="polite"
+              aria-label={`현재 ${comboMultiplier}배 콤보, 최고 ${session.bestCombo ?? 0}배 콤보`}
+            >
+              <MaterialIcon name="progress_activity" />
+              <strong>x{comboMultiplier}</strong>
+              <span>콤보</span>
+              <small>최고 x{session.bestCombo ?? 0}</small>
+              {comboMultiplier > 1 && (
+                <i
+                  key={scoreFeedback?.id ?? comboMultiplier}
+                  className="game-combo__timer"
+                  aria-hidden="true"
+                />
+              )}
+            </div>
           </div>
           <M3IconButton
             className="hud-button"
@@ -292,7 +391,10 @@ export function GamePage() {
           />
           <M3IconButton
             className="hud-button"
-            onClick={() => setPaused(true)}
+            onClick={() => {
+              setControlVector({ x: 0, z: 0 })
+              setPaused(true)
+            }}
             aria-label="일시정지"
             icon="pause"
           />
@@ -306,11 +408,11 @@ export function GamePage() {
           <kbd>S</kbd>
           <kbd>D</kbd>
         </span>
-        <p>방향키로도 움직여요</p>
+        <p>한글 ㅈㅁㄴㅇ·방향키도 가능해요</p>
       </div>
 
       <div className="mobile-controls">
-        <TouchJoystick onChange={setControlVector} />
+        {!isGamePaused && <TouchJoystick onChange={setControlVector} />}
       </div>
 
       <div
@@ -335,7 +437,7 @@ export function GamePage() {
           <strong>
             {toast
               ? toast.title
-              : `배움 조각 ${session.collectedIds.length}개를 붙였어요`}
+              : `러닝 아이템 ${session.collectedIds.length}개를 붙였어요`}
           </strong>
           <p>
             {toast
@@ -347,7 +449,7 @@ export function GamePage() {
 
       {!contentReady && (
         <div className="content-status" role="status">
-          배움 정원을 준비하고 있어요…
+          러닝 파크를 준비하고 있어요…
         </div>
       )}
 
@@ -368,7 +470,7 @@ export function GamePage() {
               className="primary-button primary-button--wide"
               icon="play_arrow"
               onClick={() => {
-                sessionStorage.setItem('earsoul-coach-v3-seen', 'true')
+                sessionStorage.setItem('earsoul-coach-v4-seen', 'true')
                 setCoachStep(-1)
               }}
             >
@@ -390,7 +492,7 @@ export function GamePage() {
               <MaterialIcon name="pause_circle" />
             </span>
             <p className="section-kicker">잠깐 쉬어가요</p>
-            <h2 id="pause-title">배움별도 숨을 고르는 중!</h2>
+            <h2 id="pause-title">러닝볼도 숨을 고르는 중!</h2>
             <p>준비되면 같은 자리에서 다시 시작할 수 있어요.</p>
             <M3Button
               className="primary-button primary-button--wide"
@@ -405,7 +507,7 @@ export function GamePage() {
               variant="tonal"
               onClick={finish}
             >
-              오늘의 별 보기
+              이번 기록 보기
             </M3Button>
             <M3Button
               className="text-button"

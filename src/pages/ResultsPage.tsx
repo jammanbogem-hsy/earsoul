@@ -37,15 +37,14 @@ export function ResultsPage() {
       </header>
       <section className="results-card page-container">
         <div className="results-celebration" aria-hidden="true">
-          <MaterialIcon name="wand_stars" />
-          <div className="result-orb">가</div>
-          <MaterialIcon name="local_florist" />
+          <MaterialIcon name="directions_run" />
+          <div className="result-orb">런</div>
+          <MaterialIcon name="diamond" />
         </div>
-        <p className="eyebrow">오늘의 배움 정원 탐험 완료</p>
-        <h1>멋진 배움별이 완성됐어요!</h1>
+        <p className="eyebrow">러닝크루 수집 챌린지 완료</p>
+        <h1>나만의 러닝볼이 완성됐어요!</h1>
         <p className="results-intro">
-          빠르게 끝내는 것보다 작은 조각부터 차근차근 별을 키운 것이 더
-          중요해요.
+          빠른 연속 수집으로 콤보를 이어 만든 이번 세션의 기록이에요.
         </p>
 
         <div className="star-rating" aria-label={`별 ${stars}개`}>
@@ -58,11 +57,15 @@ export function ResultsPage() {
 
         <dl className="results-stats">
           <div>
-            <dt>배움 점수</dt>
+            <dt>최종 점수</dt>
             <dd>{session.score.toLocaleString()}점</dd>
           </div>
           <div>
-            <dt>발견한 조각</dt>
+            <dt>최고 콤보</dt>
+            <dd>×{session.bestCombo}</dd>
+          </div>
+          <div>
+            <dt>수집 아이템</dt>
             <dd>{session.collectedIds.length}개</dd>
           </div>
           <div>
@@ -77,8 +80,8 @@ export function ResultsPage() {
 
         <section className="discovery-list" aria-labelledby="discovery-title">
           <div>
-            <p className="section-kicker">이번에 발견한 것</p>
-            <h2 id="discovery-title">나의 배움 조각</h2>
+            <p className="section-kicker">이번에 모은 것</p>
+            <h2 id="discovery-title">나의 러닝 아이템</h2>
           </div>
           <div className="discovery-chips">
             {session.collectedLabels.length ? (
@@ -86,7 +89,7 @@ export function ResultsPage() {
                 <span key={label}>{label}</span>
               ))
             ) : (
-              <span>다음 탐험에서 첫 조각을 만나 보세요.</span>
+              <span>다음 챌린지에서 첫 아이템을 모아 보세요.</span>
             )}
           </div>
         </section>

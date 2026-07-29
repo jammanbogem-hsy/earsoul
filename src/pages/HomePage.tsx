@@ -13,10 +13,10 @@ const subjectChips: {
   icon: MaterialIconName
   color: string
 }[] = [
-  { label: '한글', icon: 'text_fields', color: 'coral' },
-  { label: '수학', icon: 'calculate', color: 'blue' },
-  { label: '과학', icon: 'science', color: 'green' },
-  { label: '생활', icon: 'music_note', color: 'yellow' },
+  { label: '러닝 기어', icon: 'directions_run', color: 'coral' },
+  { label: '음료', icon: 'local_drink', color: 'blue' },
+  { label: '기록', icon: 'timer', color: 'green' },
+  { label: '보물', icon: 'diamond', color: 'yellow' },
 ]
 
 export function HomePage() {
@@ -51,22 +51,22 @@ export function HomePage() {
 
       <section className="hero page-container">
         <div className="hero-copy">
-          <p className="eyebrow">초등 1–4학년을 위한 3D 배움 놀이</p>
+          <p className="eyebrow">러닝크루를 위한 3D 수집 챌린지</p>
           <h1>
-            작은 지식부터 모아
+            작은 아이템부터 모아
             <br />
-            <span>나만의 배움별</span>을 키워요
+            <span>나만의 러닝볼</span>을 키워요
           </h1>
           <p className="hero-description">
-            알록달록한 배움 정원을 굴러 다니며 한글, 수학, 과학 조각을
-            발견해요. 배움 친구와 함께 작은 조각부터 차근차근 모아 보세요.
+            넓어진 러닝 파크를 누비며 운동화, 음료수 캔, 시계와 보물조각을
+            모아요. 빠르게 이어 모을수록 콤보 점수가 커져요.
           </p>
           <M3Button
             className="primary-button"
             icon="arrow_forward"
             onClick={begin}
           >
-            배움 정원 들어가기
+            러닝 파크 들어가기
           </M3Button>
           <p className="privacy-note">
             <MaterialIcon name="privacy_tip" />
@@ -74,13 +74,15 @@ export function HomePage() {
           </p>
         </div>
 
-        <div className="hero-world" aria-label="배움별 굴리기 미리보기">
+        <div className="hero-world" aria-label="러닝볼 굴리기 미리보기">
           <div className="hero-world__sky">
             <span className="cloud cloud--one" />
             <span className="cloud cloud--two" />
           </div>
           <div className="hero-orb">
-            <span className="hero-orb__face">가</span>
+            <span className="hero-orb__face">
+              <MaterialIcon name="directions_run" />
+            </span>
             <MaterialIcon
               name="sentiment_satisfied"
               className="hero-orb__smile"
@@ -118,8 +120,8 @@ export function HomePage() {
 
       <section className="subjects page-container" aria-labelledby="subject-title">
         <div>
-          <p className="section-kicker">오늘 만날 배움 조각</p>
-          <h2 id="subject-title">네 가지 주제를 한 정원에서</h2>
+          <p className="section-kicker">오늘 만날 러닝 아이템</p>
+          <h2 id="subject-title">네 가지 수집 테마를 한 파크에서</h2>
         </div>
         <div className="subject-list">
           {subjectChips.map((chip) => (
@@ -154,19 +156,23 @@ export function HomePage() {
               </kbd>
             </div>
             <h3>천천히 굴려요</h3>
-            <p>키보드 방향키나 화면의 둥근 조이스틱을 사용해요.</p>
+            <p>WASD·한글 ㅈㅁㄴㅇ·방향키나 조이스틱을 사용해요.</p>
           </li>
           <li>
             <span className="step-number">2</span>
             <div className="step-visual step-visual--collect" aria-hidden="true">
-              <i>가</i>
+              <i>
+                <MaterialIcon name="directions_run" />
+              </i>
               <b>
                 <MaterialIcon name="add" />
               </b>
-              <i>△</i>
+              <i>
+                <MaterialIcon name="diamond" />
+              </i>
             </div>
             <h3>작은 것부터 만나요</h3>
-            <p>내 배움별보다 작은 조각은 반짝이며 친구가 돼요.</p>
+            <p>러닝볼보다 작은 아이템은 닿는 순간 표면에 붙어요.</p>
           </li>
           <li>
             <span className="step-number">3</span>
@@ -185,14 +191,14 @@ export function HomePage() {
               </i>
             </div>
             <h3>크기 단계를 살펴봐요</h3>
-            <p>숫자와 바닥 원이 작은 조각부터 차례로 모아요.</p>
+            <p>숫자와 바닥 원을 보고 작은 아이템부터 차례로 모아요.</p>
           </li>
         </ol>
       </section>
 
       <footer className="home-footer page-container">
         <Brand compact />
-        <p>광고·채팅·공개 순위표 없이 편안하게 놀아요.</p>
+        <p>점수와 최고 콤보는 현재 브라우저 세션에만 남아요.</p>
       </footer>
     </main>
   )

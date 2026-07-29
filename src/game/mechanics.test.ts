@@ -26,4 +26,18 @@ describe('rolling collection progression', () => {
     expect(getSizeTier(1.42).level).toBe(4)
     expect(getReachableSizeTier(0.5).level).toBe(1)
   })
+
+  it('spreads the running items across the expanded park with a friendly start', () => {
+    const distances = fallbackLearningPack.objects.map((item) =>
+      Math.hypot(item.position[0], item.position[2]),
+    )
+    const starterItems = fallbackLearningPack.objects.filter(
+      (item) => Math.hypot(item.position[0], item.position[2]) <= 3,
+    )
+
+    expect(Math.max(...distances)).toBeGreaterThan(26)
+    expect(distances.every((distance) => distance < 27)).toBe(true)
+    expect(starterItems).toHaveLength(3)
+    expect(starterItems.every((item) => canCollect(0.5, item.size))).toBe(true)
+  })
 })

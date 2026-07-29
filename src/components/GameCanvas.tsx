@@ -19,6 +19,11 @@ import {
 import type { ControlVector } from './TouchJoystick'
 import type { LearningObject } from '../types'
 import { canCollect, getSizeTier } from '../game/mechanics'
+import {
+  getDriveControl,
+  stepRelativeDrive,
+  type DriveControl,
+} from '../game/input'
 import { stepRollingMotion } from '../game/rollingMotion'
 import { MaterialIcon } from './MaterialIcon'
 import {
@@ -45,6 +50,9 @@ const SUBJECT_COLORS = {
   생활: '#E6A800',
 }
 
+const PARK_SIZE = 58
+const PARK_HALF_EXTENT = PARK_SIZE / 2
+
 interface MotionState {
   x: number
   z: number
@@ -53,24 +61,61 @@ interface MotionState {
   velocityZ: number
 }
 
-function useKeyboard() {
-  const keys = useRef<Record<string, boolean>>({})
+function useKeyboard(disabled: boolean) {
+  const keys = useRef<Record<DriveControl, boolean>>({
+    forward: false,
+    backward: false,
+    left: false,
+    right: false,
+  })
 
   useEffect(() => {
+    const clear = () => {
+      keys.current.forward = false
+      keys.current.backward = false
+      keys.current.left = false
+      keys.current.right = false
+    }
+    const isInteractiveTarget = (target: EventTarget | null) =>
+      target instanceof HTMLElement &&
+      (target.matches('button, input, textarea, select, [contenteditable="true"]') ||
+        Boolean(target.closest('[role="dialog"]')))
     const down = (event: KeyboardEvent) => {
-      keys.current[event.key.toLowerCase()] = true
+      if (isInteractiveTarget(event.target)) return
+      const control = getDriveControl(event)
+      if (!control) return
+      keys.current[control] = true
+      event.preventDefault()
     }
     const up = (event: KeyboardEvent) => {
-      keys.current[event.key.toLowerCase()] = false
+      const control = getDriveControl(event)
+      if (!control) return
+      keys.current[control] = false
+      event.preventDefault()
+    }
+    const visibility = () => {
+      if (document.hidden) clear()
     }
     window.addEventListener('keydown', down)
     window.addEventListener('keyup', up)
+    window.addEventListener('blur', clear)
+    document.addEventListener('visibilitychange', visibility)
 
     return () => {
       window.removeEventListener('keydown', down)
       window.removeEventListener('keyup', up)
+      window.removeEventListener('blur', clear)
+      document.removeEventListener('visibilitychange', visibility)
     }
   }, [])
+
+  useEffect(() => {
+    if (!disabled) return
+    keys.current.forward = false
+    keys.current.backward = false
+    keys.current.left = false
+    keys.current.right = false
+  }, [disabled])
 
   return keys
 }
@@ -344,12 +389,13 @@ function GameWorld({
 }: GameCanvasProps) {
   const player = useRef<Group>(null)
   const orb = useRef<Group>(null)
-  const keys = useKeyboard()
+  const keys = useKeyboard(paused)
   const { camera } = useThree()
   const collectedSet = useRef(new Set(collectedIds))
   const tooLargeCooldown = useRef(0)
   const cameraPosition = useRef(new Vector3(0, 7, 8))
   const cameraDirection = useRef(new Vector3(0, 0, -1))
+  const heading = useRef(new Vector3(0, 0, -1))
   const lookTarget = useRef(new Vector3())
   const rollAxis = useRef(new Vector3())
   const rollQuaternion = useRef(new Quaternion())
@@ -370,35 +416,60 @@ function GameWorld({
 
     const position = player.current.position
     if (!paused) {
-      const keyboardX =
-        (keys.current.d || keys.current.arrowright ? 1 : 0) -
-        (keys.current.a || keys.current.arrowleft ? 1 : 0)
-      const keyboardZ =
-        (keys.current.s || keys.current.arrowdown ? 1 : 0) -
-        (keys.current.w || keys.current.arrowup ? 1 : 0)
-      const moveX = keyboardX + controlVector.x
-      const moveZ = keyboardZ + controlVector.z
+      const lateralInput =
+        (keys.current.right ? 1 : 0) -
+        (keys.current.left ? 1 : 0) +
+        controlVector.x
+      const forwardInput =
+        (keys.current.forward ? 1 : 0) -
+        (keys.current.backward ? 1 : 0) -
+        controlVector.z
+      const driveStep = stepRelativeDrive(
+        { x: heading.current.x, z: heading.current.z },
+        lateralInput,
+        forwardInput,
+      )
       const rollingStep = stepRollingMotion(
         {
           velocityX: motion.current.velocityX,
           velocityZ: motion.current.velocityZ,
         },
-        moveX,
-        moveZ,
+        driveStep.moveX,
+        driveStep.moveZ,
         ballRadius,
         delta,
       )
+      if (
+        forwardInput >= 0 &&
+        Math.hypot(driveStep.moveX, driveStep.moveZ) > 0.05 &&
+        rollingStep.speedRatio > 0.04
+      ) {
+        heading.current.x = MathUtils.damp(
+          heading.current.x,
+          rollingStep.directionX,
+          4.6,
+          delta,
+        )
+        heading.current.z = MathUtils.damp(
+          heading.current.z,
+          rollingStep.directionZ,
+          4.6,
+          delta,
+        )
+        heading.current.normalize()
+      }
       const previousX = position.x
       const previousZ = position.z
+      const movementLimit = PARK_HALF_EXTENT - ballRadius
       const nextX = MathUtils.clamp(
         position.x + rollingStep.velocityX * Math.min(delta, 1 / 30),
-        -10.6,
-        10.6,
+        -movementLimit,
+        movementLimit,
       )
       const nextZ = MathUtils.clamp(
         position.z + rollingStep.velocityZ * Math.min(delta, 1 / 30),
-        -10.6,
-        10.6,
+        -movementLimit,
+        movementLimit,
       )
       position.x = nextX
       position.z = nextZ
@@ -411,8 +482,8 @@ function GameWorld({
         nextZ === previousZ && Math.abs(rollingStep.velocityZ) > 0
           ? 0
           : rollingStep.velocityZ
-      motion.current.x = rollingStep.directionX
-      motion.current.z = rollingStep.directionZ
+      motion.current.x = heading.current.x
+      motion.current.z = heading.current.z
       motion.current.speed = rollingStep.speedRatio
 
       const traveled = Math.hypot(nextX - previousX, nextZ - previousZ)
@@ -466,21 +537,19 @@ function GameWorld({
 
     position.y = ballRadius
 
-    if (motion.current.speed > 0.04) {
-      cameraDirection.current.x = MathUtils.damp(
-        cameraDirection.current.x,
-        motion.current.x,
-        4.2,
-        delta,
-      )
-      cameraDirection.current.z = MathUtils.damp(
-        cameraDirection.current.z,
-        motion.current.z,
-        4.2,
-        delta,
-      )
-      cameraDirection.current.normalize()
-    }
+    cameraDirection.current.x = MathUtils.damp(
+      cameraDirection.current.x,
+      heading.current.x,
+      5.2,
+      delta,
+    )
+    cameraDirection.current.z = MathUtils.damp(
+      cameraDirection.current.z,
+      heading.current.z,
+      5.2,
+      delta,
+    )
+    cameraDirection.current.normalize()
 
     const cameraDistance = 4.8 + ballRadius * 1.6
     cameraPosition.current.set(
@@ -508,7 +577,7 @@ function GameWorld({
   return (
     <>
       <color attach="background" args={['#D9F2FF']} />
-      <fog attach="fog" args={['#D9F2FF', 16, 30]} />
+      <fog attach="fog" args={['#D9F2FF', 32, 82]} />
       <ambientLight intensity={1.45} />
       <directionalLight
         castShadow
@@ -520,7 +589,7 @@ function GameWorld({
       />
       <hemisphereLight args={['#E6F6FF', '#77A869', 1.1]} />
 
-      <GardenSetDressing floorSize={24} />
+      <GardenSetDressing floorSize={PARK_SIZE} />
 
       {visibleObjects.map((item) => (
         <LearningItem
@@ -606,7 +675,7 @@ export function GameCanvas(props: GameCanvasProps) {
       className="game-canvas"
       shadows
       dpr={[1, 1.7]}
-      camera={{ position: [0, 7, 8], fov: 48, near: 0.1, far: 60 }}
+      camera={{ position: [0, 7, 8], fov: 48, near: 0.1, far: 110 }}
       gl={{ antialias: true, alpha: false, powerPreference: 'high-performance' }}
     >
       <GameWorld {...props} />

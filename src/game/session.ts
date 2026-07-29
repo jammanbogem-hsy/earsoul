@@ -10,6 +10,7 @@ const emptySession = (): GameSession => {
     startedAt: now,
     updatedAt: now,
     score: 0,
+    bestCombo: 0,
     collectedIds: [],
     collectedLabels: [],
     durationSeconds: 0,
@@ -20,7 +21,12 @@ const emptySession = (): GameSession => {
 export function readSession(): GameSession | null {
   try {
     const raw = sessionStorage.getItem(SESSION_KEY)
-    return raw ? (JSON.parse(raw) as GameSession) : null
+    if (!raw) return null
+    const session = JSON.parse(raw) as GameSession
+    return {
+      ...session,
+      bestCombo: session.bestCombo ?? 0,
+    }
   } catch {
     return null
   }
@@ -39,12 +45,17 @@ export function startSession(): GameSession {
 export function recordCollection(
   session: GameSession,
   item: { id: string; label: string; points: number },
+  options: { multiplier?: number; combo?: number } = {},
 ): GameSession {
   if (session.collectedIds.includes(item.id)) return session
 
+  const multiplier = Math.max(1, Math.min(5, options.multiplier ?? 1))
+  const combo = Math.max(1, options.combo ?? 1)
+
   return saveSession({
     ...session,
-    score: session.score + item.points,
+    score: session.score + Math.round(item.points * multiplier),
+    bestCombo: Math.max(session.bestCombo ?? 0, combo),
     collectedIds: [...session.collectedIds, item.id],
     collectedLabels: [...session.collectedLabels, item.label],
   })

@@ -15,19 +15,33 @@ describe('single session score', () => {
   it('records each learning object only once', () => {
     const session = startSession()
     const once = recordCollection(session, {
-      id: 'vowel-a',
-      label: '모음 ㅏ',
+      id: 'runner-lace',
+      label: '번개 운동화 끈',
       points: 10,
     })
     const twice = recordCollection(once, {
-      id: 'vowel-a',
-      label: '모음 ㅏ',
+      id: 'runner-lace',
+      label: '번개 운동화 끈',
       points: 10,
     })
 
     expect(twice.score).toBe(10)
-    expect(twice.collectedIds).toEqual(['vowel-a'])
+    expect(twice.collectedIds).toEqual(['runner-lace'])
     expect(readSession()?.score).toBe(10)
+    expect(readSession()?.bestCombo).toBe(1)
+  })
+
+  it('applies a capped combo multiplier and remembers the best combo', () => {
+    const session = startSession()
+    const combo = recordCollection(
+      session,
+      { id: 'shoe', label: '운동화', points: 20 },
+      { multiplier: 3, combo: 4 },
+    )
+
+    expect(combo.score).toBe(60)
+    expect(combo.bestCombo).toBe(4)
+    expect(readSession()?.bestCombo).toBe(4)
   })
 
   it('finishes the current browser session', () => {
