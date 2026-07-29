@@ -60,9 +60,12 @@ describe('single session score', () => {
     expect(readSession()?.currentStageIndex).toBe(1)
   })
 
-  it('grows steadily but caps the learning ball', () => {
-    expect(calculateBallRadius(0)).toBe(0.5)
-    expect(calculateBallRadius(10)).toBeGreaterThan(1)
+  it('grows at deliberate milestones and caps the learning ball', () => {
+    expect(calculateBallRadius(0)).toBe(0.42)
+    expect(calculateBallRadius(6)).toBe(0.52)
+    expect(calculateBallRadius(18)).toBe(0.88)
+    expect(calculateBallRadius(36)).toBe(1.26)
+    expect(calculateBallRadius(48)).toBe(1.62)
     expect(calculateBallRadius(500)).toBe(2.05)
   })
 })

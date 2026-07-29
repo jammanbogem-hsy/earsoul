@@ -206,7 +206,17 @@ export function GamePage() {
   )
   const stageReady = stageProgress.ready
   const bonusCount = stageProgress.bonusCount
-  const ballRadius = calculateBallRadius(session.collectedIds.length)
+  const previewCollectedCount =
+    import.meta.env.DEV &&
+    Number.isInteger(previewStageIndex) &&
+    previewStageIndex >= 0
+      ? pack.stages
+          .slice(0, stageIndex)
+          .reduce((total, map) => total + map.objectiveCount, 0)
+      : 0
+  const ballRadius = calculateBallRadius(
+    Math.max(session.collectedIds.length, previewCollectedCount),
+  )
   const progress = stageProgress.progress
   const reachableTier = getReachableSizeTier(ballRadius)
 

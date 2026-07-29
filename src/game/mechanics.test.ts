@@ -30,6 +30,23 @@ describe('rolling collection progression', () => {
     expect(getReachableSizeTier(0.5).level).toBe(1)
   })
 
+  it('paces size levels across the three map goals', () => {
+    expect(getReachableSizeTier(calculateBallRadius(5)).level).toBe(1)
+    expect(getReachableSizeTier(calculateBallRadius(6)).level).toBe(2)
+    expect(getReachableSizeTier(calculateBallRadius(17)).level).toBe(2)
+    expect(getReachableSizeTier(calculateBallRadius(18)).level).toBe(3)
+    expect(getReachableSizeTier(calculateBallRadius(35)).level).toBe(3)
+    expect(getReachableSizeTier(calculateBallRadius(36)).level).toBe(4)
+
+    const thirdStageEntryCount = fallbackLearningPack.stages
+      .slice(0, 2)
+      .reduce((total, stage) => total + stage.objectiveCount, 0)
+    expect(thirdStageEntryCount).toBe(30)
+    expect(
+      getReachableSizeTier(calculateBallRadius(thirdStageEntryCount)).level,
+    ).toBe(3)
+  })
+
   it('keeps the same visual size before and after an object joins the orb', () => {
     expect(getObjectVisualScale(0.22)).toBe(0.34)
     expect(getObjectVisualScale(0.62)).toBe(0.68)

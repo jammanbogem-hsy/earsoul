@@ -93,8 +93,31 @@ export function clearSession(): void {
   sessionStorage.removeItem(SESSION_KEY)
 }
 
+const BALL_GROWTH_MILESTONES = [
+  { collectedCount: 0, radius: 0.42 },
+  { collectedCount: 6, radius: 0.52 },
+  { collectedCount: 18, radius: 0.88 },
+  { collectedCount: 36, radius: 1.26 },
+  { collectedCount: 48, radius: 1.62 },
+  { collectedCount: 64, radius: 1.9 },
+  { collectedCount: 80, radius: 2.05 },
+] as const
+
 export function calculateBallRadius(collectedCount: number): number {
-  return Math.min(2.05, 0.5 + Math.sqrt(collectedCount) * 0.21)
+  const count = Math.max(0, collectedCount)
+
+  for (let index = 1; index < BALL_GROWTH_MILESTONES.length; index += 1) {
+    const start = BALL_GROWTH_MILESTONES[index - 1]
+    const end = BALL_GROWTH_MILESTONES[index]
+    if (count > end.collectedCount) continue
+
+    const progress =
+      (count - start.collectedCount) /
+      (end.collectedCount - start.collectedCount)
+    return start.radius + (end.radius - start.radius) * progress
+  }
+
+  return BALL_GROWTH_MILESTONES[BALL_GROWTH_MILESTONES.length - 1].radius
 }
 
 export function getStarRating(session: GameSession): number {
