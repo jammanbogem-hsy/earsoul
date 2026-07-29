@@ -19,7 +19,13 @@ import {
 import type { ControlVector } from './TouchJoystick'
 import type { LearningObject } from '../types'
 import { canCollect, getSizeTier } from '../game/mechanics'
+import { stepRollingMotion } from '../game/rollingMotion'
 import { MaterialIcon } from './MaterialIcon'
+import {
+  AttachedObjectMesh,
+  GardenSetDressing,
+  LearningObjectMesh,
+} from './game/GameSceneAssets'
 
 interface GameCanvasProps {
   objects: LearningObject[]
@@ -43,6 +49,8 @@ interface MotionState {
   x: number
   z: number
   speed: number
+  velocityX: number
+  velocityZ: number
 }
 
 function useKeyboard() {
@@ -67,89 +75,6 @@ function useKeyboard() {
   return keys
 }
 
-function LearningShape({ item }: { item: LearningObject }) {
-  const material = (
-    <meshStandardMaterial
-      color={item.color}
-      roughness={0.62}
-      metalness={0.02}
-    />
-  )
-
-  if (item.shape === 'sphere') {
-    return (
-      <mesh castShadow>
-        <sphereGeometry args={[0.62, 20, 16]} />
-        {material}
-      </mesh>
-    )
-  }
-
-  if (item.shape === 'cylinder') {
-    return (
-      <mesh castShadow rotation={[0, 0, Math.PI * 0.02]}>
-        <cylinderGeometry args={[0.5, 0.58, 1, 20]} />
-        {material}
-      </mesh>
-    )
-  }
-
-  if (item.shape === 'cone') {
-    return (
-      <mesh castShadow>
-        <coneGeometry args={[0.64, 1, 3]} />
-        {material}
-      </mesh>
-    )
-  }
-
-  if (item.shape === 'torus') {
-    return (
-      <mesh castShadow rotation={[Math.PI / 2, 0, 0]}>
-        <torusGeometry args={[0.55, 0.2, 12, 28]} />
-        {material}
-      </mesh>
-    )
-  }
-
-  if (item.shape === 'pencil') {
-    return (
-      <group rotation={[0, 0, Math.PI / 2]}>
-        <mesh castShadow>
-          <cylinderGeometry args={[0.18, 0.18, 1.05, 8]} />
-          {material}
-        </mesh>
-        <mesh castShadow position={[0, 0.65, 0]}>
-          <coneGeometry args={[0.2, 0.3, 8]} />
-          <meshStandardMaterial color="#F1C89A" roughness={0.75} />
-        </mesh>
-      </group>
-    )
-  }
-
-  if (item.shape === 'book') {
-    return (
-      <group rotation={[0, 0.2, -0.08]}>
-        <mesh castShadow scale={[1, 0.24, 0.76]}>
-          <boxGeometry />
-          {material}
-        </mesh>
-        <mesh position={[0, 0.14, 0]} scale={[0.88, 0.05, 0.66]}>
-          <boxGeometry />
-          <meshStandardMaterial color="#FFFDF7" roughness={0.9} />
-        </mesh>
-      </group>
-    )
-  }
-
-  return (
-    <mesh castShadow scale={[1, item.shape === 'letter' ? 0.28 : 0.75, 0.82]}>
-      <boxGeometry />
-      {material}
-    </mesh>
-  )
-}
-
 function LearningItem({
   item,
   reducedMotion,
@@ -161,7 +86,7 @@ function LearningItem({
 }) {
   const group = useRef<Group>(null)
   const tier = getSizeTier(item.size)
-  const visualScale = [0.34, 0.65, 1.04, 1.45][tier.level - 1]
+  const visualScale = [0.34, 0.68, 1.1, 1.65][tier.level - 1]
   const phase = useMemo(
     () => item.id.split('').reduce((total, char) => total + char.charCodeAt(0), 0),
     [item.id],
@@ -197,7 +122,7 @@ function LearningItem({
           />
         </mesh>
       ))}
-      <LearningShape item={item} />
+      <LearningObjectMesh item={item} />
       <Html
         center
         position={[0, 1.02, 0]}
@@ -249,6 +174,7 @@ function ChildPusher({
   const rightLeg = useRef<Group>(null)
   const leftArm = useRef<Group>(null)
   const rightArm = useRef<Group>(null)
+  const helperScale = Math.min(0.9, 0.58 + ballRadius * 0.16)
 
   useFrame(({ clock }, delta) => {
     if (!root.current) return
@@ -284,7 +210,11 @@ function ChildPusher({
   })
 
   return (
-    <group ref={root} position={[0, -ballRadius, ballRadius + 0.48]}>
+    <group
+      ref={root}
+      position={[0, -ballRadius, ballRadius + 0.48]}
+      scale={helperScale}
+    >
       <group ref={body}>
         <mesh castShadow position={[0, 1.42, 0]}>
           <sphereGeometry args={[0.27, 16, 12]} />
@@ -402,36 +332,6 @@ function MotionEffects({
   )
 }
 
-function Decoration({
-  index,
-  radius,
-  color,
-}: {
-  index: number
-  radius: number
-  color: string
-}) {
-  const theta = index * 2.399963
-  const y = 1 - ((index + 1) / 13) * 2
-  const ring = Math.sqrt(Math.max(0, 1 - y * y))
-  const position: [number, number, number] = [
-    Math.cos(theta) * ring * radius * 0.94,
-    y * radius * 0.94,
-    Math.sin(theta) * ring * radius * 0.94,
-  ]
-
-  return (
-    <mesh position={position} scale={Math.max(0.09, radius * 0.115)} castShadow>
-      {index % 3 === 0 ? (
-        <boxGeometry />
-      ) : (
-        <sphereGeometry args={[0.75, 10, 8]} />
-      )}
-      <meshStandardMaterial color={color} roughness={0.58} />
-    </mesh>
-  )
-}
-
 function GameWorld({
   objects,
   collectedIds,
@@ -449,10 +349,17 @@ function GameWorld({
   const collectedSet = useRef(new Set(collectedIds))
   const tooLargeCooldown = useRef(0)
   const cameraPosition = useRef(new Vector3(0, 7, 8))
+  const cameraDirection = useRef(new Vector3(0, 0, -1))
   const lookTarget = useRef(new Vector3())
   const rollAxis = useRef(new Vector3())
   const rollQuaternion = useRef(new Quaternion())
-  const motion = useRef<MotionState>({ x: 0, z: -1, speed: 0 })
+  const motion = useRef<MotionState>({
+    x: 0,
+    z: -1,
+    speed: 0,
+    velocityX: 0,
+    velocityZ: 0,
+  })
 
   useEffect(() => {
     collectedSet.current = new Set(collectedIds)
@@ -469,45 +376,60 @@ function GameWorld({
       const keyboardZ =
         (keys.current.s || keys.current.arrowdown ? 1 : 0) -
         (keys.current.w || keys.current.arrowup ? 1 : 0)
-      let moveX = keyboardX + controlVector.x
-      let moveZ = keyboardZ + controlVector.z
-      const length = Math.hypot(moveX, moveZ)
+      const moveX = keyboardX + controlVector.x
+      const moveZ = keyboardZ + controlVector.z
+      const rollingStep = stepRollingMotion(
+        {
+          velocityX: motion.current.velocityX,
+          velocityZ: motion.current.velocityZ,
+        },
+        moveX,
+        moveZ,
+        ballRadius,
+        delta,
+      )
+      const previousX = position.x
+      const previousZ = position.z
+      const nextX = MathUtils.clamp(
+        position.x + rollingStep.velocityX * Math.min(delta, 1 / 30),
+        -10.6,
+        10.6,
+      )
+      const nextZ = MathUtils.clamp(
+        position.z + rollingStep.velocityZ * Math.min(delta, 1 / 30),
+        -10.6,
+        10.6,
+      )
+      position.x = nextX
+      position.z = nextZ
 
-      if (length > 0.05) {
-        moveX /= Math.max(1, length)
-        moveZ /= Math.max(1, length)
-        const speed = Math.max(2.6, 4.1 - ballRadius * 0.45)
-        const step = speed * delta
-        position.x = MathUtils.clamp(position.x + moveX * step, -9.3, 9.3)
-        position.z = MathUtils.clamp(position.z + moveZ * step, -9.3, 9.3)
+      motion.current.velocityX =
+        nextX === previousX && Math.abs(rollingStep.velocityX) > 0
+          ? 0
+          : rollingStep.velocityX
+      motion.current.velocityZ =
+        nextZ === previousZ && Math.abs(rollingStep.velocityZ) > 0
+          ? 0
+          : rollingStep.velocityZ
+      motion.current.x = rollingStep.directionX
+      motion.current.z = rollingStep.directionZ
+      motion.current.speed = rollingStep.speedRatio
 
-        motion.current.x = moveX
-        motion.current.z = moveZ
-        motion.current.speed = MathUtils.damp(
-          motion.current.speed,
-          1,
-          12,
-          delta,
-        )
-
-        if (orb.current) {
-          rollAxis.current.set(moveZ, 0, -moveX).normalize()
-          rollQuaternion.current.setFromAxisAngle(
-            rollAxis.current,
-            step / Math.max(0.3, ballRadius),
+      const traveled = Math.hypot(nextX - previousX, nextZ - previousZ)
+      if (orb.current && traveled > 0.0001) {
+        rollAxis.current
+          .set(
+            (nextZ - previousZ) / traveled,
+            0,
+            -(nextX - previousX) / traveled,
           )
-          orb.current.quaternion.premultiply(rollQuaternion.current)
-        }
-      } else {
-        motion.current.speed = MathUtils.damp(
-          motion.current.speed,
-          0,
-          9,
-          delta,
+          .normalize()
+        rollQuaternion.current.setFromAxisAngle(
+          rollAxis.current,
+          traveled / Math.max(0.3, ballRadius),
         )
+        orb.current.quaternion.premultiply(rollQuaternion.current)
       }
-
-      position.y = ballRadius
 
       for (const item of objects) {
         if (collectedSet.current.has(item.id)) continue
@@ -521,34 +443,67 @@ function GameWorld({
         if (touchesItem && canCollect(ballRadius, item.size)) {
           collectedSet.current.add(item.id)
           onCollect(item)
-        } else if (
-          touchesItem &&
-          state.clock.elapsedTime > tooLargeCooldown.current
-        ) {
-          tooLargeCooldown.current = state.clock.elapsedTime + 1.7
-          onTooLarge(item)
+        } else if (touchesItem) {
+          const offsetX = position.x - item.position[0]
+          const offsetZ = position.z - item.position[2]
+          const safeDistance = Math.max(distance, 0.001)
+          const overlap = Math.min(
+            0.2,
+            ballRadius + item.size * 0.64 - safeDistance,
+          )
+          position.x += (offsetX / safeDistance) * overlap
+          position.z += (offsetZ / safeDistance) * overlap
+          motion.current.velocityX *= -0.16
+          motion.current.velocityZ *= -0.16
+
+          if (state.clock.elapsedTime > tooLargeCooldown.current) {
+            tooLargeCooldown.current = state.clock.elapsedTime + 1.7
+            onTooLarge(item)
+          }
         }
       }
     }
 
-    const cameraDistance = 7.1 + ballRadius * 1.7
+    position.y = ballRadius
+
+    if (motion.current.speed > 0.04) {
+      cameraDirection.current.x = MathUtils.damp(
+        cameraDirection.current.x,
+        motion.current.x,
+        4.2,
+        delta,
+      )
+      cameraDirection.current.z = MathUtils.damp(
+        cameraDirection.current.z,
+        motion.current.z,
+        4.2,
+        delta,
+      )
+      cameraDirection.current.normalize()
+    }
+
+    const cameraDistance = 4.8 + ballRadius * 1.6
     cameraPosition.current.set(
-      position.x,
-      5.8 + ballRadius * 1.4,
-      position.z + cameraDistance,
+      position.x - cameraDirection.current.x * cameraDistance,
+      3.2 + ballRadius * 1.35,
+      position.z - cameraDirection.current.z * cameraDistance,
     )
-    camera.position.lerp(cameraPosition.current, reducedMotion ? 0.16 : 0.08)
-    lookTarget.current.set(position.x, ballRadius * 0.5, position.z)
+    camera.position.lerp(cameraPosition.current, reducedMotion ? 0.18 : 0.1)
+    lookTarget.current.set(
+      position.x + cameraDirection.current.x * ballRadius * 0.7,
+      ballRadius * 0.72,
+      position.z + cameraDirection.current.z * ballRadius * 0.7,
+    )
     camera.lookAt(lookTarget.current)
+
   })
 
   const visibleObjects = objects.filter(
     (item) => !collectedIds.includes(item.id),
   )
-  const decorationColors = objects
-    .filter((item) => collectedIds.includes(item.id))
-    .slice(-12)
-    .map((item) => item.color)
+  const collectedObjects = objects.filter((item) =>
+    collectedIds.includes(item.id),
+  )
 
   return (
     <>
@@ -565,43 +520,7 @@ function GameWorld({
       />
       <hemisphereLight args={['#E6F6FF', '#77A869', 1.1]} />
 
-      <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-        <planeGeometry args={[23, 23]} />
-        <meshStandardMaterial color="#DFF3D8" roughness={0.94} />
-      </mesh>
-      <mesh
-        rotation={[-Math.PI / 2, 0, 0]}
-        position={[0, 0.012, 0]}
-        receiveShadow
-      >
-        <ringGeometry args={[3.5, 4.25, 48]} />
-        <meshStandardMaterial color="#F6E5BD" roughness={0.96} />
-      </mesh>
-
-      {Array.from({ length: 20 }, (_, index) => {
-        const angle = (index / 20) * Math.PI * 2
-        const radius = 10.4
-        return (
-          <group
-            key={`garden-edge-${index}`}
-            position={[Math.cos(angle) * radius, 0, Math.sin(angle) * radius]}
-          >
-            <mesh position={[0, 0.32, 0]} castShadow>
-              <sphereGeometry args={[0.42 + (index % 3) * 0.08, 10, 8]} />
-              <meshStandardMaterial
-                color={index % 2 ? '#76B947' : '#56A35A'}
-                roughness={0.9}
-              />
-            </mesh>
-            {index % 4 === 0 && (
-              <mesh position={[0.24, 0.72, 0]} castShadow>
-                <sphereGeometry args={[0.14, 8, 6]} />
-                <meshStandardMaterial color="#FFF1A8" />
-              </mesh>
-            )}
-          </group>
-        )
-      })}
+      <GardenSetDressing floorSize={24} />
 
       {visibleObjects.map((item) => (
         <LearningItem
@@ -612,8 +531,8 @@ function GameWorld({
         />
       ))}
 
-      <group ref={player} position={[0, ballRadius, 0]}>
-        <group ref={orb}>
+      <group ref={player} name="rolling-player">
+        <group ref={orb} name="rolling-orb">
           <mesh castShadow receiveShadow>
             <sphereGeometry args={[ballRadius, 32, 24]} />
             <meshStandardMaterial
@@ -656,12 +575,13 @@ function GameWorld({
               />
             </mesh>
           ))}
-          {decorationColors.map((color, index) => (
-            <Decoration
-              key={`${collectedIds[collectedIds.length - decorationColors.length + index]}-${index}`}
+          {collectedObjects.map((item, index) => (
+            <AttachedObjectMesh
+              key={item.id}
+              item={item}
               index={index}
-              radius={ballRadius}
-              color={color}
+              orbRadius={ballRadius}
+              slotCount={objects.length}
             />
           ))}
         </group>

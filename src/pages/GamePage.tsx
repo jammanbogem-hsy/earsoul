@@ -5,7 +5,6 @@ import {
   useState,
   type CSSProperties,
 } from 'react'
-import { Brand } from '../components/Brand'
 import { GameCanvas } from '../components/GameCanvas'
 import {
   M3Button,
@@ -76,19 +75,9 @@ const coachSteps: {
   body: string
 }[] = [
   {
-    icon: 'sentiment_satisfied',
-    title: '배움 친구가 함께 밀어요',
-    body: '방향키나 WASD, 또는 화면 왼쪽 조이스틱을 움직이면 친구가 배움별을 밀어요.',
-  },
-  {
-    icon: 'wand_stars',
-    title: '작은 조각부터 만나요',
-    body: '배움별보다 작은 조각에 다가가면 반짝이며 별에 붙어요.',
-  },
-  {
-    icon: 'filter_4',
-    title: '숫자와 바닥 원을 살펴봐요',
-    body: '조각 위 숫자와 바닥 원 개수가 클수록 더 큰 조각이에요. 별을 키워 차례로 만나 보세요.',
+    icon: 'play_arrow',
+    title: '작은 조각부터 굴려 모아요',
+    body: '방향키·WASD 또는 왼쪽 조이스틱으로 배움별을 굴려요. 1단계 조각에 닿으면 같은 모양이 별에 붙어요.',
   },
 ]
 
@@ -110,7 +99,7 @@ export function GamePage() {
     tone: 'learned' | 'wait'
   } | null>(null)
   const toastTimer = useRef<number | undefined>(undefined)
-  const coachSeen = sessionStorage.getItem('earsoul-coach-v2-seen') === 'true'
+  const coachSeen = sessionStorage.getItem('earsoul-coach-v3-seen') === 'true'
   const [coachStep, setCoachStep] = useState(coachSeen ? -1 : 0)
   const reducedMotion =
     sessionStorage.getItem('earsoul-reduced-motion') === 'true'
@@ -178,7 +167,7 @@ export function GamePage() {
     setSession(next)
     playChime(soundEnabled)
     showToast({
-      title: `${item.label} 발견! +${item.points}`,
+      title: `새 조각이 붙었어요 · ${item.label}`,
       body: item.fact,
       tone: 'learned',
     })
@@ -192,13 +181,12 @@ export function GamePage() {
     const itemTier = getSizeTier(item.size)
     showToast(
       {
-        title: `${item.label}은 조금 뒤에 만나요`,
-        body: `${itemTier.level}단계 ${itemTier.label}이에요. 숫자가 더 작은 조각부터 모아 별을 키워 보세요.`,
+        title: `아직은 인사만 · ${item.label}`,
+        body: `${itemTier.level}단계 ${itemTier.label}이에요. 별을 조금 더 키우면 붙일 수 있어요.`,
         tone: 'wait',
       },
       1800,
     )
-    playChime(soundEnabled, false)
   }
 
   const finish = () => {
@@ -237,87 +225,79 @@ export function GamePage() {
         />
       </div>
 
-      <header className="game-topbar">
-        <div className="game-brand-card">
-          <Brand compact />
-        </div>
-        <div className="mission-card">
-          <div>
-            <span>오늘의 탐험</span>
-            <strong>배움 조각을 만나 별을 키워요</strong>
+      <header className="game-hud" aria-label="놀이 상태와 설정">
+        <section
+          className="game-size-status"
+          data-tier={reachableTier.level}
+          style={{ '--tier-color': reachableTier.color } as CSSProperties}
+          aria-label={`현재 ${reachableTier.level}단계 ${reachableTier.label}, ${pack.objects.length}개 중 ${session.collectedIds.length}개 수집`}
+        >
+          <span
+            className="game-size-status__level"
+            aria-hidden="true"
+          >
+            <small>크기</small>
+            <strong>{reachableTier.level}</strong>
+          </span>
+          <div className="game-size-status__copy">
+            <span>지금 모을 조각</span>
+            <strong>{reachableTier.label}</strong>
+            <M3LinearProgress
+              className="game-size-progress"
+              aria-label="붙인 조각"
+              aria-valuetext={`${pack.objects.length}개 중 ${session.collectedIds.length}개를 별에 붙였어요`}
+              value={progress}
+            />
           </div>
-          <M3LinearProgress
-            className="mission-progress"
-            aria-label="전체 수집 진행"
-            aria-valuetext={`${pack.objects.length}개 중 ${session.collectedIds.length}개`}
-            value={progress}
+          <span className="game-size-status__count" aria-hidden="true">
+            <strong>{session.collectedIds.length}</strong>
+            <small>/{pack.objects.length}</small>
+          </span>
+          <ol className="game-tier-legend" aria-label="조각 크기 네 단계">
+            {SIZE_TIERS.map((tier) => (
+              <li
+                key={tier.level}
+                className={[
+                  tier.level < reachableTier.level ? 'is-reached' : '',
+                  tier.level === reachableTier.level ? 'is-current' : '',
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
+                style={{ '--tier-color': tier.color } as CSSProperties}
+                aria-current={
+                  tier.level === reachableTier.level ? 'step' : undefined
+                }
+                aria-label={`${tier.level}단계 ${tier.label}`}
+              >
+                <i aria-hidden="true" />
+                <span>{tier.level}</span>
+              </li>
+            ))}
+          </ol>
+        </section>
+
+        <div className="game-hud__actions">
+          <div className="game-score" aria-live="polite">
+            <MaterialIcon name="star" />
+            <span>모은 빛</span>
+            <strong>{session.score.toLocaleString()}</strong>
+          </div>
+          <M3IconButton
+            className="hud-button"
+            onClick={() => setSoundEnabled((current) => !current)}
+            aria-label={soundEnabled ? '효과음 끄기' : '효과음 켜기'}
+            icon={soundEnabled ? 'volume_up' : 'volume_off'}
+            selected={soundEnabled}
+            toggle
+          />
+          <M3IconButton
+            className="hud-button"
+            onClick={() => setPaused(true)}
+            aria-label="일시정지"
+            icon="pause"
           />
         </div>
-        <div className="score-card" aria-live="polite">
-          <span>배움 점수</span>
-          <strong>{session.score.toLocaleString()}</strong>
-        </div>
-        <M3IconButton
-          className="hud-button"
-          onClick={() => setSoundEnabled((current) => !current)}
-          aria-label="효과음"
-          icon={soundEnabled ? 'volume_up' : 'volume_off'}
-          selected={soundEnabled}
-          toggle
-        />
-        <M3IconButton
-          className="hud-button"
-          onClick={() => setPaused(true)}
-          aria-label="일시정지"
-          icon="pause"
-        />
       </header>
-
-      <aside className="size-guide-card" aria-label="배움 조각 크기 안내">
-        <div className="size-guide-card__heading">
-          <span>
-            <MaterialIcon name="adjust" />
-          </span>
-          <div>
-            <small>조각 크기 안내</small>
-            <strong>원과 숫자가 클수록 커요</strong>
-          </div>
-        </div>
-        <div className="size-tier-list">
-          {SIZE_TIERS.map((tier) => (
-            <span
-              key={tier.level}
-              className={
-                tier.level <= reachableTier.level ? 'is-reachable' : ''
-              }
-              style={{ '--tier-color': tier.color } as CSSProperties}
-            >
-              <b>{tier.level}</b>
-              <i className="tier-scale-dots" aria-hidden="true">
-                {Array.from({ length: tier.level }, (_, index) => (
-                  <span key={index} />
-                ))}
-              </i>
-              {tier.label}
-            </span>
-          ))}
-        </div>
-      </aside>
-
-      <aside className="size-card">
-        <span className="size-card__orb" aria-hidden="true">
-          <i style={{ transform: `scale(${Math.min(1.45, ballRadius)})` }} />
-        </span>
-        <p>
-          <small>지금 모을 수 있는 크기</small>
-          <strong>
-            {reachableTier.level}단계 · {reachableTier.label}
-          </strong>
-        </p>
-        <span className="count-pill">
-          {session.collectedIds.length}/{pack.objects.length}
-        </span>
-      </aside>
 
       <div className="desktop-controls" aria-hidden="true">
         <span>
@@ -326,30 +306,44 @@ export function GamePage() {
           <kbd>S</kbd>
           <kbd>D</kbd>
         </span>
-        <p>또는 방향키로 움직여요</p>
+        <p>방향키로도 움직여요</p>
       </div>
 
       <div className="mobile-controls">
         <TouchJoystick onChange={setControlVector} />
       </div>
 
-      {toast && (
-        <div
-          className={`learning-toast is-${toast.tone}`}
-          role="status"
-          aria-live="polite"
-        >
-          <span>
-            <MaterialIcon
-              name={toast.tone === 'learned' ? 'wand_stars' : 'trending_up'}
-            />
-          </span>
-          <div>
-            <strong>{toast.title}</strong>
-            <p>{toast.body}</p>
-          </div>
+      <div
+        className={`game-collection-status ${
+          toast ? `is-${toast.tone}` : 'is-idle'
+        }`}
+        role="status"
+        aria-live="polite"
+      >
+        <span>
+          <MaterialIcon
+            name={
+              toast
+                ? toast.tone === 'learned'
+                  ? 'wand_stars'
+                  : 'trending_up'
+                : 'adjust'
+            }
+          />
+        </span>
+        <div>
+          <strong>
+            {toast
+              ? toast.title
+              : `배움 조각 ${session.collectedIds.length}개를 붙였어요`}
+          </strong>
+          <p>
+            {toast
+              ? toast.body
+              : `${reachableTier.level}단계 ${reachableTier.label}에 가까이 가 보세요.`}
+          </p>
         </div>
-      )}
+      </div>
 
       {!contentReady && (
         <div className="content-status" role="status">
@@ -365,37 +359,20 @@ export function GamePage() {
             aria-modal="true"
             aria-labelledby="coach-title"
           >
-            <span className="coach-card__step">
-              {coachStep + 1} / {coachSteps.length}
-            </span>
             <div className="coach-card__icon">
               <MaterialIcon name={coachSteps[coachStep].icon} />
             </div>
             <h2 id="coach-title">{coachSteps[coachStep].title}</h2>
             <p>{coachSteps[coachStep].body}</p>
-            <div className="coach-dots" aria-hidden="true">
-              {coachSteps.map((step, index) => (
-                <span
-                  key={step.title}
-                  className={index === coachStep ? 'is-active' : ''}
-                />
-              ))}
-            </div>
             <M3Button
               className="primary-button primary-button--wide"
-              icon="arrow_forward"
+              icon="play_arrow"
               onClick={() => {
-                if (coachStep === coachSteps.length - 1) {
-                  sessionStorage.setItem('earsoul-coach-v2-seen', 'true')
-                  setCoachStep(-1)
-                } else {
-                  setCoachStep((step) => step + 1)
-                }
+                sessionStorage.setItem('earsoul-coach-v3-seen', 'true')
+                setCoachStep(-1)
               }}
             >
-              {coachStep === coachSteps.length - 1
-                ? '이제 굴려 볼게요!'
-                : '다음'}
+              바로 굴리기
             </M3Button>
           </section>
         </div>
@@ -428,7 +405,7 @@ export function GamePage() {
               variant="tonal"
               onClick={finish}
             >
-              지금까지 결과 보기
+              오늘의 별 보기
             </M3Button>
             <M3Button
               className="text-button"
@@ -441,7 +418,6 @@ export function GamePage() {
           </section>
         </div>
       )}
-
     </main>
   )
 }
