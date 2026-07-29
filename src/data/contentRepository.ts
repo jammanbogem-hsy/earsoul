@@ -9,8 +9,7 @@ function isLearningPack(value: unknown): value is LearningPack {
 
   return (
     typeof candidate.title === 'string' &&
-    Array.isArray(candidate.objects) &&
-    Array.isArray(candidate.quizzes)
+    Array.isArray(candidate.objects)
   )
 }
 

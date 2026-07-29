@@ -12,9 +12,6 @@ const emptySession = (): GameSession => {
     score: 0,
     collectedIds: [],
     collectedLabels: [],
-    correctAnswers: 0,
-    answeredQuestions: 0,
-    completedQuizIds: [],
     durationSeconds: 0,
     status: 'playing',
   }
@@ -53,23 +50,6 @@ export function recordCollection(
   })
 }
 
-export function recordQuiz(
-  session: GameSession,
-  quizId: string,
-  wasCorrectOnFirstTry: boolean,
-): GameSession {
-  if (session.completedQuizIds.includes(quizId)) return session
-
-  return saveSession({
-    ...session,
-    score: session.score + (wasCorrectOnFirstTry ? 100 : 50),
-    correctAnswers:
-      session.correctAnswers + (wasCorrectOnFirstTry ? 1 : 0),
-    answeredQuestions: session.answeredQuestions + 1,
-    completedQuizIds: [...session.completedQuizIds, quizId],
-  })
-}
-
 export function finishSession(session: GameSession): GameSession {
   const completedAt = Date.now()
   return saveSession({
@@ -92,7 +72,5 @@ export function calculateBallRadius(collectedCount: number): number {
 }
 
 export function getStarRating(session: GameSession): number {
-  const collectionScore = Math.min(2, Math.floor(session.collectedIds.length / 10))
-  const quizScore = session.correctAnswers >= 3 ? 1 : 0
-  return Math.max(1, Math.min(3, collectionScore + quizScore))
+  return Math.max(1, Math.min(3, Math.ceil(session.collectedIds.length / 10)))
 }

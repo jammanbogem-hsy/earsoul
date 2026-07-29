@@ -23,19 +23,9 @@ export interface LearningObject {
   symbol?: string
 }
 
-export interface QuizQuestion {
-  id: string
-  subject: LearningSubject
-  question: string
-  choices: string[]
-  answerIndex: number
-  explanation: string
-}
-
 export interface LearningPack {
   title: string
   objects: LearningObject[]
-  quizzes: QuizQuestion[]
 }
 
 export interface GameSession {
@@ -46,9 +36,6 @@ export interface GameSession {
   score: number
   collectedIds: string[]
   collectedLabels: string[]
-  correctAnswers: number
-  answeredQuestions: number
-  completedQuizIds: string[]
   durationSeconds: number
   status: 'playing' | 'completed'
 }

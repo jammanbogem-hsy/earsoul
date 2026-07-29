@@ -4,7 +4,6 @@ import {
   finishSession,
   readSession,
   recordCollection,
-  recordQuiz,
   startSession,
 } from './session'
 
@@ -29,15 +28,6 @@ describe('single session score', () => {
     expect(twice.score).toBe(10)
     expect(twice.collectedIds).toEqual(['vowel-a'])
     expect(readSession()?.score).toBe(10)
-  })
-
-  it('awards learning bonus without penalizing retries', () => {
-    const session = startSession()
-    const result = recordQuiz(session, 'quiz-shape', false)
-
-    expect(result.score).toBe(50)
-    expect(result.correctAnswers).toBe(0)
-    expect(result.answeredQuestions).toBe(1)
   })
 
   it('finishes the current browser session', () => {

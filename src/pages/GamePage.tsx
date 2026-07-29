@@ -1,30 +1,30 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+} from 'react'
 import { Brand } from '../components/Brand'
 import { GameCanvas } from '../components/GameCanvas'
-import { QuizModal } from '../components/QuizModal'
 import {
   TouchJoystick,
   type ControlVector,
 } from '../components/TouchJoystick'
 import { loadLearningPack } from '../data/contentRepository'
-import {
-  fallbackLearningPack,
-  quizMilestones,
-} from '../data/learningPack'
+import { fallbackLearningPack } from '../data/learningPack'
 import {
   calculateBallRadius,
   finishSession,
   readSession,
   recordCollection,
-  recordQuiz,
 } from '../game/session'
-import { getCollectibleLimit } from '../game/mechanics'
-import type {
-  GameSession,
-  LearningObject,
-  LearningPack,
-  QuizQuestion,
-} from '../types'
+import {
+  getReachableSizeTier,
+  getSizeTier,
+  SIZE_TIERS,
+} from '../game/mechanics'
+import type { GameSession, LearningObject, LearningPack } from '../types'
 import { Redirect, useAppNavigate } from '../navigation'
 
 function playChime(enabled: boolean, success = true) {
@@ -63,19 +63,19 @@ function playChime(enabled: boolean, success = true) {
 
 const coachSteps = [
   {
-    icon: '↕',
-    title: '천천히 움직여 봐요',
-    body: '방향키나 WASD, 또는 화면 왼쪽의 둥근 조이스틱으로 배움별을 굴려요.',
+    icon: '☺',
+    title: '배움 친구가 함께 밀어요',
+    body: '방향키나 WASD, 또는 화면 왼쪽 조이스틱을 움직이면 친구가 배움별을 밀어요.',
   },
   {
     icon: '✦',
     title: '작은 조각부터 만나요',
-    body: '배움별보다 작은 조각에 다가가면 반짝이며 스티커처럼 합류해요.',
+    body: '배움별보다 작은 조각에 다가가면 반짝이며 별에 붙어요.',
   },
   {
-    icon: '?',
-    title: '배움 문에서 생각해요',
-    body: '조각을 모으면 짧은 문제가 열려요. 틀려도 감점 없이 다시 고를 수 있어요.',
+    icon: '④',
+    title: '숫자와 바닥 원을 살펴봐요',
+    body: '조각 위 숫자와 바닥 원 개수가 클수록 더 큰 조각이에요. 별을 키워 차례로 만나 보세요.',
   },
 ]
 
@@ -97,9 +97,7 @@ export function GamePage() {
     tone: 'learned' | 'wait'
   } | null>(null)
   const toastTimer = useRef<number | undefined>(undefined)
-  const scheduledQuizId = useRef<string | null>(null)
-  const [activeQuiz, setActiveQuiz] = useState<QuizQuestion | null>(null)
-  const coachSeen = sessionStorage.getItem('earsoul-coach-seen') === 'true'
+  const coachSeen = sessionStorage.getItem('earsoul-coach-v2-seen') === 'true'
   const [coachStep, setCoachStep] = useState(coachSeen ? -1 : 0)
   const reducedMotion =
     sessionStorage.getItem('earsoul-reduced-motion') === 'true'
@@ -119,13 +117,13 @@ export function GamePage() {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && !activeQuiz && coachStep < 0) {
+      if (event.key === 'Escape' && coachStep < 0) {
         setPaused((current) => !current)
       }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [activeQuiz, coachStep])
+  }, [coachStep])
 
   useEffect(
     () => () => {
@@ -156,20 +154,7 @@ export function GamePage() {
 
   const ballRadius = calculateBallRadius(session.collectedIds.length)
   const progress = session.collectedIds.length / pack.objects.length
-  const nextQuizIndex = session.completedQuizIds.length
-  const nextMilestone = quizMilestones[nextQuizIndex] ?? pack.objects.length
-  const quizProgress = Math.min(
-    100,
-    (session.collectedIds.length / nextMilestone) * 100,
-  )
-  const collectibleLimit = getCollectibleLimit(ballRadius)
-  const nextCollectible = [...pack.objects]
-    .filter(
-      (item) =>
-        !session.collectedIds.includes(item.id) &&
-        item.size <= collectibleLimit,
-    )
-    .sort((a, b) => b.size - a.size)[0]
+  const reachableTier = getReachableSizeTier(ballRadius)
 
   const handleCollect = (item: LearningObject) => {
     const current = sessionRef.current
@@ -185,54 +170,22 @@ export function GamePage() {
       tone: 'learned',
     })
 
-    const quizIndex = next.completedQuizIds.length
-    const milestone = quizMilestones[quizIndex]
-    if (
-      milestone &&
-      next.collectedIds.length >= milestone &&
-      pack.quizzes[quizIndex] &&
-      !scheduledQuizId.current
-    ) {
-      const quiz = pack.quizzes[quizIndex]
-      scheduledQuizId.current = quiz.id
-      window.setTimeout(() => {
-        setActiveQuiz(quiz)
-        scheduledQuizId.current = null
-      }, 650)
-    }
-
     if (next.collectedIds.length === pack.objects.length) {
       window.setTimeout(() => finish(), 900)
     }
   }
 
   const handleTooLarge = (item: LearningObject) => {
+    const itemTier = getSizeTier(item.size)
     showToast(
       {
         title: `${item.label}은 조금 뒤에 만나요`,
-        body: '주변의 더 작은 배움 조각을 먼저 찾아 배움별을 키워 보세요.',
+        body: `${itemTier.level}단계 ${itemTier.label}이에요. 숫자가 더 작은 조각부터 모아 별을 키워 보세요.`,
         tone: 'wait',
       },
       1800,
     )
     playChime(soundEnabled, false)
-  }
-
-  const completeQuiz = (correctOnFirstTry: boolean) => {
-    const current = sessionRef.current
-    if (!current || !activeQuiz) return
-    const next = recordQuiz(current, activeQuiz.id, correctOnFirstTry)
-    sessionRef.current = next
-    setSession(next)
-    setActiveQuiz(null)
-    playChime(soundEnabled)
-    showToast({
-      title: correctOnFirstTry ? '한 번에 찾았어요!' : '새롭게 알게 됐어요!',
-      body: correctOnFirstTry
-        ? '별 보너스 100점을 받았어요.'
-        : '다시 생각한 힘으로 별 보너스 50점을 받았어요.',
-      tone: 'learned',
-    })
   }
 
   const finish = () => {
@@ -254,7 +207,7 @@ export function GamePage() {
     }
   }
 
-  const isGamePaused = paused || Boolean(activeQuiz) || coachStep >= 0
+  const isGamePaused = paused || coachStep >= 0
 
   return (
     <main id="main-content" className="game-page">
@@ -314,21 +267,30 @@ export function GamePage() {
         </button>
       </header>
 
-      <aside className="quiz-gate-card" aria-label="다음 배움 문 진행">
-        <div>
-          <span className="quiz-gate-card__icon" aria-hidden="true">
-            ?
-          </span>
-          <p>
-            <small>다음 배움 문</small>
-            <strong>
-              {Math.max(0, nextMilestone - session.collectedIds.length)}개 더
-              발견
-            </strong>
-          </p>
+      <aside className="size-guide-card" aria-label="배움 조각 크기 안내">
+        <div className="size-guide-card__heading">
+          <span aria-hidden="true">◎</span>
+          <div>
+            <small>조각 크기 안내</small>
+            <strong>원과 숫자가 클수록 커요</strong>
+          </div>
         </div>
-        <div className="mini-progress" aria-hidden="true">
-          <span style={{ width: `${quizProgress}%` }} />
+        <div className="size-tier-list">
+          {SIZE_TIERS.map((tier) => (
+            <span
+              key={tier.level}
+              className={
+                tier.level <= reachableTier.level ? 'is-reachable' : ''
+              }
+              style={{ '--tier-color': tier.color } as CSSProperties}
+            >
+              <b>{tier.level}</b>
+              <i aria-hidden="true">
+                {'●'.repeat(tier.level)}
+              </i>
+              {tier.label}
+            </span>
+          ))}
         </div>
       </aside>
 
@@ -337,8 +299,10 @@ export function GamePage() {
           <i style={{ transform: `scale(${Math.min(1.45, ballRadius)})` }} />
         </span>
         <p>
-          <small>지금 만날 수 있어요</small>
-          <strong>{nextCollectible?.label ?? '가장 큰 배움 조각'}</strong>
+          <small>지금 모을 수 있는 크기</small>
+          <strong>
+            {reachableTier.level}단계 · {reachableTier.label}
+          </strong>
         </p>
         <span className="count-pill">
           {session.collectedIds.length}/{pack.objects.length}
@@ -408,7 +372,7 @@ export function GamePage() {
               type="button"
               onClick={() => {
                 if (coachStep === coachSteps.length - 1) {
-                  sessionStorage.setItem('earsoul-coach-seen', 'true')
+                  sessionStorage.setItem('earsoul-coach-v2-seen', 'true')
                   setCoachStep(-1)
                 } else {
                   setCoachStep((step) => step + 1)
@@ -424,7 +388,7 @@ export function GamePage() {
         </div>
       )}
 
-      {paused && !activeQuiz && (
+      {paused && (
         <div className="modal-backdrop">
           <section
             className="pause-card"
@@ -461,9 +425,6 @@ export function GamePage() {
         </div>
       )}
 
-      {activeQuiz && (
-        <QuizModal quiz={activeQuiz} onComplete={completeQuiz} />
-      )}
     </main>
   )
 }

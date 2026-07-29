@@ -51,7 +51,7 @@ export function HomePage() {
           </h1>
           <p className="hero-description">
             알록달록한 배움 정원을 굴러 다니며 한글, 수학, 과학 조각을
-            발견해요. 서두르지 않아도 괜찮아요. 틀려도 다시 생각할 수 있어요.
+            발견해요. 배움 친구와 함께 작은 조각부터 차근차근 모아 보세요.
           </p>
           <button type="button" className="primary-button" onClick={begin}>
             배움 정원 들어가기
@@ -78,6 +78,14 @@ export function HomePage() {
                 {chip.symbol}
               </span>
             ))}
+          </div>
+          <div className="hero-helper" aria-hidden="true">
+            <span className="hero-helper__head" />
+            <span className="hero-helper__body" />
+            <span className="hero-helper__arm hero-helper__arm--left" />
+            <span className="hero-helper__arm hero-helper__arm--right" />
+            <span className="hero-helper__leg hero-helper__leg--left" />
+            <span className="hero-helper__leg hero-helper__leg--right" />
           </div>
           <div className="hero-world__ground">
             <span className="sprout sprout--one">✦</span>
@@ -131,12 +139,14 @@ export function HomePage() {
           </li>
           <li>
             <span className="step-number">3</span>
-            <div className="step-visual step-visual--quiz" aria-hidden="true">
-              <i>?</i>
-              <span>★</span>
+            <div className="step-visual step-visual--size" aria-hidden="true">
+              <i>①</i>
+              <i>②</i>
+              <i>③</i>
+              <i>④</i>
             </div>
-            <h3>배움 문을 열어요</h3>
-            <p>짧은 문제를 풀고 새로 알게 된 내용을 확인해요.</p>
+            <h3>크기 단계를 살펴봐요</h3>
+            <p>숫자와 바닥 원이 작은 조각부터 차례로 모아요.</p>
           </li>
         </ol>
       </section>

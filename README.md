@@ -10,13 +10,15 @@
 
 - 양쪽 방향 입력을 이용한 3D 롤링 수집 플레이
 - 한글 블록, 숫자, 도형, 책, 문구, 식물·행성 모형 등 비폭력 수집물
-- 성장 단계마다 열리는 3지선다 학습 문
-- 오답 감점 없이 힌트와 재시도 제공
+- 자체 제작 저폴리 어린이 캐릭터가 배움별을 미는 동작
+- 회전 색띠, 바닥 먼지와 걸음 애니메이션으로 보이는 굴림 효과
+- 숫자·이름·바닥 원 개수로 구분되는 네 단계 수집물 크기
+- 문제·퀴즈 없이 수집과 성장에 집중하는 현재 학습 버전
 - `/`, `/play`, `/results`로 분리된 SPA 라우팅
 - 이름·채팅·공개 순위표 없이 `sessionStorage`에만 유지되는 단일 세션 점수
 - Firebase Firestore 학습팩 읽기와 로컬 기본 데이터 폴백
 - Firebase Hosting용 SPA rewrite 및 보안 헤더 설정
-- 키보드·터치 조이스틱, 문제 읽어 주기, 움직임 줄이기 지원
+- 키보드·터치 조이스틱과 움직임 줄이기 지원
 
 ## 로컬 실행
 
@@ -55,7 +57,6 @@ npm run firebase:deploy
 interface LearningPack {
   title: string
   objects: LearningObject[]
-  quizzes: QuizQuestion[]
 }
 ```
 

@@ -1,10 +1,12 @@
 import { Brand } from '../components/Brand'
 import {
+  calculateBallRadius,
   clearSession,
   getStarRating,
   readSession,
   startSession,
 } from '../game/session'
+import { getReachableSizeTier } from '../game/mechanics'
 import { Redirect, useAppNavigate } from '../navigation'
 
 function formatDuration(totalSeconds: number) {
@@ -22,9 +24,9 @@ export function ResultsPage() {
   }
 
   const stars = getStarRating(session)
-  const accuracy = session.answeredQuestions
-    ? Math.round((session.correctAnswers / session.answeredQuestions) * 100)
-    : 0
+  const reachedTier = getReachableSizeTier(
+    calculateBallRadius(session.collectedIds.length),
+  )
 
   return (
     <main id="main-content" className="results-page">
@@ -40,7 +42,8 @@ export function ResultsPage() {
         <p className="eyebrow">오늘의 배움 정원 탐험 완료</p>
         <h1>멋진 배움별이 완성됐어요!</h1>
         <p className="results-intro">
-          빠르게 끝내는 것보다 끝까지 발견하고 다시 생각한 것이 더 중요해요.
+          빠르게 끝내는 것보다 작은 조각부터 차근차근 별을 키운 것이 더
+          중요해요.
         </p>
 
         <div className="star-rating" aria-label={`별 ${stars}개`}>
@@ -61,8 +64,8 @@ export function ResultsPage() {
             <dd>{session.collectedIds.length}개</dd>
           </div>
           <div>
-            <dt>한 번에 정답</dt>
-            <dd>{accuracy}%</dd>
+            <dt>도달한 크기</dt>
+            <dd>{reachedTier.level}단계</dd>
           </div>
           <div>
             <dt>탐험 시간</dt>

@@ -1,4 +1,4 @@
-import type { LearningObject, LearningPack, QuizQuestion } from '../types'
+import type { LearningObject, LearningPack } from '../types'
 
 const objects: LearningObject[] = [
   {
@@ -338,45 +338,7 @@ const objects: LearningObject[] = [
   },
 ]
 
-const quizzes: QuizQuestion[] = [
-  {
-    id: 'quiz-shape',
-    subject: '수학',
-    question: '삼각형의 꼭짓점은 몇 개일까요?',
-    choices: ['2개', '3개', '4개'],
-    answerIndex: 1,
-    explanation: '삼각형은 세 변이 만나는 꼭짓점이 3개예요.',
-  },
-  {
-    id: 'quiz-hangul',
-    subject: '한글',
-    question: '입술을 동그랗게 모아 소리 내는 모음은 무엇일까요?',
-    choices: ['ㅏ', 'ㅗ', 'ㅡ'],
-    answerIndex: 1,
-    explanation: 'ㅗ를 소리 낼 때는 입술이 동그랗게 모여요.',
-  },
-  {
-    id: 'quiz-plant',
-    subject: '과학',
-    question: '식물이 스스로 양분을 만들 때 가장 필요한 것은?',
-    choices: ['햇빛', '모래', '바람'],
-    answerIndex: 0,
-    explanation: '식물은 햇빛을 이용해 물과 이산화탄소로 양분을 만들어요.',
-  },
-  {
-    id: 'quiz-fraction',
-    subject: '수학',
-    question: '피자를 똑같이 4조각으로 나눠 1조각을 먹으면 얼마일까요?',
-    choices: ['4분의 1', '3분의 1', '2분의 1'],
-    answerIndex: 0,
-    explanation: '전체 4조각 중 1조각이므로 4분의 1이에요.',
-  },
-]
-
 export const fallbackLearningPack: LearningPack = {
   title: '알록달록 배움 정원',
   objects,
-  quizzes,
 }
-
-export const quizMilestones = [6, 13, 21, 28]
