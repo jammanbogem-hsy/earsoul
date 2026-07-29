@@ -575,11 +575,11 @@ function GameWorld({
               />
             </mesh>
           ))}
-          {collectedObjects.map((item, index) => (
+          {collectedObjects.map((item) => (
             <AttachedObjectMesh
               key={item.id}
               item={item}
-              index={index}
+              index={objects.indexOf(item)}
               orbRadius={ballRadius}
               slotCount={objects.length}
             />
