@@ -1,4 +1,6 @@
 import { Brand } from '../components/Brand'
+import { M3Button } from '../components/MaterialControls'
+import { MaterialIcon } from '../components/MaterialIcon'
 import {
   calculateBallRadius,
   clearSession,
@@ -35,9 +37,9 @@ export function ResultsPage() {
       </header>
       <section className="results-card page-container">
         <div className="results-celebration" aria-hidden="true">
-          <span>✦</span>
+          <MaterialIcon name="wand_stars" />
           <div className="result-orb">가</div>
-          <span>✿</span>
+          <MaterialIcon name="local_florist" />
         </div>
         <p className="eyebrow">오늘의 배움 정원 탐험 완료</p>
         <h1>멋진 배움별이 완성됐어요!</h1>
@@ -49,7 +51,7 @@ export function ResultsPage() {
         <div className="star-rating" aria-label={`별 ${stars}개`}>
           {[1, 2, 3].map((star) => (
             <span key={star} className={star <= stars ? 'is-earned' : ''}>
-              ★
+              <MaterialIcon name="star" />
             </span>
           ))}
         </div>
@@ -90,27 +92,27 @@ export function ResultsPage() {
         </section>
 
         <div className="results-actions">
-          <button
-            type="button"
+          <M3Button
             className="primary-button"
+            icon="replay"
             onClick={() => {
               startSession()
               navigate('/play')
             }}
           >
             한 번 더 굴리기
-            <span aria-hidden="true">↻</span>
-          </button>
-          <button
-            type="button"
+          </M3Button>
+          <M3Button
             className="secondary-button"
+            icon="home"
+            variant="outlined"
             onClick={() => {
               clearSession()
               navigate('/')
             }}
           >
             처음 화면으로
-          </button>
+          </M3Button>
         </div>
       </section>
     </main>

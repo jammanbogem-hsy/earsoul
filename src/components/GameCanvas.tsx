@@ -19,6 +19,7 @@ import {
 import type { ControlVector } from './TouchJoystick'
 import type { LearningObject } from '../types'
 import { canCollect, getSizeTier } from '../game/mechanics'
+import { MaterialIcon } from './MaterialIcon'
 
 interface GameCanvasProps {
   objects: LearningObject[]
@@ -211,7 +212,9 @@ function LearningItem({
         >
           <b>{tier.level}</b>
           {tier.label}
-          <i aria-hidden="true">{available ? '✓' : '↑'}</i>
+          <i>
+            <MaterialIcon name={available ? 'check' : 'arrow_upward'} />
+          </i>
         </span>
       </Html>
       {item.symbol && (

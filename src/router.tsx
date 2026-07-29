@@ -1,5 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
 import { AppLayout } from './components/AppLayout'
+import { M3CircularProgress } from './components/MaterialControls'
 import {
   NavigateContext,
   type AppPath,
@@ -27,7 +28,7 @@ function RouteView({ path }: { path: AppPath }) {
       <Suspense
         fallback={
           <div className="route-loader" role="status">
-            <span aria-hidden="true">가</span>
+            <M3CircularProgress />
             배움 정원을 불러오고 있어요…
           </div>
         }

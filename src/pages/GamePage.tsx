@@ -8,6 +8,15 @@ import {
 import { Brand } from '../components/Brand'
 import { GameCanvas } from '../components/GameCanvas'
 import {
+  M3Button,
+  M3IconButton,
+  M3LinearProgress,
+} from '../components/MaterialControls'
+import {
+  MaterialIcon,
+  type MaterialIconName,
+} from '../components/MaterialIcon'
+import {
   TouchJoystick,
   type ControlVector,
 } from '../components/TouchJoystick'
@@ -61,19 +70,23 @@ function playChime(enabled: boolean, success = true) {
   }
 }
 
-const coachSteps = [
+const coachSteps: {
+  icon: MaterialIconName
+  title: string
+  body: string
+}[] = [
   {
-    icon: '☺',
+    icon: 'sentiment_satisfied',
     title: '배움 친구가 함께 밀어요',
     body: '방향키나 WASD, 또는 화면 왼쪽 조이스틱을 움직이면 친구가 배움별을 밀어요.',
   },
   {
-    icon: '✦',
+    icon: 'wand_stars',
     title: '작은 조각부터 만나요',
     body: '배움별보다 작은 조각에 다가가면 반짝이며 별에 붙어요.',
   },
   {
-    icon: '④',
+    icon: 'filter_4',
     title: '숫자와 바닥 원을 살펴봐요',
     body: '조각 위 숫자와 바닥 원 개수가 클수록 더 큰 조각이에요. 별을 키워 차례로 만나 보세요.',
   },
@@ -233,43 +246,38 @@ export function GamePage() {
             <span>오늘의 탐험</span>
             <strong>배움 조각을 만나 별을 키워요</strong>
           </div>
-          <div
+          <M3LinearProgress
             className="mission-progress"
-            role="progressbar"
-            aria-valuemin={0}
-            aria-valuemax={pack.objects.length}
-            aria-valuenow={session.collectedIds.length}
             aria-label="전체 수집 진행"
-          >
-            <span style={{ width: `${progress * 100}%` }} />
-          </div>
+            aria-valuetext={`${pack.objects.length}개 중 ${session.collectedIds.length}개`}
+            value={progress}
+          />
         </div>
         <div className="score-card" aria-live="polite">
           <span>배움 점수</span>
           <strong>{session.score.toLocaleString()}</strong>
         </div>
-        <button
-          className="icon-button hud-button"
-          type="button"
+        <M3IconButton
+          className="hud-button"
           onClick={() => setSoundEnabled((current) => !current)}
-          aria-label={soundEnabled ? '효과음 끄기' : '효과음 켜기'}
-          aria-pressed={!soundEnabled}
-        >
-          {soundEnabled ? '🔊' : '🔇'}
-        </button>
-        <button
-          className="icon-button hud-button"
-          type="button"
+          aria-label="효과음"
+          icon={soundEnabled ? 'volume_up' : 'volume_off'}
+          selected={soundEnabled}
+          toggle
+        />
+        <M3IconButton
+          className="hud-button"
           onClick={() => setPaused(true)}
           aria-label="일시정지"
-        >
-          Ⅱ
-        </button>
+          icon="pause"
+        />
       </header>
 
       <aside className="size-guide-card" aria-label="배움 조각 크기 안내">
         <div className="size-guide-card__heading">
-          <span aria-hidden="true">◎</span>
+          <span>
+            <MaterialIcon name="adjust" />
+          </span>
           <div>
             <small>조각 크기 안내</small>
             <strong>원과 숫자가 클수록 커요</strong>
@@ -285,8 +293,10 @@ export function GamePage() {
               style={{ '--tier-color': tier.color } as CSSProperties}
             >
               <b>{tier.level}</b>
-              <i aria-hidden="true">
-                {'●'.repeat(tier.level)}
+              <i className="tier-scale-dots" aria-hidden="true">
+                {Array.from({ length: tier.level }, (_, index) => (
+                  <span key={index} />
+                ))}
               </i>
               {tier.label}
             </span>
@@ -329,7 +339,11 @@ export function GamePage() {
           role="status"
           aria-live="polite"
         >
-          <span aria-hidden="true">{toast.tone === 'learned' ? '✦' : '↑'}</span>
+          <span>
+            <MaterialIcon
+              name={toast.tone === 'learned' ? 'wand_stars' : 'trending_up'}
+            />
+          </span>
           <div>
             <strong>{toast.title}</strong>
             <p>{toast.body}</p>
@@ -354,8 +368,8 @@ export function GamePage() {
             <span className="coach-card__step">
               {coachStep + 1} / {coachSteps.length}
             </span>
-            <div className="coach-card__icon" aria-hidden="true">
-              {coachSteps[coachStep].icon}
+            <div className="coach-card__icon">
+              <MaterialIcon name={coachSteps[coachStep].icon} />
             </div>
             <h2 id="coach-title">{coachSteps[coachStep].title}</h2>
             <p>{coachSteps[coachStep].body}</p>
@@ -367,9 +381,9 @@ export function GamePage() {
                 />
               ))}
             </div>
-            <button
+            <M3Button
               className="primary-button primary-button--wide"
-              type="button"
+              icon="arrow_forward"
               onClick={() => {
                 if (coachStep === coachSteps.length - 1) {
                   sessionStorage.setItem('earsoul-coach-v2-seen', 'true')
@@ -382,8 +396,7 @@ export function GamePage() {
               {coachStep === coachSteps.length - 1
                 ? '이제 굴려 볼게요!'
                 : '다음'}
-              <span aria-hidden="true">→</span>
-            </button>
+            </M3Button>
           </section>
         </div>
       )}
@@ -396,31 +409,35 @@ export function GamePage() {
             aria-modal="true"
             aria-labelledby="pause-title"
           >
-            <span className="pause-card__icon" aria-hidden="true">
-              Ⅱ
+            <span className="pause-card__icon">
+              <MaterialIcon name="pause_circle" />
             </span>
             <p className="section-kicker">잠깐 쉬어가요</p>
             <h2 id="pause-title">배움별도 숨을 고르는 중!</h2>
             <p>준비되면 같은 자리에서 다시 시작할 수 있어요.</p>
-            <button
+            <M3Button
               className="primary-button primary-button--wide"
-              type="button"
+              icon="play_arrow"
               onClick={() => setPaused(false)}
               autoFocus
             >
               계속 굴리기
-              <span aria-hidden="true">▶</span>
-            </button>
-            <button
+            </M3Button>
+            <M3Button
               className="secondary-button secondary-button--wide"
-              type="button"
+              variant="tonal"
               onClick={finish}
             >
               지금까지 결과 보기
-            </button>
-            <button className="text-button" type="button" onClick={leaveForHome}>
+            </M3Button>
+            <M3Button
+              className="text-button"
+              variant="text"
+              icon="home"
+              onClick={leaveForHome}
+            >
               이번 기록을 지우고 처음으로
-            </button>
+            </M3Button>
           </section>
         </div>
       )}

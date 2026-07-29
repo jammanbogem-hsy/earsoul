@@ -1,13 +1,22 @@
 import { useState } from 'react'
 import { Brand } from '../components/Brand'
+import { M3Button, M3Switch } from '../components/MaterialControls'
+import {
+  MaterialIcon,
+  type MaterialIconName,
+} from '../components/MaterialIcon'
 import { startSession } from '../game/session'
 import { useAppNavigate } from '../navigation'
 
-const subjectChips = [
-  { label: '한글', symbol: '가', color: 'coral' },
-  { label: '수학', symbol: '△', color: 'blue' },
-  { label: '과학', symbol: '🌱', color: 'green' },
-  { label: '생활', symbol: '♪', color: 'yellow' },
+const subjectChips: {
+  label: string
+  icon: MaterialIconName
+  color: string
+}[] = [
+  { label: '한글', icon: 'text_fields', color: 'coral' },
+  { label: '수학', icon: 'calculate', color: 'blue' },
+  { label: '과학', icon: 'science', color: 'green' },
+  { label: '생활', icon: 'music_note', color: 'yellow' },
 ]
 
 export function HomePage() {
@@ -30,15 +39,14 @@ export function HomePage() {
     <main id="main-content" className="home-page">
       <header className="home-header page-container">
         <Brand compact />
-        <label className="motion-toggle">
-          <input
-            type="checkbox"
+        <div className="motion-toggle">
+          <M3Switch
+            aria-label="움직임 줄이기"
             checked={reducedMotion}
-            onChange={(event) => setReducedMotion(event.target.checked)}
+            onChange={setReducedMotion}
           />
-          <span aria-hidden="true" />
-          움직임 줄이기
-        </label>
+          <span className="motion-toggle__label">움직임 줄이기</span>
+        </div>
       </header>
 
       <section className="hero page-container">
@@ -53,12 +61,15 @@ export function HomePage() {
             알록달록한 배움 정원을 굴러 다니며 한글, 수학, 과학 조각을
             발견해요. 배움 친구와 함께 작은 조각부터 차근차근 모아 보세요.
           </p>
-          <button type="button" className="primary-button" onClick={begin}>
+          <M3Button
+            className="primary-button"
+            icon="arrow_forward"
+            onClick={begin}
+          >
             배움 정원 들어가기
-            <span aria-hidden="true">→</span>
-          </button>
+          </M3Button>
           <p className="privacy-note">
-            <span aria-hidden="true">●</span>
+            <MaterialIcon name="privacy_tip" />
             이름을 묻지 않고, 점수는 현재 브라우저 세션에만 남겨요.
           </p>
         </div>
@@ -70,12 +81,16 @@ export function HomePage() {
           </div>
           <div className="hero-orb">
             <span className="hero-orb__face">가</span>
+            <MaterialIcon
+              name="sentiment_satisfied"
+              className="hero-orb__smile"
+            />
             {subjectChips.map((chip, index) => (
               <span
                 key={chip.label}
                 className={`hero-token hero-token--${chip.color} hero-token--${index + 1}`}
               >
-                {chip.symbol}
+                <MaterialIcon name={chip.icon} />
               </span>
             ))}
           </div>
@@ -88,9 +103,15 @@ export function HomePage() {
             <span className="hero-helper__leg hero-helper__leg--right" />
           </div>
           <div className="hero-world__ground">
-            <span className="sprout sprout--one">✦</span>
-            <span className="sprout sprout--two">✿</span>
-            <span className="sprout sprout--three">▲</span>
+            <span className="sprout sprout--one">
+              <MaterialIcon name="wand_stars" />
+            </span>
+            <span className="sprout sprout--two">
+              <MaterialIcon name="local_florist" />
+            </span>
+            <span className="sprout sprout--three">
+              <MaterialIcon name="change_history" />
+            </span>
           </div>
         </div>
       </section>
@@ -103,7 +124,9 @@ export function HomePage() {
         <div className="subject-list">
           {subjectChips.map((chip) => (
             <div key={chip.label} className={`subject-chip is-${chip.color}`}>
-              <span>{chip.symbol}</span>
+              <span>
+                <MaterialIcon name={chip.icon} />
+              </span>
               <strong>{chip.label}</strong>
             </div>
           ))}
@@ -120,9 +143,15 @@ export function HomePage() {
             <span className="step-number">1</span>
             <div className="step-visual step-visual--keys" aria-hidden="true">
               <kbd>W</kbd>
-              <kbd>←</kbd>
-              <kbd>↑</kbd>
-              <kbd>→</kbd>
+              <kbd>
+                <MaterialIcon name="keyboard_arrow_left" />
+              </kbd>
+              <kbd>
+                <MaterialIcon name="keyboard_arrow_up" />
+              </kbd>
+              <kbd>
+                <MaterialIcon name="keyboard_arrow_right" />
+              </kbd>
             </div>
             <h3>천천히 굴려요</h3>
             <p>키보드 방향키나 화면의 둥근 조이스틱을 사용해요.</p>
@@ -131,7 +160,9 @@ export function HomePage() {
             <span className="step-number">2</span>
             <div className="step-visual step-visual--collect" aria-hidden="true">
               <i>가</i>
-              <b>+</b>
+              <b>
+                <MaterialIcon name="add" />
+              </b>
               <i>△</i>
             </div>
             <h3>작은 것부터 만나요</h3>
@@ -140,10 +171,18 @@ export function HomePage() {
           <li>
             <span className="step-number">3</span>
             <div className="step-visual step-visual--size" aria-hidden="true">
-              <i>①</i>
-              <i>②</i>
-              <i>③</i>
-              <i>④</i>
+              <i>
+                <MaterialIcon name="looks_one" />
+              </i>
+              <i>
+                <MaterialIcon name="looks_two" />
+              </i>
+              <i>
+                <MaterialIcon name="looks_3" />
+              </i>
+              <i>
+                <MaterialIcon name="looks_4" />
+              </i>
             </div>
             <h3>크기 단계를 살펴봐요</h3>
             <p>숫자와 바닥 원이 작은 조각부터 차례로 모아요.</p>
