@@ -26,7 +26,9 @@ import {
   type ComboState,
 } from '../game/combo'
 import {
+  advanceSessionStage,
   calculateBallRadius,
+  clearSession,
   finishSession,
   readSession,
   recordCollection,
@@ -34,7 +36,7 @@ import {
 import {
   getReachableSizeTier,
   getSizeTier,
-  SIZE_TIERS,
+  getStageProgress,
 } from '../game/mechanics'
 import type { GameSession, LearningObject, LearningPack } from '../types'
 import { Redirect, useAppNavigate } from '../navigation'
@@ -107,6 +109,10 @@ export function GamePage() {
     tone: 'learned' | 'wait'
   } | null>(null)
   const [comboMultiplier, setComboMultiplier] = useState(1)
+  const [stagePromptOpen, setStagePromptOpen] = useState(
+    import.meta.env.DEV &&
+      new URLSearchParams(window.location.search).get('complete') === 'true',
+  )
   const [scoreFeedback, setScoreFeedback] = useState<{
     id: number
     points: number
@@ -179,8 +185,29 @@ export function GamePage() {
     return <Redirect to="/" />
   }
 
+  const previewStageIndex = import.meta.env.DEV
+    ? Number(new URLSearchParams(window.location.search).get('stage')) - 1
+    : Number.NaN
+  const stageIndex = Math.min(
+    Number.isInteger(previewStageIndex) && previewStageIndex >= 0
+      ? previewStageIndex
+      : session.currentStageIndex,
+    Math.max(0, pack.stages.length - 1),
+  )
+  const stage = pack.stages[stageIndex] ?? fallbackLearningPack.stages[0]
+  const stageProgress = getStageProgress(
+    stage.objects,
+    session.collectedIds,
+    stage.objectiveCount,
+  )
+  const stageCollectedCount = stageProgress.collectedCount
+  const attachedObjects = pack.objects.filter((item) =>
+    session.collectedIds.includes(item.id),
+  )
+  const stageReady = stageProgress.ready
+  const bonusCount = stageProgress.bonusCount
   const ballRadius = calculateBallRadius(session.collectedIds.length)
-  const progress = session.collectedIds.length / pack.objects.length
+  const progress = stageProgress.progress
   const reachableTier = getReachableSizeTier(ballRadius)
 
   const handleCollect = (item: LearningObject) => {
@@ -235,8 +262,17 @@ export function GamePage() {
       tone: 'learned',
     })
 
-    if (next.collectedIds.length === pack.objects.length) {
-      window.setTimeout(() => finish(), 900)
+    const nextStageProgress = getStageProgress(
+      stage.objects,
+      next.collectedIds,
+      stage.objectiveCount,
+    )
+    if (
+      !stageProgress.ready &&
+      nextStageProgress.ready
+    ) {
+      setControlVector({ x: 0, z: 0 })
+      window.setTimeout(() => setStagePromptOpen(true), 700)
     }
   }
 
@@ -261,23 +297,55 @@ export function GamePage() {
     navigate('/results')
   }
 
+  const moveToNextStage = () => {
+    const current = sessionRef.current
+    if (!current) return
+    if (stageIndex >= pack.stages.length - 1) {
+      finish()
+      return
+    }
+
+    const nextStageIndex = stageIndex + 1
+    const next = advanceSessionStage(current, nextStageIndex)
+    const nextStage = pack.stages[nextStageIndex]
+    comboStateRef.current = { count: 0, lastCollectedAt: 0 }
+    setComboMultiplier(1)
+    setControlVector({ x: 0, z: 0 })
+    setStagePromptOpen(false)
+    sessionRef.current = next
+    setSession(next)
+    showToast(
+      {
+        title: `${nextStageIndex + 1}단계 · ${nextStage.title}`,
+        body: nextStage.description,
+        tone: 'learned',
+      },
+      3200,
+    )
+  }
+
   const leaveForHome = () => {
     const shouldLeave = window.confirm(
       '처음 화면으로 돌아가면 이번 놀이 기록이 사라져요. 돌아갈까요?',
     )
     if (shouldLeave) {
-      sessionStorage.removeItem('earsoul-learning-session')
+      clearSession()
       navigate('/')
     }
   }
 
-  const isGamePaused = paused || coachStep >= 0
+  const isGamePaused = paused || coachStep >= 0 || stagePromptOpen
 
   return (
     <main id="main-content" className="game-page">
-      <div className="game-stage" aria-label={`${pack.title} 3D 놀이 화면`}>
+      <div
+        className="game-stage"
+        aria-label={`${stage.title} 3D 놀이 화면`}
+      >
         <GameCanvas
-          objects={pack.objects}
+          key={stage.id}
+          stage={stage}
+          attachedObjects={attachedObjects}
           collectedIds={session.collectedIds}
           ballRadius={ballRadius}
           paused={isGamePaused}
@@ -291,49 +359,52 @@ export function GamePage() {
       <header className="game-hud" aria-label="놀이 상태와 설정">
         <section
           className="game-size-status"
-          data-tier={reachableTier.level}
-          style={{ '--tier-color': reachableTier.color } as CSSProperties}
-          aria-label={`현재 ${reachableTier.level}단계 ${reachableTier.label}, ${pack.objects.length}개 중 ${session.collectedIds.length}개 수집`}
+          data-stage={stageIndex + 1}
+          style={{ '--tier-color': stage.accentColor } as CSSProperties}
+          aria-label={`${pack.stages.length}개 중 ${stageIndex + 1}번째 맵 ${stage.title}, 목표 ${stage.objectiveCount}개 중 ${stageCollectedCount}개 수집`}
         >
           <span
             className="game-size-status__level"
             aria-hidden="true"
           >
-            <small>크기</small>
-            <strong>{reachableTier.level}</strong>
+            <small>맵</small>
+            <strong>{stageIndex + 1}</strong>
           </span>
           <div className="game-size-status__copy">
-            <span>지금 모을 아이템</span>
-            <strong>{reachableTier.label}</strong>
+            <span>
+              스테이지 {stageIndex + 1}/{pack.stages.length} ·{' '}
+              {reachableTier.level}단계 크기
+            </span>
+            <strong>{stage.title}</strong>
             <M3LinearProgress
               className="game-size-progress"
-              aria-label="붙인 아이템"
-              aria-valuetext={`${pack.objects.length}개 중 ${session.collectedIds.length}개를 러닝볼에 붙였어요`}
+              aria-label="현재 맵 목표"
+              aria-valuetext={`목표 ${stage.objectiveCount}개 중 ${stageCollectedCount}개를 붙였어요`}
               value={progress}
             />
           </div>
           <span className="game-size-status__count" aria-hidden="true">
-            <strong>{session.collectedIds.length}</strong>
-            <small>/{pack.objects.length}</small>
+            <strong>{Math.min(stageCollectedCount, stage.objectiveCount)}</strong>
+            <small>/{stage.objectiveCount}</small>
           </span>
-          <ol className="game-tier-legend" aria-label="아이템 크기 네 단계">
-            {SIZE_TIERS.map((tier) => (
+          <ol className="game-tier-legend" aria-label="세 개의 러닝 맵">
+            {pack.stages.map((map, index) => (
               <li
-                key={tier.level}
+                key={map.id}
                 className={[
-                  tier.level < reachableTier.level ? 'is-reached' : '',
-                  tier.level === reachableTier.level ? 'is-current' : '',
+                  index < stageIndex ? 'is-reached' : '',
+                  index === stageIndex ? 'is-current' : '',
                 ]
                   .filter(Boolean)
                   .join(' ')}
-                style={{ '--tier-color': tier.color } as CSSProperties}
+                style={{ '--tier-color': map.accentColor } as CSSProperties}
                 aria-current={
-                  tier.level === reachableTier.level ? 'step' : undefined
+                  index === stageIndex ? 'step' : undefined
                 }
-                aria-label={`${tier.level}단계 ${tier.label}`}
+                aria-label={`${index + 1}단계 ${map.title}`}
               >
                 <i aria-hidden="true" />
-                <span>{tier.level}</span>
+                <span>{index + 1}</span>
               </li>
             ))}
           </ol>
@@ -401,6 +472,21 @@ export function GamePage() {
         </div>
       </header>
 
+      {stageReady && !stagePromptOpen && !paused && coachStep < 0 && (
+        <M3Button
+          className="stage-ready-button"
+          icon={stageIndex < pack.stages.length - 1 ? 'arrow_forward' : 'star'}
+          onClick={() => {
+            setControlVector({ x: 0, z: 0 })
+            setStagePromptOpen(true)
+          }}
+        >
+          {stageIndex < pack.stages.length - 1
+            ? '다음 맵 열림'
+            : '기록 완성하기'}
+        </M3Button>
+      )}
+
       <div className="desktop-controls" aria-hidden="true">
         <span>
           <kbd>W</kbd>
@@ -437,12 +523,16 @@ export function GamePage() {
           <strong>
             {toast
               ? toast.title
-              : `러닝 아이템 ${session.collectedIds.length}개를 붙였어요`}
+              : stageReady
+                ? `${stage.title} 목표를 달성했어요`
+                : `${stage.title} · ${stageCollectedCount}/${stage.objectiveCount}`}
           </strong>
           <p>
             {toast
               ? toast.body
-              : `${reachableTier.level}단계 ${reachableTier.label}에 가까이 가 보세요.`}
+              : stageReady
+                ? `보너스 ${bonusCount}개 · 더 모으거나 다음 맵으로 갈 수 있어요.`
+                : `64개 중 원하는 길을 골라 ${stage.objectiveCount - stageCollectedCount}개만 더 모아요.`}
           </p>
         </div>
       </div>
@@ -475,6 +565,70 @@ export function GamePage() {
               }}
             >
               바로 굴리기
+            </M3Button>
+          </section>
+        </div>
+      )}
+
+      {stagePromptOpen && (
+        <div className="modal-backdrop">
+          <section
+            className="stage-complete-card"
+            style={{ '--stage-accent': stage.accentColor } as CSSProperties}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="stage-complete-title"
+          >
+            <span className="stage-complete-card__icon">
+              <MaterialIcon
+                name={
+                  stage.theme === 'sunny-plaza'
+                    ? 'directions_run'
+                    : stage.theme === 'forest-trail'
+                      ? 'local_florist'
+                      : 'diamond'
+                }
+              />
+            </span>
+            <p className="section-kicker">
+              스테이지 {stageIndex + 1}/{pack.stages.length} 목표 달성
+            </p>
+            <h2 id="stage-complete-title">{stage.title} 길이 열렸어요!</h2>
+            <p>
+              목표 {stage.objectiveCount}개를 모았어요.
+              {bonusCount > 0 && ` 보너스 아이템도 ${bonusCount}개 더 찾았어요.`}
+            </p>
+            <div className="stage-complete-card__stats">
+              <span>
+                <MaterialIcon name="star" />
+                {session.score.toLocaleString()}점
+              </span>
+              <span>
+                <MaterialIcon name="progress_activity" />
+                최고 x{session.bestCombo}
+              </span>
+            </div>
+            <M3Button
+              className="primary-button primary-button--wide"
+              icon={
+                stageIndex < pack.stages.length - 1
+                  ? 'arrow_forward'
+                  : 'star'
+              }
+              onClick={moveToNextStage}
+              autoFocus
+            >
+              {stageIndex < pack.stages.length - 1
+                ? `${pack.stages[stageIndex + 1].title}로`
+                : '이번 기록 완성하기'}
+            </M3Button>
+            <M3Button
+              className="secondary-button secondary-button--wide"
+              variant="tonal"
+              icon="directions_run"
+              onClick={() => setStagePromptOpen(false)}
+            >
+              이 맵에서 보너스 더 모으기
             </M3Button>
           </section>
         </div>

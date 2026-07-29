@@ -19,6 +19,32 @@ const subjectChips: {
   { label: '보물', icon: 'diamond', color: 'yellow' },
 ]
 
+const stageMaps: {
+  title: string
+  description: string
+  icon: MaterialIconName
+  color: string
+}[] = [
+  {
+    title: '햇살 스타트 광장',
+    description: '넓은 광장과 러닝 트랙',
+    icon: 'directions_run',
+    color: 'green',
+  },
+  {
+    title: '바람숲 트레일',
+    description: '갈림길이 많은 숲길',
+    icon: 'local_florist',
+    color: 'yellow',
+  },
+  {
+    title: '별빛 리버파크',
+    description: '강변과 컬러 브리지',
+    icon: 'diamond',
+    color: 'blue',
+  },
+]
+
 export function HomePage() {
   const navigate = useAppNavigate()
   const [reducedMotion, setReducedMotion] = useState(
@@ -58,15 +84,16 @@ export function HomePage() {
             <span>나만의 러닝볼</span>을 키워요
           </h1>
           <p className="hero-description">
-            넓어진 러닝 파크를 누비며 운동화, 음료수 캔, 시계와 보물조각을
-            모아요. 빠르게 이어 모을수록 콤보 점수가 커져요.
+            서로 다른 세 개의 넓은 맵을 누비며 운동화, 음료수 캔, 시계와
+            보물조각을 모아요. 원하는 길을 고르고 빠르게 이어 모을수록
+            콤보 점수가 커져요.
           </p>
           <M3Button
             className="primary-button"
             icon="arrow_forward"
             onClick={begin}
           >
-            러닝 파크 들어가기
+            3개 러닝 맵 시작하기
           </M3Button>
           <p className="privacy-note">
             <MaterialIcon name="privacy_tip" />
@@ -120,16 +147,19 @@ export function HomePage() {
 
       <section className="subjects page-container" aria-labelledby="subject-title">
         <div>
-          <p className="section-kicker">오늘 만날 러닝 아이템</p>
-          <h2 id="subject-title">네 가지 수집 테마를 한 파크에서</h2>
+          <p className="section-kicker">러닝크루 월드 투어</p>
+          <h2 id="subject-title">세 가지 맵을 자유롭게 탐험해요</h2>
         </div>
-        <div className="subject-list">
-          {subjectChips.map((chip) => (
-            <div key={chip.label} className={`subject-chip is-${chip.color}`}>
+        <div className="subject-list stage-map-list">
+          {stageMaps.map((map) => (
+            <div key={map.title} className={`subject-chip is-${map.color}`}>
               <span>
-                <MaterialIcon name={chip.icon} />
+                <MaterialIcon name={map.icon} />
               </span>
-              <strong>{chip.label}</strong>
+              <div>
+                <strong>{map.title}</strong>
+                <small>{map.description}</small>
+              </div>
             </div>
           ))}
         </div>

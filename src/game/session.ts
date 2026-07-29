@@ -1,6 +1,6 @@
 import type { GameSession } from '../types'
 
-export const SESSION_KEY = 'earsoul-learning-session'
+export const SESSION_KEY = 'earsoul-learning-session-v3'
 
 const emptySession = (): GameSession => {
   const now = Date.now()
@@ -11,6 +11,7 @@ const emptySession = (): GameSession => {
     updatedAt: now,
     score: 0,
     bestCombo: 0,
+    currentStageIndex: 0,
     collectedIds: [],
     collectedLabels: [],
     durationSeconds: 0,
@@ -26,6 +27,7 @@ export function readSession(): GameSession | null {
     return {
       ...session,
       bestCombo: session.bestCombo ?? 0,
+      currentStageIndex: Math.max(0, session.currentStageIndex ?? 0),
     }
   } catch {
     return null
@@ -58,6 +60,19 @@ export function recordCollection(
     bestCombo: Math.max(session.bestCombo ?? 0, combo),
     collectedIds: [...session.collectedIds, item.id],
     collectedLabels: [...session.collectedLabels, item.label],
+  })
+}
+
+export function advanceSessionStage(
+  session: GameSession,
+  nextStageIndex: number,
+): GameSession {
+  return saveSession({
+    ...session,
+    currentStageIndex: Math.max(
+      session.currentStageIndex,
+      Math.floor(nextStageIndex),
+    ),
   })
 }
 

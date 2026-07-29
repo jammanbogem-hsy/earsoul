@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { fallbackLearningPack } from '../data/learningPack'
+import { calculateBallRadius } from './session'
 import {
   canCollect,
   canCompletePack,
@@ -7,6 +8,7 @@ import {
   getObjectVisualScale,
   getReachableSizeTier,
   getSizeTier,
+  getStageProgress,
 } from './mechanics'
 
 describe('rolling collection progression', () => {
@@ -35,17 +37,62 @@ describe('rolling collection progression', () => {
     expect(getObjectVisualScale(1.42)).toBe(1.65)
   })
 
-  it('spreads the running items across the expanded park with a friendly start', () => {
-    const distances = fallbackLearningPack.objects.map((item) =>
-      Math.hypot(item.position[0], item.position[2]),
+  it('offers three increasingly wide maps with many optional routes', () => {
+    expect(fallbackLearningPack.stages).toHaveLength(3)
+    expect(fallbackLearningPack.objects).toHaveLength(192)
+
+    fallbackLearningPack.stages.forEach((stage) => {
+      expect(stage.objects).toHaveLength(64)
+      expect(stage.objects.length).toBeGreaterThanOrEqual(
+        stage.objectiveCount * 3,
+      )
+      expect(
+        stage.objects.every(
+          (item) =>
+            Math.hypot(item.position[0], item.position[2]) <
+            stage.mapSize / 2,
+        ),
+      ).toBe(true)
+    })
+
+    expect(fallbackLearningPack.stages.map((stage) => stage.mapSize)).toEqual([
+      88, 100, 112,
+    ])
+  })
+
+  it('starts each map with reachable choices near the spawn point', () => {
+    let collectedCount = 0
+
+    fallbackLearningPack.stages.forEach((stage) => {
+      const radius = calculateBallRadius(collectedCount)
+      const nearby = stage.objects.filter(
+        (item) => Math.hypot(item.position[0], item.position[2]) < 7,
+      )
+
+      expect(nearby.length).toBeGreaterThanOrEqual(8)
+      expect(nearby.some((item) => canCollect(radius, item.size))).toBe(true)
+      collectedCount += stage.objectiveCount
+    })
+  })
+
+  it('opens the next map at the goal while keeping extras as bonuses', () => {
+    const stage = fallbackLearningPack.stages[0]
+    const goalIds = stage.objects
+      .slice(0, stage.objectiveCount)
+      .map((item) => item.id)
+    const ready = getStageProgress(
+      stage.objects,
+      goalIds,
+      stage.objectiveCount,
     )
-    const starterItems = fallbackLearningPack.objects.filter(
-      (item) => Math.hypot(item.position[0], item.position[2]) <= 3,
+    const bonus = getStageProgress(
+      stage.objects,
+      [...goalIds, stage.objects[stage.objectiveCount].id],
+      stage.objectiveCount,
     )
 
-    expect(Math.max(...distances)).toBeGreaterThan(26)
-    expect(distances.every((distance) => distance < 27)).toBe(true)
-    expect(starterItems).toHaveLength(3)
-    expect(starterItems.every((item) => canCollect(0.5, item.size))).toBe(true)
+    expect(ready.ready).toBe(true)
+    expect(ready.progress).toBe(1)
+    expect(bonus.bonusCount).toBe(1)
   })
 })

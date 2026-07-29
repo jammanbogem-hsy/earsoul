@@ -1,6 +1,11 @@
-import type { LearningObject, LearningPack } from '../types'
+import type {
+  GameStage,
+  LearningObject,
+  LearningPack,
+  StageTheme,
+} from '../types'
 
-const objects: LearningObject[] = [
+const objectTemplates: LearningObject[] = [
   {
     id: 'runner-lace',
     label: '번개 운동화 끈',
@@ -333,8 +338,130 @@ const objects: LearningObject[] = [
   },
 ]
 
+const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5))
+const OBJECTS_PER_STAGE = 64
+
+interface StageBlueprint {
+  id: string
+  title: string
+  subtitle: string
+  description: string
+  theme: StageTheme
+  mapSize: number
+  objectiveCount: number
+  accentColor: string
+  skyColor: string
+  fogColor: string
+  templateStart: number
+  templateEnd: number
+  colors: string[]
+}
+
+const stageBlueprints: StageBlueprint[] = [
+  {
+    id: 'sunny-start',
+    title: '햇살 스타트 광장',
+    subtitle: '가볍게 몸을 푸는 첫 번째 맵',
+    description: '넓은 광장과 러닝 트랙 사이에서 작은 기어와 보물을 모아요.',
+    theme: 'sunny-plaza',
+    mapSize: 88,
+    objectiveCount: 14,
+    accentColor: '#16866A',
+    skyColor: '#D9F2FF',
+    fogColor: '#D9F2FF',
+    templateStart: 0,
+    templateEnd: 12,
+    colors: ['#FF6B6B', '#38BDF8', '#FBBF24', '#2DD4BF', '#A78BFA'],
+  },
+  {
+    id: 'wind-forest',
+    title: '바람숲 트레일',
+    subtitle: '갈림길을 골라 달리는 두 번째 맵',
+    description: '나무 사이의 여러 오솔길을 고르며 러닝 장비와 기록 아이템을 찾아요.',
+    theme: 'forest-trail',
+    mapSize: 100,
+    objectiveCount: 16,
+    accentColor: '#477A38',
+    skyColor: '#CDE7D4',
+    fogColor: '#CDE7D4',
+    templateStart: 8,
+    templateEnd: 23,
+    colors: ['#0EA5E9', '#F97316', '#22C55E', '#8B5CF6', '#EC4899'],
+  },
+  {
+    id: 'starlight-river',
+    title: '별빛 리버파크',
+    subtitle: '반짝이는 강변을 누비는 마지막 맵',
+    description: '별빛 산책로와 컬러 브리지를 자유롭게 오가며 큰 보물을 모아요.',
+    theme: 'starlight-river',
+    mapSize: 112,
+    objectiveCount: 18,
+    accentColor: '#6557C8',
+    skyColor: '#263657',
+    fogColor: '#34486B',
+    templateStart: 16,
+    templateEnd: objectTemplates.length,
+    colors: ['#60A5FA', '#FB7185', '#A78BFA', '#FBBF24', '#2DD4BF'],
+  },
+]
+
+function createStageObjects(
+  blueprint: StageBlueprint,
+  stageIndex: number,
+): LearningObject[] {
+  const templates = objectTemplates.slice(
+    blueprint.templateStart,
+    blueprint.templateEnd,
+  )
+  const maxRadius = blueprint.mapSize / 2 - 5
+
+  return Array.from({ length: OBJECTS_PER_STAGE }, (_, index) => {
+    const template = templates[index % templates.length]
+    const starter = index < 8
+    const progress = Math.max(0, (index - 7) / (OBJECTS_PER_STAGE - 8))
+    const radius = starter
+      ? 2.4 + index * 0.58
+      : 7 + Math.sqrt(progress) * (maxRadius - 7)
+    const angle =
+      index * GOLDEN_ANGLE +
+      stageIndex * 0.83 +
+      Math.sin(index * 1.7 + stageIndex) * 0.11
+    const sizeVariation = ((index % 3) - 1) * 0.012
+
+    return {
+      ...template,
+      id: `${blueprint.id}-${template.id}-${index + 1}`,
+      modelId: template.id,
+      stageId: blueprint.id,
+      size: Math.max(0.2, template.size + sizeVariation),
+      points: template.points + stageIndex * 8 + (index % 4) * 2,
+      color: blueprint.colors[(index + stageIndex) % blueprint.colors.length],
+      position: [
+        Number((Math.cos(angle) * radius).toFixed(2)),
+        0,
+        Number((Math.sin(angle) * radius).toFixed(2)),
+      ],
+    }
+  })
+}
+
+const stages: GameStage[] = stageBlueprints.map((blueprint, index) => ({
+  id: blueprint.id,
+  title: blueprint.title,
+  subtitle: blueprint.subtitle,
+  description: blueprint.description,
+  theme: blueprint.theme,
+  mapSize: blueprint.mapSize,
+  objectiveCount: blueprint.objectiveCount,
+  accentColor: blueprint.accentColor,
+  skyColor: blueprint.skyColor,
+  fogColor: blueprint.fogColor,
+  objects: createStageObjects(blueprint, index),
+}))
+
 export const fallbackLearningPack: LearningPack = {
-  version: 2,
-  title: '반짝 러닝크루 파크',
-  objects,
+  version: 3,
+  title: '러닝크루 월드 투어',
+  stages,
+  objects: stages.flatMap((stage) => stage.objects),
 }

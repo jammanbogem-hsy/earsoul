@@ -69,6 +69,10 @@ export function ResultsPage() {
             <dd>{session.collectedIds.length}개</dd>
           </div>
           <div>
+            <dt>도달한 맵</dt>
+            <dd>{Math.min(3, session.currentStageIndex + 1)}/3</dd>
+          </div>
+          <div>
             <dt>도달한 크기</dt>
             <dd>{reachedTier.level}단계</dd>
           </div>
@@ -85,8 +89,8 @@ export function ResultsPage() {
           </div>
           <div className="discovery-chips">
             {session.collectedLabels.length ? (
-              session.collectedLabels.map((label) => (
-                <span key={label}>{label}</span>
+              session.collectedLabels.map((label, index) => (
+                <span key={`${label}-${index}`}>{label}</span>
               ))
             ) : (
               <span>다음 챌린지에서 첫 아이템을 모아 보세요.</span>

@@ -37,6 +37,27 @@ export function getObjectVisualScale(objectSize: number): number {
   return OBJECT_VISUAL_SCALES[getSizeTier(objectSize).level - 1]
 }
 
+export function getStageProgress(
+  objects: Pick<LearningObject, 'id'>[],
+  collectedIds: string[],
+  objectiveCount: number,
+) {
+  const collectedSet = new Set(collectedIds)
+  const collectedCount = objects.reduce(
+    (count, item) => count + (collectedSet.has(item.id) ? 1 : 0),
+    0,
+  )
+  const goal = Math.max(1, Math.min(objects.length, objectiveCount))
+
+  return {
+    collectedCount,
+    goal,
+    bonusCount: Math.max(0, collectedCount - goal),
+    ready: collectedCount >= goal,
+    progress: Math.min(1, collectedCount / goal),
+  }
+}
+
 export function getReachableSizeTier(ballRadius: number) {
   const limit = getCollectibleLimit(ballRadius)
   return (

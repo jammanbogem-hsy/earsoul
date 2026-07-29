@@ -9,6 +9,8 @@ function isLearningPack(value: unknown): value is LearningPack {
 
   return (
     typeof candidate.title === 'string' &&
+    Array.isArray(candidate.stages) &&
+    candidate.stages.length === 3 &&
     Array.isArray(candidate.objects)
   )
 }

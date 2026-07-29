@@ -6,7 +6,7 @@ import {
   Quaternion,
   Vector3,
 } from 'three'
-import type { LearningObject } from '../../types'
+import type { LearningObject, StageTheme } from '../../types'
 import { getObjectVisualScale } from '../../game/mechanics'
 
 export interface LearningObjectMeshProps {
@@ -24,17 +24,45 @@ export interface AttachedObjectMeshProps {
 export interface GardenSetDressingProps {
   floorSize?: number
   receiveShadow?: boolean
+  theme?: StageTheme
 }
 
 type VectorTuple = [number, number, number]
 
 const PAPER = '#FFFDF7'
 const INK = '#273548'
-const TRACK = '#EBD8B2'
 const WOOD = '#A96F45'
 const GOLD = '#F8C84A'
-const LEAF = '#3F995B'
 const PALETTE = ['#FF6B6B', '#38BDF8', '#FBBF24', '#2DD4BF', '#A78BFA']
+const SCENERY_THEMES = {
+  'sunny-plaza': {
+    ground: '#D9F1D3',
+    track: '#EBD8B2',
+    trail: '#F4E5C7',
+    plaza: '#BFE6DA',
+    trunk: '#8C5B3C',
+    leaves: ['#327D50', '#3F995B', '#52A963', '#63B967'],
+    markers: PALETTE,
+  },
+  'forest-trail': {
+    ground: '#ABC99E',
+    track: '#CDB88D',
+    trail: '#E4D1A7',
+    plaza: '#91B88B',
+    trunk: '#76503A',
+    leaves: ['#235C3B', '#34734A', '#4C8B4E', '#6CA45D'],
+    markers: ['#FBBF24', '#F97316', '#38BDF8', '#A3E635', '#FB7185'],
+  },
+  'starlight-river': {
+    ground: '#526B73',
+    track: '#7D75A9',
+    trail: '#A99EC8',
+    plaza: '#5A7F91',
+    trunk: '#46505D',
+    leaves: ['#31546B', '#3C6477', '#4D7181', '#5B8191'],
+    markers: ['#60A5FA', '#A78BFA', '#FBBF24', '#2DD4BF', '#FB7185'],
+  },
+} as const
 const UP = new Vector3(0, 1, 0)
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5))
 
@@ -706,7 +734,7 @@ export function LearningObjectMesh({
 }: LearningObjectMeshProps) {
   const compact = detail === 'attached'
 
-  switch (item.id) {
+  switch (item.modelId ?? item.id) {
     case 'runner-lace':
       return <RunnerLace color={item.color} />
     case 'crew-badge':
@@ -981,17 +1009,20 @@ function rotateOffset(
 }
 
 /**
- * A deterministic 58–60 unit running park. Track markers, trees, bushes,
- * benches, gear racks and stepping blocks are instanced for mobile rendering.
+ * Deterministic stage scenery. Track markers, trees, bushes, benches, gear
+ * racks and stepping blocks stay instanced for mobile rendering.
  */
 export function GardenSetDressing({
   floorSize = 60,
   receiveShadow = true,
+  theme = 'sunny-plaza',
 }: GardenSetDressingProps) {
-  const parkSize = Math.max(58, Math.min(60, floorSize))
+  const parkSize = Math.max(72, Math.min(120, floorSize))
+  const mapScale = parkSize / 60
+  const themeColors = SCENERY_THEMES[theme]
   const scenery = useMemo(() => {
     const edgeRadius = parkSize * 0.468
-    const treeCount = 22
+    const treeCount = Math.round(22 * mapScale)
     const trunks: InstanceSpec[] = []
     const leaves: InstanceSpec[] = []
     const bushes: InstanceSpec[] = []
@@ -1002,20 +1033,21 @@ export function GardenSetDressing({
       const x = Math.cos(angle) * radius
       const z = Math.sin(angle) * radius
       trunks.push({
-        color: index % 2 ? WOOD : '#8C5B3C',
+        color: index % 2 ? WOOD : themeColors.trunk,
         position: [x, 0.78, z],
         scale: [0.38, 1.56, 0.38],
         rotationY: angle,
       })
       leaves.push(
         {
-          color: index % 2 ? LEAF : '#327D50',
+          color: themeColors.leaves[index % themeColors.leaves.length],
           position: [x, 2.2, z],
           scale: [1.5, 1.28, 1.42],
           rotationY: angle,
         },
         {
-          color: index % 2 ? '#63B967' : '#52A963',
+          color:
+            themeColors.leaves[(index + 2) % themeColors.leaves.length],
           position: [x + Math.cos(angle + 0.7) * 0.55, 2.7, z + Math.sin(angle + 0.7) * 0.55],
           scale: [0.95, 0.88, 0.92],
           rotationY: angle,
@@ -1025,7 +1057,8 @@ export function GardenSetDressing({
         const bushAngle = angle + Math.PI / treeCount
         const bushRadius = edgeRadius - 2.2
         bushes.push({
-          color: index % 4 ? '#5BBE69' : '#43A85A',
+          color:
+            themeColors.leaves[(index + 1) % themeColors.leaves.length],
           position: [
             Math.cos(bushAngle) * bushRadius,
             0.42,
@@ -1037,19 +1070,89 @@ export function GardenSetDressing({
       }
     })
 
+    if (theme === 'forest-trail') {
+      Array.from({ length: 18 }, (_, index) => {
+        const angle = index * GOLDEN_ANGLE + 0.35
+        const radius =
+          parkSize * (0.1 + (index % 3) * 0.07) +
+          Math.sin(index * 1.3) * 1.4
+        const x = Math.cos(angle) * radius
+        const z = Math.sin(angle) * radius
+        trunks.push({
+          color: themeColors.trunk,
+          position: [x, 0.68, z],
+          scale: [0.31, 1.36, 0.31],
+          rotationY: angle,
+        })
+        leaves.push({
+          color:
+            themeColors.leaves[(index + 1) % themeColors.leaves.length],
+          position: [x, 1.95, z],
+          scale: [1.18, 1.08, 1.15],
+          rotationY: angle,
+        })
+      })
+    }
+
+    if (theme === 'starlight-river') {
+      Array.from({ length: 16 }, (_, index) => {
+        const angle = (index / 16) * Math.PI * 2
+        const radius = parkSize * (index % 2 ? 0.18 : 0.34)
+        const x = Math.cos(angle) * radius
+        const z = Math.sin(angle) * radius
+        trunks.push({
+          color: '#29394E',
+          position: [x, 0.88, z],
+          scale: [0.12, 1.76, 0.12],
+          rotationY: angle,
+        })
+        leaves.push({
+          color:
+            themeColors.markers[index % themeColors.markers.length],
+          position: [x, 1.85, z],
+          scale: [0.34, 0.34, 0.34],
+          rotationY: angle,
+        })
+      })
+    }
+
     const routeMarkers: InstanceSpec[] = Array.from(
-      { length: 40 },
+      { length: Math.round(48 * mapScale) },
       (_, index) => {
-        const angle = (index / 40) * Math.PI * 2
+        const count = Math.round(48 * mapScale)
+        const angle = (index / count) * Math.PI * 2
+        const routeRadius = parkSize * 0.35
+        const forestProgress = index / Math.max(1, count - 1)
+        const forestX = -routeRadius + forestProgress * routeRadius * 2
+        const riverX = -routeRadius + forestProgress * routeRadius * 2
+        const position =
+          theme === 'forest-trail'
+            ? [
+                forestX,
+                0.05,
+                Math.sin(forestProgress * Math.PI * 4) * parkSize * 0.1,
+              ]
+            : theme === 'starlight-river'
+              ? [
+                  riverX,
+                  0.05,
+                  parkSize * 0.27 +
+                    Math.sin(forestProgress * Math.PI * 3) * 1.8,
+                ]
+              : [
+                  Math.cos(angle) * routeRadius * 1.08,
+                  0.05,
+                  Math.sin(angle) * routeRadius * 0.88,
+                ]
         return {
-          color: PALETTE[index % PALETTE.length],
-          position: [
-            Math.cos(angle) * 19.5 * 1.24,
-            0.05,
-            Math.sin(angle) * 19.5,
-          ],
+          color:
+            themeColors.markers[index % themeColors.markers.length],
+          position: position as VectorTuple,
           scale: [0.38, 0.05, 0.72],
-          rotationY: -angle,
+          rotationY:
+            theme === 'sunny-plaza'
+              ? -angle
+              : Math.sin(index * 0.41) * 0.18,
         }
       },
     )
@@ -1057,8 +1160,8 @@ export function GardenSetDressing({
     const benchParts: InstanceSpec[] = []
     Array.from({ length: 8 }, (_, index) => {
       const angle = (index / 8) * Math.PI * 2 + Math.PI / 8
-      const baseX = Math.cos(angle) * 14.8
-      const baseZ = Math.sin(angle) * 14.8
+      const baseX = Math.cos(angle) * parkSize * 0.25
+      const baseZ = Math.sin(angle) * parkSize * 0.25
       const yaw = -angle
       const parts = [
         { x: 0, y: 0.45, z: 0, scale: [1.75, 0.16, 0.5], color: WOOD },
@@ -1081,10 +1184,10 @@ export function GardenSetDressing({
     const rackParts: InstanceSpec[] = []
     const gear: InstanceSpec[] = []
     const racks = [
-      { x: -21.5, z: -4.5, yaw: Math.PI / 2 },
-      { x: 21.5, z: 4.5, yaw: -Math.PI / 2 },
-      { x: -5, z: 21.7, yaw: 0 },
-      { x: 5, z: -21.7, yaw: Math.PI },
+      { x: -parkSize * 0.36, z: -4.5 * mapScale, yaw: Math.PI / 2 },
+      { x: parkSize * 0.36, z: 4.5 * mapScale, yaw: -Math.PI / 2 },
+      { x: -5 * mapScale, z: parkSize * 0.36, yaw: 0 },
+      { x: 5 * mapScale, z: -parkSize * 0.36, yaw: Math.PI },
     ]
 
     racks.forEach((rack, rackIndex) => {
@@ -1122,10 +1225,15 @@ export function GardenSetDressing({
     })
 
     const steppingBlocks: InstanceSpec[] = Array.from(
-      { length: 18 },
+      { length: Math.round(18 * mapScale) },
       (_, index) => ({
-        color: PALETTE[index % PALETTE.length],
-        position: [-8.5 + index, 0.13 + (index % 3) * 0.04, -12.3 + Math.sin(index * 0.8) * 0.8],
+        color:
+          themeColors.markers[index % themeColors.markers.length],
+        position: [
+          -8.5 * mapScale + index,
+          0.13 + (index % 3) * 0.04,
+          -12.3 * mapScale + Math.sin(index * 0.8) * 0.8,
+        ],
         scale: [0.58, 0.24, 0.58],
         rotationY: index * 0.22,
       }),
@@ -1135,9 +1243,10 @@ export function GardenSetDressing({
       { length: 20 },
       (_, index) => {
         const angle = (index / 20) * Math.PI * 2
-        const radius = index % 2 ? 4.8 : 7.1
+        const radius = (index % 2 ? 4.8 : 7.1) * mapScale
         return {
-          color: index % 2 ? '#CBE9C5' : '#BDE1B7',
+          color:
+            index % 2 ? themeColors.plaza : themeColors.trail,
           position: [Math.cos(angle) * radius, 0.028, Math.sin(angle) * radius],
           scale: [0.72, 0.03, 0.72],
           rotationY: angle,
@@ -1156,47 +1265,138 @@ export function GardenSetDressing({
       steppingBlocks,
       trunks,
     }
-  }, [parkSize])
+  }, [mapScale, parkSize, theme, themeColors])
 
   return (
     <group>
       <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow={receiveShadow}>
         <planeGeometry args={[parkSize, parkSize]} />
-        <Paint color="#D9F1D3" roughness={0.98} />
+        <Paint color={themeColors.ground} roughness={0.98} />
       </mesh>
 
-      <mesh
-        rotation={[-Math.PI / 2, 0, 0]}
-        position={[0, 0.016, 0]}
-        scale={[1.24, 1, 1]}
-        receiveShadow={receiveShadow}
-      >
-        <ringGeometry args={[18.15, 20.2, 96]} />
-        <meshStandardMaterial color={TRACK} roughness={0.96} side={DoubleSide} />
-      </mesh>
-      <mesh
-        rotation={[-Math.PI / 2, 0, 0]}
-        position={[0, 0.02, 0]}
-        receiveShadow={receiveShadow}
-      >
-        <ringGeometry args={[8.1, 9.35, 64]} />
-        <meshStandardMaterial color="#F4E5C7" roughness={0.96} side={DoubleSide} />
-      </mesh>
-      <mesh position={[0, 0.018, 0]} scale={[0.9, 0.035, 23.5]}>
-        <boxGeometry />
-        <Paint color="#EEDCB8" roughness={0.96} />
-      </mesh>
-      <mesh position={[0, 0.02, 0]} scale={[23.5, 0.035, 0.9]}>
-        <boxGeometry />
-        <Paint color="#EEDCB8" roughness={0.96} />
-      </mesh>
+      {theme === 'sunny-plaza' && (
+        <>
+          <mesh
+            rotation={[-Math.PI / 2, 0, 0]}
+            position={[0, 0.016, 0]}
+            scale={[1.24, 1, 1]}
+            receiveShadow={receiveShadow}
+          >
+            <ringGeometry
+              args={[18.15 * mapScale, 20.2 * mapScale, 96]}
+            />
+            <meshStandardMaterial
+              color={themeColors.track}
+              roughness={0.96}
+              side={DoubleSide}
+            />
+          </mesh>
+          <mesh
+            rotation={[-Math.PI / 2, 0, 0]}
+            position={[0, 0.02, 0]}
+            receiveShadow={receiveShadow}
+          >
+            <ringGeometry args={[8.1 * mapScale, 9.35 * mapScale, 64]} />
+            <meshStandardMaterial
+              color={themeColors.trail}
+              roughness={0.96}
+              side={DoubleSide}
+            />
+          </mesh>
+          <mesh
+            position={[0, 0.018, 0]}
+            scale={[0.9 * mapScale, 0.035, 23.5 * mapScale]}
+          >
+            <boxGeometry />
+            <Paint color={themeColors.track} roughness={0.96} />
+          </mesh>
+          <mesh
+            position={[0, 0.02, 0]}
+            scale={[23.5 * mapScale, 0.035, 0.9 * mapScale]}
+          >
+            <boxGeometry />
+            <Paint color={themeColors.track} roughness={0.96} />
+          </mesh>
+        </>
+      )}
+
+      {theme === 'forest-trail' && (
+        <>
+          <mesh
+            position={[0, 0.018, 0]}
+            scale={[parkSize * 0.43, 0.035, 1.35]}
+            rotation={[0, 0.18, 0]}
+          >
+            <boxGeometry />
+            <Paint color={themeColors.trail} roughness={0.98} />
+          </mesh>
+          <mesh
+            position={[0, 0.02, 0]}
+            scale={[1.2, 0.035, parkSize * 0.42]}
+            rotation={[0, -0.34, 0]}
+          >
+            <boxGeometry />
+            <Paint color={themeColors.track} roughness={0.98} />
+          </mesh>
+          <mesh
+            rotation={[-Math.PI / 2, 0, 0]}
+            position={[0, 0.024, 0]}
+          >
+            <ringGeometry
+              args={[parkSize * 0.19, parkSize * 0.215, 72]}
+            />
+            <meshStandardMaterial
+              color={themeColors.trail}
+              roughness={0.98}
+              side={DoubleSide}
+            />
+          </mesh>
+        </>
+      )}
+
+      {theme === 'starlight-river' && (
+        <>
+          <mesh
+            position={[0, 0.012, parkSize * 0.27]}
+            scale={[parkSize / 2, 0.025, 5.2]}
+          >
+            <boxGeometry />
+            <Paint color="#345F83" roughness={0.4} />
+          </mesh>
+          <mesh
+            position={[0, 0.045, parkSize * 0.27]}
+            scale={[2.8, 0.07, 6.8]}
+          >
+            <boxGeometry />
+            <Paint color={themeColors.trail} roughness={0.76} />
+          </mesh>
+          <mesh
+            rotation={[-Math.PI / 2, 0, 0]}
+            position={[0, 0.028, 0]}
+          >
+            <ringGeometry
+              args={[parkSize * 0.23, parkSize * 0.255, 88]}
+            />
+            <meshStandardMaterial
+              color={themeColors.track}
+              roughness={0.82}
+              side={DoubleSide}
+            />
+          </mesh>
+        </>
+      )}
+
       <mesh
         rotation={[-Math.PI / 2, 0, 0]}
         position={[0, 0.028, 0]}
         receiveShadow={receiveShadow}
       >
-        <circleGeometry args={[3.4, 40]} />
-        <meshStandardMaterial color="#BFE6DA" roughness={0.92} side={DoubleSide} />
+        <circleGeometry args={[3.4 * mapScale, 40]} />
+        <meshStandardMaterial
+          color={themeColors.plaza}
+          roughness={0.92}
+          side={DoubleSide}
+        />
       </mesh>
 
       <InstancedBoxes
@@ -1217,11 +1417,20 @@ export function GardenSetDressing({
       <InstancedBoxes specs={scenery.gear} />
       <InstancedBoxes specs={scenery.steppingBlocks} />
 
-      <group position={[-20.8, 0, 14.4]}>
-        <CrewKiosk color="#16A34A" />
+      <group position={[-parkSize * 0.35, 0, parkSize * 0.24]}>
+        <CrewKiosk
+          color={themeColors.markers[0]}
+          compact={theme !== 'sunny-plaza'}
+        />
       </group>
-      <group position={[20.8, 0, -14.4]} rotation={[0, Math.PI, 0]}>
-        <CrewKiosk color="#0EA5E9" />
+      <group
+        position={[parkSize * 0.35, 0, -parkSize * 0.24]}
+        rotation={[0, Math.PI, 0]}
+      >
+        <CrewKiosk
+          color={themeColors.markers[1]}
+          compact={theme !== 'sunny-plaza'}
+        />
       </group>
     </group>
   )

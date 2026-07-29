@@ -17,7 +17,7 @@ import {
   Vector3,
 } from 'three'
 import type { ControlVector } from './TouchJoystick'
-import type { LearningObject } from '../types'
+import type { GameStage, LearningObject } from '../types'
 import {
   canCollect,
   getObjectVisualScale,
@@ -37,7 +37,8 @@ import {
 } from './game/GameSceneAssets'
 
 interface GameCanvasProps {
-  objects: LearningObject[]
+  stage: GameStage
+  attachedObjects: LearningObject[]
   collectedIds: string[]
   ballRadius: number
   paused: boolean
@@ -53,9 +54,6 @@ const SUBJECT_COLORS = {
   과학: '#19815F',
   생활: '#E6A800',
 }
-
-const PARK_SIZE = 58
-const PARK_HALF_EXTENT = PARK_SIZE / 2
 
 interface MotionState {
   x: number
@@ -134,6 +132,8 @@ function LearningItem({
   available: boolean
 }) {
   const group = useRef<Group>(null)
+  const badge = useRef<HTMLSpanElement>(null)
+  const badgeVisible = useRef<boolean | null>(null)
   const tier = getSizeTier(item.size)
   const visualScale = getObjectVisualScale(item.size)
   const phase = useMemo(
@@ -141,11 +141,25 @@ function LearningItem({
     [item.id],
   )
 
-  useFrame(({ clock }) => {
-    if (!group.current || reducedMotion) return
-    group.current.position.y =
-      visualScale * 0.58 + Math.sin(clock.elapsedTime * 1.4 + phase) * 0.045
-    group.current.rotation.y += 0.003
+  useFrame(({ camera, clock }) => {
+    if (!group.current) return
+    if (!reducedMotion) {
+      group.current.position.y =
+        visualScale * 0.58 + Math.sin(clock.elapsedTime * 1.4 + phase) * 0.045
+      group.current.rotation.y += 0.003
+    }
+    if (badge.current) {
+      const distance = Math.hypot(
+        item.position[0] - camera.position.x,
+        item.position[2] - camera.position.z,
+      )
+      const nearby = distance < 17
+      if (badgeVisible.current !== nearby) {
+        badge.current.style.opacity = nearby ? '1' : '0'
+        badge.current.style.visibility = nearby ? 'visible' : 'hidden'
+        badgeVisible.current = nearby
+      }
+    }
   })
 
   return (
@@ -180,6 +194,7 @@ function LearningItem({
         style={{ pointerEvents: 'none' }}
       >
         <span
+          ref={badge}
           aria-hidden="true"
           className={`world-size-badge ${available ? 'is-available' : ''}`}
           style={{ '--tier-color': tier.color } as CSSProperties}
@@ -382,7 +397,8 @@ function MotionEffects({
 }
 
 function GameWorld({
-  objects,
+  stage,
+  attachedObjects,
   collectedIds,
   ballRadius,
   paused,
@@ -391,6 +407,7 @@ function GameWorld({
   onCollect,
   onTooLarge,
 }: GameCanvasProps) {
+  const objects = stage.objects
   const player = useRef<Group>(null)
   const orb = useRef<Group>(null)
   const keys = useKeyboard(paused)
@@ -464,7 +481,7 @@ function GameWorld({
       }
       const previousX = position.x
       const previousZ = position.z
-      const movementLimit = PARK_HALF_EXTENT - ballRadius
+      const movementLimit = stage.mapSize / 2 - ballRadius
       const nextX = MathUtils.clamp(
         position.x + rollingStep.velocityX * Math.min(delta, 1 / 30),
         -movementLimit,
@@ -574,26 +591,35 @@ function GameWorld({
   const visibleObjects = objects.filter(
     (item) => !collectedIds.includes(item.id),
   )
-  const collectedObjects = objects.filter((item) =>
-    collectedIds.includes(item.id),
-  )
+  const collectedObjects = attachedObjects
 
   return (
     <>
-      <color attach="background" args={['#D9F2FF']} />
-      <fog attach="fog" args={['#D9F2FF', 32, 82]} />
-      <ambientLight intensity={1.45} />
+      <color attach="background" args={[stage.skyColor]} />
+      <fog
+        attach="fog"
+        args={[stage.fogColor, stage.mapSize * 0.48, stage.mapSize * 1.08]}
+      />
+      <ambientLight intensity={stage.theme === 'starlight-river' ? 1.1 : 1.45} />
       <directionalLight
         castShadow
         position={[6, 12, 8]}
-        intensity={2.1}
-        color={new Color('#FFF3D0')}
+        intensity={stage.theme === 'starlight-river' ? 1.45 : 2.1}
+        color={new Color(
+          stage.theme === 'starlight-river' ? '#BFD4FF' : '#FFF3D0',
+        )}
         shadow-mapSize-width={1024}
         shadow-mapSize-height={1024}
       />
-      <hemisphereLight args={['#E6F6FF', '#77A869', 1.1]} />
+      <hemisphereLight
+        args={[
+          stage.theme === 'starlight-river' ? '#9BB8FF' : '#E6F6FF',
+          stage.theme === 'starlight-river' ? '#263B45' : '#77A869',
+          1.1,
+        ]}
+      />
 
-      <GardenSetDressing floorSize={PARK_SIZE} />
+      <GardenSetDressing floorSize={stage.mapSize} theme={stage.theme} />
 
       {visibleObjects.map((item) => (
         <LearningItem
@@ -652,9 +678,9 @@ function GameWorld({
             <AttachedObjectMesh
               key={item.id}
               item={item}
-              index={objects.indexOf(item)}
+              index={attachedObjects.indexOf(item)}
               orbRadius={ballRadius}
-              slotCount={objects.length}
+              slotCount={64}
             />
           ))}
         </group>

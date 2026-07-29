@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import {
+  advanceSessionStage,
   calculateBallRadius,
   finishSession,
   readSession,
@@ -49,6 +50,14 @@ describe('single session score', () => {
 
     expect(result.status).toBe('completed')
     expect(result.durationSeconds).toBeGreaterThan(0)
+  })
+
+  it('keeps the unlocked map in the same browser session', () => {
+    const first = startSession()
+    const second = advanceSessionStage(first, 1)
+
+    expect(second.currentStageIndex).toBe(1)
+    expect(readSession()?.currentStageIndex).toBe(1)
   })
 
   it('grows steadily but caps the learning ball', () => {
