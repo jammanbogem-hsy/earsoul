@@ -1,0 +1,115 @@
+import { Brand } from '../components/Brand'
+import {
+  clearSession,
+  getStarRating,
+  readSession,
+  startSession,
+} from '../game/session'
+import { Redirect, useAppNavigate } from '../navigation'
+
+function formatDuration(totalSeconds: number) {
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+  return `${minutes}분 ${seconds}초`
+}
+
+export function ResultsPage() {
+  const navigate = useAppNavigate()
+  const session = readSession()
+
+  if (!session || session.status !== 'completed') {
+    return <Redirect to="/" />
+  }
+
+  const stars = getStarRating(session)
+  const accuracy = session.answeredQuestions
+    ? Math.round((session.correctAnswers / session.answeredQuestions) * 100)
+    : 0
+
+  return (
+    <main id="main-content" className="results-page">
+      <header className="results-header page-container">
+        <Brand compact />
+      </header>
+      <section className="results-card page-container">
+        <div className="results-celebration" aria-hidden="true">
+          <span>✦</span>
+          <div className="result-orb">가</div>
+          <span>✿</span>
+        </div>
+        <p className="eyebrow">오늘의 배움 정원 탐험 완료</p>
+        <h1>멋진 배움별이 완성됐어요!</h1>
+        <p className="results-intro">
+          빠르게 끝내는 것보다 끝까지 발견하고 다시 생각한 것이 더 중요해요.
+        </p>
+
+        <div className="star-rating" aria-label={`별 ${stars}개`}>
+          {[1, 2, 3].map((star) => (
+            <span key={star} className={star <= stars ? 'is-earned' : ''}>
+              ★
+            </span>
+          ))}
+        </div>
+
+        <dl className="results-stats">
+          <div>
+            <dt>배움 점수</dt>
+            <dd>{session.score.toLocaleString()}점</dd>
+          </div>
+          <div>
+            <dt>발견한 조각</dt>
+            <dd>{session.collectedIds.length}개</dd>
+          </div>
+          <div>
+            <dt>한 번에 정답</dt>
+            <dd>{accuracy}%</dd>
+          </div>
+          <div>
+            <dt>탐험 시간</dt>
+            <dd>{formatDuration(session.durationSeconds)}</dd>
+          </div>
+        </dl>
+
+        <section className="discovery-list" aria-labelledby="discovery-title">
+          <div>
+            <p className="section-kicker">이번에 발견한 것</p>
+            <h2 id="discovery-title">나의 배움 조각</h2>
+          </div>
+          <div className="discovery-chips">
+            {session.collectedLabels.length ? (
+              session.collectedLabels.map((label) => (
+                <span key={label}>{label}</span>
+              ))
+            ) : (
+              <span>다음 탐험에서 첫 조각을 만나 보세요.</span>
+            )}
+          </div>
+        </section>
+
+        <div className="results-actions">
+          <button
+            type="button"
+            className="primary-button"
+            onClick={() => {
+              startSession()
+              navigate('/play')
+            }}
+          >
+            한 번 더 굴리기
+            <span aria-hidden="true">↻</span>
+          </button>
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={() => {
+              clearSession()
+              navigate('/')
+            }}
+          >
+            처음 화면으로
+          </button>
+        </div>
+      </section>
+    </main>
+  )
+}

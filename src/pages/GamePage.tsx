@@ -1,0 +1,469 @@
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { Brand } from '../components/Brand'
+import { GameCanvas } from '../components/GameCanvas'
+import { QuizModal } from '../components/QuizModal'
+import {
+  TouchJoystick,
+  type ControlVector,
+} from '../components/TouchJoystick'
+import { loadLearningPack } from '../data/contentRepository'
+import {
+  fallbackLearningPack,
+  quizMilestones,
+} from '../data/learningPack'
+import {
+  calculateBallRadius,
+  finishSession,
+  readSession,
+  recordCollection,
+  recordQuiz,
+} from '../game/session'
+import { getCollectibleLimit } from '../game/mechanics'
+import type {
+  GameSession,
+  LearningObject,
+  LearningPack,
+  QuizQuestion,
+} from '../types'
+import { Redirect, useAppNavigate } from '../navigation'
+
+function playChime(enabled: boolean, success = true) {
+  if (!enabled) return
+
+  try {
+    const AudioContextClass =
+      window.AudioContext ||
+      (
+        window as typeof window & {
+          webkitAudioContext?: typeof AudioContext
+        }
+      ).webkitAudioContext
+    if (!AudioContextClass) return
+    const context = new AudioContextClass()
+    const oscillator = context.createOscillator()
+    const gain = context.createGain()
+    oscillator.type = 'sine'
+    oscillator.frequency.setValueAtTime(success ? 520 : 330, context.currentTime)
+    oscillator.frequency.exponentialRampToValueAtTime(
+      success ? 760 : 390,
+      context.currentTime + 0.12,
+    )
+    gain.gain.setValueAtTime(0.0001, context.currentTime)
+    gain.gain.exponentialRampToValueAtTime(0.12, context.currentTime + 0.02)
+    gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.22)
+    oscillator.connect(gain)
+    gain.connect(context.destination)
+    oscillator.start()
+    oscillator.stop(context.currentTime + 0.24)
+    oscillator.addEventListener('ended', () => void context.close())
+  } catch {
+    // Sound is a progressive enhancement; gameplay remains fully usable.
+  }
+}
+
+const coachSteps = [
+  {
+    icon: '↕',
+    title: '천천히 움직여 봐요',
+    body: '방향키나 WASD, 또는 화면 왼쪽의 둥근 조이스틱으로 배움별을 굴려요.',
+  },
+  {
+    icon: '✦',
+    title: '작은 조각부터 만나요',
+    body: '배움별보다 작은 조각에 다가가면 반짝이며 스티커처럼 합류해요.',
+  },
+  {
+    icon: '?',
+    title: '배움 문에서 생각해요',
+    body: '조각을 모으면 짧은 문제가 열려요. 틀려도 감점 없이 다시 고를 수 있어요.',
+  },
+]
+
+export function GamePage() {
+  const navigate = useAppNavigate()
+  const [session, setSession] = useState<GameSession | null>(() => readSession())
+  const sessionRef = useRef(session)
+  const [pack, setPack] = useState<LearningPack>(fallbackLearningPack)
+  const [contentReady, setContentReady] = useState(false)
+  const [paused, setPaused] = useState(false)
+  const [soundEnabled, setSoundEnabled] = useState(true)
+  const [controlVector, setControlVector] = useState<ControlVector>({
+    x: 0,
+    z: 0,
+  })
+  const [toast, setToast] = useState<{
+    title: string
+    body: string
+    tone: 'learned' | 'wait'
+  } | null>(null)
+  const toastTimer = useRef<number | undefined>(undefined)
+  const scheduledQuizId = useRef<string | null>(null)
+  const [activeQuiz, setActiveQuiz] = useState<QuizQuestion | null>(null)
+  const coachSeen = sessionStorage.getItem('earsoul-coach-seen') === 'true'
+  const [coachStep, setCoachStep] = useState(coachSeen ? -1 : 0)
+  const reducedMotion =
+    sessionStorage.getItem('earsoul-reduced-motion') === 'true'
+
+  useEffect(() => {
+    let mounted = true
+    loadLearningPack().then((learningPack) => {
+      if (mounted) {
+        setPack(learningPack)
+        setContentReady(true)
+      }
+    })
+    return () => {
+      mounted = false
+    }
+  }, [])
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !activeQuiz && coachStep < 0) {
+        setPaused((current) => !current)
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [activeQuiz, coachStep])
+
+  useEffect(
+    () => () => {
+      if (toastTimer.current) window.clearTimeout(toastTimer.current)
+    },
+    [],
+  )
+
+  const showToast = useCallback(
+    (
+      nextToast: {
+        title: string
+        body: string
+        tone: 'learned' | 'wait'
+      },
+      duration = 2600,
+    ) => {
+      if (toastTimer.current) window.clearTimeout(toastTimer.current)
+      setToast(nextToast)
+      toastTimer.current = window.setTimeout(() => setToast(null), duration)
+    },
+    [],
+  )
+
+  if (!session || session.status !== 'playing') {
+    return <Redirect to="/" />
+  }
+
+  const ballRadius = calculateBallRadius(session.collectedIds.length)
+  const progress = session.collectedIds.length / pack.objects.length
+  const nextQuizIndex = session.completedQuizIds.length
+  const nextMilestone = quizMilestones[nextQuizIndex] ?? pack.objects.length
+  const quizProgress = Math.min(
+    100,
+    (session.collectedIds.length / nextMilestone) * 100,
+  )
+  const collectibleLimit = getCollectibleLimit(ballRadius)
+  const nextCollectible = [...pack.objects]
+    .filter(
+      (item) =>
+        !session.collectedIds.includes(item.id) &&
+        item.size <= collectibleLimit,
+    )
+    .sort((a, b) => b.size - a.size)[0]
+
+  const handleCollect = (item: LearningObject) => {
+    const current = sessionRef.current
+    if (!current || current.collectedIds.includes(item.id)) return
+
+    const next = recordCollection(current, item)
+    sessionRef.current = next
+    setSession(next)
+    playChime(soundEnabled)
+    showToast({
+      title: `${item.label} 발견! +${item.points}`,
+      body: item.fact,
+      tone: 'learned',
+    })
+
+    const quizIndex = next.completedQuizIds.length
+    const milestone = quizMilestones[quizIndex]
+    if (
+      milestone &&
+      next.collectedIds.length >= milestone &&
+      pack.quizzes[quizIndex] &&
+      !scheduledQuizId.current
+    ) {
+      const quiz = pack.quizzes[quizIndex]
+      scheduledQuizId.current = quiz.id
+      window.setTimeout(() => {
+        setActiveQuiz(quiz)
+        scheduledQuizId.current = null
+      }, 650)
+    }
+
+    if (next.collectedIds.length === pack.objects.length) {
+      window.setTimeout(() => finish(), 900)
+    }
+  }
+
+  const handleTooLarge = (item: LearningObject) => {
+    showToast(
+      {
+        title: `${item.label}은 조금 뒤에 만나요`,
+        body: '주변의 더 작은 배움 조각을 먼저 찾아 배움별을 키워 보세요.',
+        tone: 'wait',
+      },
+      1800,
+    )
+    playChime(soundEnabled, false)
+  }
+
+  const completeQuiz = (correctOnFirstTry: boolean) => {
+    const current = sessionRef.current
+    if (!current || !activeQuiz) return
+    const next = recordQuiz(current, activeQuiz.id, correctOnFirstTry)
+    sessionRef.current = next
+    setSession(next)
+    setActiveQuiz(null)
+    playChime(soundEnabled)
+    showToast({
+      title: correctOnFirstTry ? '한 번에 찾았어요!' : '새롭게 알게 됐어요!',
+      body: correctOnFirstTry
+        ? '별 보너스 100점을 받았어요.'
+        : '다시 생각한 힘으로 별 보너스 50점을 받았어요.',
+      tone: 'learned',
+    })
+  }
+
+  const finish = () => {
+    const current = sessionRef.current
+    if (!current) return
+    const completed = finishSession(current)
+    sessionRef.current = completed
+    setSession(completed)
+    navigate('/results')
+  }
+
+  const leaveForHome = () => {
+    const shouldLeave = window.confirm(
+      '처음 화면으로 돌아가면 이번 놀이 기록이 사라져요. 돌아갈까요?',
+    )
+    if (shouldLeave) {
+      sessionStorage.removeItem('earsoul-learning-session')
+      navigate('/')
+    }
+  }
+
+  const isGamePaused = paused || Boolean(activeQuiz) || coachStep >= 0
+
+  return (
+    <main id="main-content" className="game-page">
+      <div className="game-stage" aria-label={`${pack.title} 3D 놀이 화면`}>
+        <GameCanvas
+          objects={pack.objects}
+          collectedIds={session.collectedIds}
+          ballRadius={ballRadius}
+          paused={isGamePaused}
+          reducedMotion={reducedMotion}
+          controlVector={controlVector}
+          onCollect={handleCollect}
+          onTooLarge={handleTooLarge}
+        />
+      </div>
+
+      <header className="game-topbar">
+        <div className="game-brand-card">
+          <Brand compact />
+        </div>
+        <div className="mission-card">
+          <div>
+            <span>오늘의 탐험</span>
+            <strong>배움 조각을 만나 별을 키워요</strong>
+          </div>
+          <div
+            className="mission-progress"
+            role="progressbar"
+            aria-valuemin={0}
+            aria-valuemax={pack.objects.length}
+            aria-valuenow={session.collectedIds.length}
+            aria-label="전체 수집 진행"
+          >
+            <span style={{ width: `${progress * 100}%` }} />
+          </div>
+        </div>
+        <div className="score-card" aria-live="polite">
+          <span>배움 점수</span>
+          <strong>{session.score.toLocaleString()}</strong>
+        </div>
+        <button
+          className="icon-button hud-button"
+          type="button"
+          onClick={() => setSoundEnabled((current) => !current)}
+          aria-label={soundEnabled ? '효과음 끄기' : '효과음 켜기'}
+          aria-pressed={!soundEnabled}
+        >
+          {soundEnabled ? '🔊' : '🔇'}
+        </button>
+        <button
+          className="icon-button hud-button"
+          type="button"
+          onClick={() => setPaused(true)}
+          aria-label="일시정지"
+        >
+          Ⅱ
+        </button>
+      </header>
+
+      <aside className="quiz-gate-card" aria-label="다음 배움 문 진행">
+        <div>
+          <span className="quiz-gate-card__icon" aria-hidden="true">
+            ?
+          </span>
+          <p>
+            <small>다음 배움 문</small>
+            <strong>
+              {Math.max(0, nextMilestone - session.collectedIds.length)}개 더
+              발견
+            </strong>
+          </p>
+        </div>
+        <div className="mini-progress" aria-hidden="true">
+          <span style={{ width: `${quizProgress}%` }} />
+        </div>
+      </aside>
+
+      <aside className="size-card">
+        <span className="size-card__orb" aria-hidden="true">
+          <i style={{ transform: `scale(${Math.min(1.45, ballRadius)})` }} />
+        </span>
+        <p>
+          <small>지금 만날 수 있어요</small>
+          <strong>{nextCollectible?.label ?? '가장 큰 배움 조각'}</strong>
+        </p>
+        <span className="count-pill">
+          {session.collectedIds.length}/{pack.objects.length}
+        </span>
+      </aside>
+
+      <div className="desktop-controls" aria-hidden="true">
+        <span>
+          <kbd>W</kbd>
+          <kbd>A</kbd>
+          <kbd>S</kbd>
+          <kbd>D</kbd>
+        </span>
+        <p>또는 방향키로 움직여요</p>
+      </div>
+
+      <div className="mobile-controls">
+        <TouchJoystick onChange={setControlVector} />
+      </div>
+
+      {toast && (
+        <div
+          className={`learning-toast is-${toast.tone}`}
+          role="status"
+          aria-live="polite"
+        >
+          <span aria-hidden="true">{toast.tone === 'learned' ? '✦' : '↑'}</span>
+          <div>
+            <strong>{toast.title}</strong>
+            <p>{toast.body}</p>
+          </div>
+        </div>
+      )}
+
+      {!contentReady && (
+        <div className="content-status" role="status">
+          배움 정원을 준비하고 있어요…
+        </div>
+      )}
+
+      {coachStep >= 0 && (
+        <div className="modal-backdrop">
+          <section
+            className="coach-card"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="coach-title"
+          >
+            <span className="coach-card__step">
+              {coachStep + 1} / {coachSteps.length}
+            </span>
+            <div className="coach-card__icon" aria-hidden="true">
+              {coachSteps[coachStep].icon}
+            </div>
+            <h2 id="coach-title">{coachSteps[coachStep].title}</h2>
+            <p>{coachSteps[coachStep].body}</p>
+            <div className="coach-dots" aria-hidden="true">
+              {coachSteps.map((step, index) => (
+                <span
+                  key={step.title}
+                  className={index === coachStep ? 'is-active' : ''}
+                />
+              ))}
+            </div>
+            <button
+              className="primary-button primary-button--wide"
+              type="button"
+              onClick={() => {
+                if (coachStep === coachSteps.length - 1) {
+                  sessionStorage.setItem('earsoul-coach-seen', 'true')
+                  setCoachStep(-1)
+                } else {
+                  setCoachStep((step) => step + 1)
+                }
+              }}
+            >
+              {coachStep === coachSteps.length - 1
+                ? '이제 굴려 볼게요!'
+                : '다음'}
+              <span aria-hidden="true">→</span>
+            </button>
+          </section>
+        </div>
+      )}
+
+      {paused && !activeQuiz && (
+        <div className="modal-backdrop">
+          <section
+            className="pause-card"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="pause-title"
+          >
+            <span className="pause-card__icon" aria-hidden="true">
+              Ⅱ
+            </span>
+            <p className="section-kicker">잠깐 쉬어가요</p>
+            <h2 id="pause-title">배움별도 숨을 고르는 중!</h2>
+            <p>준비되면 같은 자리에서 다시 시작할 수 있어요.</p>
+            <button
+              className="primary-button primary-button--wide"
+              type="button"
+              onClick={() => setPaused(false)}
+              autoFocus
+            >
+              계속 굴리기
+              <span aria-hidden="true">▶</span>
+            </button>
+            <button
+              className="secondary-button secondary-button--wide"
+              type="button"
+              onClick={finish}
+            >
+              지금까지 결과 보기
+            </button>
+            <button className="text-button" type="button" onClick={leaveForHome}>
+              이번 기록을 지우고 처음으로
+            </button>
+          </section>
+        </div>
+      )}
+
+      {activeQuiz && (
+        <QuizModal quiz={activeQuiz} onComplete={completeQuiz} />
+      )}
+    </main>
+  )
+}
