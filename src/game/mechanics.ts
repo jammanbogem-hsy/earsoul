@@ -16,6 +16,8 @@ export const SIZE_TIERS = [
   },
 ] as const
 
+const OBJECT_VISUAL_SCALES = [0.34, 0.68, 1.1, 1.65] as const
+
 export function getCollectibleLimit(ballRadius: number): number {
   return ballRadius * COLLECTIBLE_RATIO
 }
@@ -29,6 +31,10 @@ export function getSizeTier(objectSize: number) {
     SIZE_TIERS.find((tier) => objectSize <= tier.maxSize) ??
     SIZE_TIERS[SIZE_TIERS.length - 1]
   )
+}
+
+export function getObjectVisualScale(objectSize: number): number {
+  return OBJECT_VISUAL_SCALES[getSizeTier(objectSize).level - 1]
 }
 
 export function getReachableSizeTier(ballRadius: number) {

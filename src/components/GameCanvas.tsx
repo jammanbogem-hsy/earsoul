@@ -18,7 +18,11 @@ import {
 } from 'three'
 import type { ControlVector } from './TouchJoystick'
 import type { LearningObject } from '../types'
-import { canCollect, getSizeTier } from '../game/mechanics'
+import {
+  canCollect,
+  getObjectVisualScale,
+  getSizeTier,
+} from '../game/mechanics'
 import {
   getDriveControl,
   stepRelativeDrive,
@@ -131,7 +135,7 @@ function LearningItem({
 }) {
   const group = useRef<Group>(null)
   const tier = getSizeTier(item.size)
-  const visualScale = [0.34, 0.68, 1.1, 1.65][tier.level - 1]
+  const visualScale = getObjectVisualScale(item.size)
   const phase = useMemo(
     () => item.id.split('').reduce((total, char) => total + char.charCodeAt(0), 0),
     [item.id],

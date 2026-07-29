@@ -7,6 +7,7 @@ import {
   Vector3,
 } from 'three'
 import type { LearningObject } from '../../types'
+import { getObjectVisualScale } from '../../game/mechanics'
 
 export interface LearningObjectMeshProps {
   item: LearningObject
@@ -804,7 +805,9 @@ export function AttachedObjectMesh({
       y,
       Math.sin(theta) * ring,
     ).normalize()
-    const position = normal.clone().multiplyScalar(orbRadius * 0.97)
+    const scale = getObjectVisualScale(item.size)
+    const surfaceLift = Math.min(scale * 0.12, orbRadius * 0.12)
+    const position = normal.clone().multiplyScalar(orbRadius + surfaceLift)
     const orientation = new Quaternion().setFromUnitVectors(UP, normal)
     const seed = Array.from(item.id).reduce(
       (total, character) => total + character.charCodeAt(0),
@@ -813,10 +816,6 @@ export function AttachedObjectMesh({
     orientation.multiply(
       new Quaternion().setFromAxisAngle(UP, ((seed % 24) / 24) * Math.PI * 2),
     )
-    const scale =
-      Math.max(0.065, Math.min(0.2, orbRadius * 0.092)) *
-      (0.9 + Math.min(item.size, 1.5) * 0.06)
-
     return { orientation, position, scale }
   }, [index, item.id, item.size, orbRadius, slotCount])
 

@@ -4,6 +4,7 @@ import {
   canCollect,
   canCompletePack,
   getCollectibleLimit,
+  getObjectVisualScale,
   getReachableSizeTier,
   getSizeTier,
 } from './mechanics'
@@ -25,6 +26,13 @@ describe('rolling collection progression', () => {
     expect(getSizeTier(0.96).level).toBe(3)
     expect(getSizeTier(1.42).level).toBe(4)
     expect(getReachableSizeTier(0.5).level).toBe(1)
+  })
+
+  it('keeps the same visual size before and after an object joins the orb', () => {
+    expect(getObjectVisualScale(0.22)).toBe(0.34)
+    expect(getObjectVisualScale(0.62)).toBe(0.68)
+    expect(getObjectVisualScale(0.96)).toBe(1.1)
+    expect(getObjectVisualScale(1.42)).toBe(1.65)
   })
 
   it('spreads the running items across the expanded park with a friendly start', () => {
