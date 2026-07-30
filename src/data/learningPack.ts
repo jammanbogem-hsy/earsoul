@@ -346,7 +346,7 @@ const objectTemplates: LearningObject[] = [
 ]
 
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5))
-const OBJECTS_PER_STAGE = 96
+const OBJECTS_PER_STAGE = 128
 
 interface StageBlueprint {
   id: string
@@ -400,10 +400,10 @@ const stageBlueprints: StageBlueprint[] = [
   {
     id: 'sunny-start',
     title: '햇살 스타트 광장',
-    subtitle: '가볍게 몸을 푸는 첫 번째 맵',
-    description: '넓은 광장과 러닝 트랙 사이에서 작은 기어와 보물을 모아요.',
+    subtitle: '잔디와 완만한 언덕을 누비는 첫 번째 맵',
+    description: '넓은 광장, 잔디밭과 얕은 물길 사이에서 러닝 보물을 모아요.',
     theme: 'sunny-plaza',
-    mapSize: 88,
+    mapSize: 112,
     objectiveCount: 44,
     scoreGoal: 1600,
     tierGoals: createTierGoals([80, 400, 1200, 1600]),
@@ -415,10 +415,10 @@ const stageBlueprints: StageBlueprint[] = [
   {
     id: 'wind-forest',
     title: '바람숲 트레일',
-    subtitle: '갈림길을 골라 달리는 두 번째 맵',
-    description: '나무 사이의 여러 오솔길을 고르며 러닝 장비와 기록 아이템을 찾아요.',
+    subtitle: '언덕과 물길 사이를 고르는 두 번째 맵',
+    description: '나무, 숲 언덕과 개울 사이의 여러 오솔길에서 러닝 장비를 찾아요.',
     theme: 'forest-trail',
-    mapSize: 100,
+    mapSize: 128,
     objectiveCount: 44,
     scoreGoal: 2000,
     tierGoals: createTierGoals([110, 520, 1450, 2000]),
@@ -435,10 +435,10 @@ const stageBlueprints: StageBlueprint[] = [
   {
     id: 'starlight-river',
     title: '별빛 리버파크',
-    subtitle: '반짝이는 강변을 누비는 마지막 맵',
-    description: '별빛 산책로와 컬러 브리지를 자유롭게 오가며 큰 보물을 모아요.',
+    subtitle: '강둑과 오르막을 누비는 마지막 맵',
+    description: '별빛 강변, 완만한 오르막과 컬러 브리지를 오가며 큰 보물을 모아요.',
     theme: 'starlight-river',
-    mapSize: 112,
+    mapSize: 144,
     objectiveCount: 44,
     scoreGoal: 2400,
     tierGoals: createTierGoals([140, 650, 1750, 2400]),
@@ -464,6 +464,14 @@ function createStageObjects(
   )
   const maxRadius = blueprint.mapSize / 2 - 5
   const physicsLayout = createWorldPhysicsLayout(blueprint)
+  const placementObstacles = [
+    ...physicsLayout.obstacles,
+    ...physicsLayout.terrainRamps.map((ramp) => ({
+      x: ramp.x,
+      z: ramp.z,
+      radius: Math.hypot(ramp.halfWidth, ramp.halfDepth),
+    })),
+  ]
 
   return Array.from({ length: OBJECTS_PER_STAGE }, (_, index) => {
     const starter = index < 8
@@ -496,7 +504,7 @@ function createStageObjects(
     }).find((candidate) =>
       isCollectionPositionClear(
         { position: candidate, size },
-        physicsLayout.obstacles,
+        placementObstacles,
       ),
     ) ?? [
       Number((Math.cos(baseAngle) * radius).toFixed(2)),
@@ -535,7 +543,7 @@ const stages: GameStage[] = stageBlueprints.map((blueprint, index) => ({
 }))
 
 export const fallbackLearningPack: LearningPack = {
-  version: 4,
+  version: 5,
   title: '러닝크루 월드 투어',
   stages,
   objects: stages.flatMap((stage) => stage.objects),

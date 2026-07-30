@@ -294,7 +294,7 @@ export function GamePage() {
   }
 
   const handlePhysicsFeedback = (feedback: {
-    type: 'collision' | 'boost'
+    type: 'collision' | 'boost' | 'slow'
     label: string
     bounced?: boolean
   }) => {
@@ -306,6 +306,18 @@ export function GamePage() {
           tone: 'learned',
         },
         1500,
+      )
+      return
+    }
+
+    if (feedback.type === 'slow') {
+      showToast(
+        {
+          title: `${feedback.label} · 천천히 구간`,
+          body: '잔디와 얕은 물에서는 속도가 줄어요. 방향을 잡고 천천히 통과해요.',
+          tone: 'wait',
+        },
+        1600,
       )
       return
     }

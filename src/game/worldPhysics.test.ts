@@ -3,6 +3,7 @@ import { fallbackLearningPack } from '../data/learningPack'
 import {
   createWorldPhysicsLayout,
   getActiveSpeedZone,
+  getActiveSurfaceZone,
   resolveWorldPhysics,
   type WorldPhysicsLayout,
 } from './worldPhysics'
@@ -20,6 +21,8 @@ const stopLayout: WorldPhysicsLayout = {
   ],
   rideableObstacles: [],
   speedZones: [],
+  surfaceZones: [],
+  terrainRamps: [],
 }
 
 describe('world physics', () => {
@@ -28,6 +31,11 @@ describe('world physics', () => {
       const layout = createWorldPhysicsLayout(stage)
       expect(layout.obstacles.length).toBeGreaterThan(30)
       expect(layout.speedZones.length).toBeGreaterThan(0)
+      expect(layout.surfaceZones).toHaveLength(2)
+      expect(layout.terrainRamps).toHaveLength(4)
+      expect(
+        layout.surfaceZones.every((zone) => zone.multiplier < 1),
+      ).toBe(true)
       expect(layout.rideableObstacles.length).toBeGreaterThan(20)
       expect(
         layout.rideableObstacles.every(
@@ -99,6 +107,8 @@ describe('world physics', () => {
           multiplier: 1.3,
         },
       ],
+      surfaceZones: [],
+      terrainRamps: [],
     }
 
     expect(getActiveSpeedZone(layout, 2, 0)?.multiplier).toBe(1.3)
@@ -117,6 +127,28 @@ describe('world physics', () => {
         layout,
       ).speedMultiplier,
     ).toBe(1.3)
+  })
+
+  it('slows the ball inside grass and shallow-water surfaces', () => {
+    const layout = createWorldPhysicsLayout(
+      fallbackLearningPack.stages[0],
+    )
+    const grass = layout.surfaceZones.find(
+      (zone) => zone.kind === 'grass',
+    )
+    const water = layout.surfaceZones.find(
+      (zone) => zone.kind === 'water',
+    )
+
+    expect(grass).toBeDefined()
+    expect(water).toBeDefined()
+    expect(
+      getActiveSurfaceZone(layout, grass?.x ?? 0, grass?.z ?? 0)?.kind,
+    ).toBe('grass')
+    expect(
+      getActiveSurfaceZone(layout, water?.x ?? 0, water?.z ?? 0)
+        ?.multiplier,
+    ).toBeLessThan(grass?.multiplier ?? 1)
   })
 
   it('pushes a growing ball out when it starts inside scenery', () => {

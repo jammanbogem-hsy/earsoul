@@ -34,10 +34,41 @@ export interface RideableObstacle {
   rotationY: number
 }
 
+export type SurfaceKind = 'grass' | 'water'
+
+export interface SurfaceZone {
+  id: string
+  label: string
+  kind: SurfaceKind
+  color: string
+  x: number
+  z: number
+  halfWidth: number
+  halfDepth: number
+  rotationY: number
+  multiplier: number
+}
+
+export interface TerrainRamp {
+  id: string
+  label: string
+  color: string
+  x: number
+  y: number
+  z: number
+  halfWidth: number
+  halfHeight: number
+  halfDepth: number
+  rotationX: number
+  rotationY: number
+}
+
 export interface WorldPhysicsLayout {
   obstacles: WorldObstacle[]
   rideableObstacles: RideableObstacle[]
   speedZones: SpeedZone[]
+  surfaceZones: SurfaceZone[]
+  terrainRamps: TerrainRamp[]
 }
 
 export interface WorldPhysicsStep {
@@ -47,6 +78,7 @@ export interface WorldPhysicsStep {
   velocityZ: number
   speedMultiplier: number
   speedZone?: SpeedZone
+  surfaceZone?: SurfaceZone
   impact?: {
     obstacle: WorldObstacle
     response: ObstacleResponse
@@ -236,6 +268,177 @@ function createRideableObstacles(mapSize: number): RideableObstacle[] {
   )
 }
 
+function createSurfaceZones(
+  mapSize: number,
+  theme: StageTheme,
+): SurfaceZone[] {
+  if (theme === 'forest-trail') {
+    return [
+      {
+        id: 'forest-meadow',
+        label: '폭신한 숲 잔디',
+        kind: 'grass',
+        color: '#78B86D',
+        x: -mapSize * 0.19,
+        z: mapSize * 0.17,
+        halfWidth: mapSize * 0.14,
+        halfDepth: mapSize * 0.09,
+        rotationY: 0.32,
+        multiplier: 0.68,
+      },
+      {
+        id: 'forest-creek',
+        label: '얕은 숲 물길',
+        kind: 'water',
+        color: '#67BFD0',
+        x: mapSize * 0.2,
+        z: -mapSize * 0.14,
+        halfWidth: mapSize * 0.075,
+        halfDepth: mapSize * 0.1,
+        rotationY: -0.48,
+        multiplier: 0.55,
+      },
+    ]
+  }
+
+  if (theme === 'starlight-river') {
+    return [
+      {
+        id: 'river-grass-bank',
+        label: '별빛 강둑 잔디',
+        kind: 'grass',
+        color: '#5F9A7B',
+        x: -mapSize * 0.21,
+        z: -mapSize * 0.15,
+        halfWidth: mapSize * 0.11,
+        halfDepth: mapSize * 0.075,
+        rotationY: -0.24,
+        multiplier: 0.7,
+      },
+      {
+        id: 'river-shallows',
+        label: '반짝이는 얕은 물',
+        kind: 'water',
+        color: '#4FA8C7',
+        x: mapSize * 0.18,
+        z: mapSize * 0.1,
+        halfWidth: mapSize * 0.13,
+        halfDepth: mapSize * 0.08,
+        rotationY: 0.2,
+        multiplier: 0.52,
+      },
+    ]
+  }
+
+  return [
+    {
+      id: 'plaza-grass',
+      label: '폭신한 광장 잔디',
+      kind: 'grass',
+      color: '#83C878',
+      x: -mapSize * 0.23,
+      z: mapSize * 0.14,
+      halfWidth: mapSize * 0.11,
+      halfDepth: mapSize * 0.075,
+      rotationY: 0.22,
+      multiplier: 0.72,
+    },
+    {
+      id: 'plaza-water',
+      label: '찰랑이는 얕은 물',
+      kind: 'water',
+      color: '#6ECBE2',
+      x: mapSize * 0.23,
+      z: -mapSize * 0.17,
+      halfWidth: mapSize * 0.085,
+      halfDepth: mapSize * 0.06,
+      rotationY: -0.35,
+      multiplier: 0.58,
+    },
+  ]
+}
+
+function createHill(
+  id: string,
+  label: string,
+  color: string,
+  centerX: number,
+  centerZ: number,
+  rotationY: number,
+  mapSize: number,
+): TerrainRamp[] {
+  const halfDepth = mapSize * 0.034
+  const halfWidth = mapSize * 0.027
+  const halfHeight = 0.13
+  const rotationX = 0.1
+  const centerY =
+    halfHeight + Math.sin(rotationX) * halfDepth + 0.035
+  const directionX = Math.sin(rotationY)
+  const directionZ = Math.cos(rotationY)
+
+  return [
+    {
+      id: `${id}-up`,
+      label,
+      color,
+      x: centerX - directionX * halfDepth,
+      y: centerY,
+      z: centerZ - directionZ * halfDepth,
+      halfWidth,
+      halfHeight,
+      halfDepth,
+      rotationX: -rotationX,
+      rotationY,
+    },
+    {
+      id: `${id}-down`,
+      label,
+      color,
+      x: centerX + directionX * halfDepth,
+      y: centerY,
+      z: centerZ + directionZ * halfDepth,
+      halfWidth,
+      halfHeight,
+      halfDepth,
+      rotationX,
+      rotationY,
+    },
+  ]
+}
+
+function createTerrainRamps(
+  mapSize: number,
+  theme: StageTheme,
+): TerrainRamp[] {
+  const colors =
+    theme === 'starlight-river'
+      ? ['#718BA0', '#667C91']
+      : theme === 'forest-trail'
+        ? ['#779D61', '#8BAC68']
+        : ['#9BCB78', '#D6B77C']
+
+  return [
+    ...createHill(
+      'east-hill',
+      '완만한 동쪽 언덕',
+      colors[0],
+      mapSize * 0.19,
+      mapSize * 0.17,
+      0.38,
+      mapSize,
+    ),
+    ...createHill(
+      'west-hill',
+      '구불구불 서쪽 언덕',
+      colors[1],
+      -mapSize * 0.22,
+      -mapSize * 0.16,
+      -0.58,
+      mapSize,
+    ),
+  ]
+}
+
 export function createWorldPhysicsLayout(
   stage: Pick<GameStage, 'mapSize' | 'theme'>,
 ): WorldPhysicsLayout {
@@ -251,6 +454,8 @@ export function createWorldPhysicsLayout(
     ],
     rideableObstacles: createRideableObstacles(stage.mapSize),
     speedZones: createSpeedZones(stage.mapSize, stage.theme),
+    surfaceZones: createSurfaceZones(stage.mapSize, stage.theme),
+    terrainRamps: createTerrainRamps(stage.mapSize, stage.theme),
   }
 }
 
@@ -274,6 +479,35 @@ export function getActiveSpeedZone(
   z: number,
 ): SpeedZone | undefined {
   return layout.speedZones.find((zone) => isInsideSpeedZone(x, z, zone))
+}
+
+function isInsideSurfaceZone(
+  x: number,
+  z: number,
+  zone: SurfaceZone,
+): boolean {
+  const offsetX = x - zone.x
+  const offsetZ = z - zone.z
+  const cosine = Math.cos(zone.rotationY)
+  const sine = Math.sin(zone.rotationY)
+  const localX = offsetX * cosine - offsetZ * sine
+  const localZ = offsetX * sine + offsetZ * cosine
+
+  return (
+    (localX * localX) / (zone.halfWidth * zone.halfWidth) +
+      (localZ * localZ) / (zone.halfDepth * zone.halfDepth) <=
+    1
+  )
+}
+
+export function getActiveSurfaceZone(
+  layout: WorldPhysicsLayout,
+  x: number,
+  z: number,
+): SurfaceZone | undefined {
+  return layout.surfaceZones.find((zone) =>
+    isInsideSurfaceZone(x, z, zone),
+  )
 }
 
 export function resolveWorldPhysics(
@@ -329,14 +563,20 @@ export function resolveWorldPhysics(
   const speedZone =
     getActiveSpeedZone(layout, x, z) ??
     getActiveSpeedZone(layout, input.startX, input.startZ)
+  const surfaceZone =
+    getActiveSurfaceZone(layout, x, z) ??
+    getActiveSurfaceZone(layout, input.startX, input.startZ)
 
   return {
     x,
     z,
     velocityX,
     velocityZ,
-    speedMultiplier: speedZone?.multiplier ?? 1,
+    speedMultiplier:
+      (speedZone?.multiplier ?? 1) *
+      (surfaceZone?.multiplier ?? 1),
     speedZone,
+    surfaceZone,
     impact,
   }
 }

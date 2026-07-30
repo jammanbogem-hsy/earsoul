@@ -45,6 +45,7 @@ import {
 import {
   createWorldPhysicsLayout,
   getActiveSpeedZone,
+  getActiveSurfaceZone,
   type ObstacleResponse,
   type WorldPhysicsLayout,
 } from '../game/worldPhysics'
@@ -66,7 +67,7 @@ interface GameCanvasProps {
   onCollect: (item: LearningObject) => void
   onTooLarge: (item: LearningObject) => void
   onPhysicsFeedback: (feedback: {
-    type: 'collision' | 'boost'
+    type: 'collision' | 'boost' | 'slow'
     label: string
     bounced?: boolean
   }) => void
@@ -170,7 +171,7 @@ function LearningItem({
   reducedMotion: boolean
   available: boolean
 }) {
-  const group = useRef<Group>(null)
+  const visual = useRef<Group>(null)
   const badge = useRef<HTMLSpanElement>(null)
   const badgeVisible = useRef<boolean | null>(null)
   const tier = getSizeTier(item.size)
@@ -181,11 +182,10 @@ function LearningItem({
   )
 
   useFrame(({ camera, clock }) => {
-    if (!group.current) return
-    if (!reducedMotion) {
-      group.current.position.y =
+    if (visual.current && !reducedMotion) {
+      visual.current.position.y =
         visualScale * 0.58 + Math.sin(clock.elapsedTime * 1.4 + phase) * 0.045
-      group.current.rotation.y += 0.003
+      visual.current.rotation.y += 0.003
     }
     if (badge.current) {
       const distance = Math.hypot(
@@ -202,32 +202,49 @@ function LearningItem({
   })
 
   return (
-    <group
-      ref={group}
-      position={[item.position[0], visualScale * 0.58, item.position[2]]}
-      scale={visualScale}
-    >
-      {Array.from({ length: tier.level }, (_, index) => (
-        <mesh
-          key={`tier-ring-${index}`}
-          rotation={[-Math.PI / 2, 0, 0]}
-          position={[0, -0.49 + index * 0.002, 0]}
-          receiveShadow
-        >
-          <ringGeometry
-            args={[0.68 + index * 0.16, 0.75 + index * 0.16, 28]}
-          />
-          <meshBasicMaterial
-            color={available ? tier.color : SUBJECT_COLORS[item.subject]}
-            transparent
-            opacity={available ? 0.52 : 0.2}
-          />
-        </mesh>
-      ))}
-      <LearningObjectMesh item={item} />
+    <group position={[item.position[0], 0, item.position[2]]}>
+      <group scale={visualScale}>
+        {Array.from({ length: tier.level }, (_, index) => (
+          <mesh
+            key={`tier-ring-${index}`}
+            rotation={[-Math.PI / 2, 0, 0]}
+            position={[0, 0.09 + index * 0.002, 0]}
+            receiveShadow
+          >
+            <ringGeometry
+              args={[0.68 + index * 0.16, 0.75 + index * 0.16, 28]}
+            />
+            <meshBasicMaterial
+              color={available ? tier.color : SUBJECT_COLORS[item.subject]}
+              transparent
+              opacity={available ? 0.52 : 0.2}
+            />
+          </mesh>
+        ))}
+      </group>
+      <group
+        ref={visual}
+        position={[0, visualScale * 0.58, 0]}
+        scale={visualScale}
+      >
+        <LearningObjectMesh item={item} />
+        {item.symbol && (
+          <Html
+            center
+            position={[0, 0, 0.44]}
+            distanceFactor={7}
+            zIndexRange={[1, 0]}
+            style={{ pointerEvents: 'none' }}
+          >
+            <span className="world-symbol" aria-hidden="true">
+              {item.symbol}
+            </span>
+          </Html>
+        )}
+      </group>
       <Html
         center
-        position={[0, 1.02, 0]}
+        position={[0, visualScale * 1.6, 0]}
         distanceFactor={8}
         zIndexRange={[1, 0]}
         style={{ pointerEvents: 'none' }}
@@ -245,19 +262,6 @@ function LearningItem({
           </i>
         </span>
       </Html>
-      {item.symbol && (
-        <Html
-          center
-          position={[0, 0, 0.44]}
-          distanceFactor={7}
-          zIndexRange={[1, 0]}
-          style={{ pointerEvents: 'none' }}
-        >
-          <span className="world-symbol" aria-hidden="true">
-            {item.symbol}
-          </span>
-        </Html>
-      )}
     </group>
   )
 }
@@ -273,18 +277,24 @@ function ChildPusher({
 }) {
   const root = useRef<Group>(null)
   const body = useRef<Group>(null)
-  const leftLeg = useRef<Group>(null)
-  const rightLeg = useRef<Group>(null)
-  const leftArm = useRef<Group>(null)
-  const rightArm = useRef<Group>(null)
-  const helperScale = Math.min(0.9, 0.58 + ballRadius * 0.16)
+  const torso = useRef<Group>(null)
+  const leftThigh = useRef<Group>(null)
+  const rightThigh = useRef<Group>(null)
+  const leftShin = useRef<Group>(null)
+  const rightShin = useRef<Group>(null)
+  const leftUpperArm = useRef<Group>(null)
+  const rightUpperArm = useRef<Group>(null)
+  const leftForearm = useRef<Group>(null)
+  const rightForearm = useRef<Group>(null)
+  const helperScale = Math.min(0.96, 0.66 + ballRadius * 0.14)
 
   useFrame(({ clock }, delta) => {
     if (!root.current) return
 
     const { x, z, speed } = motion.current
-    const distance = ballRadius + 0.48
-    const sideOffset = 0.32
+    const speedLevel = Math.min(1, speed)
+    const distance = ballRadius + 0.5
+    const sideOffset = 0.25
     const targetX = -x * distance + z * sideOffset
     const targetZ = -z * distance - x * sideOffset
     root.current.position.x = MathUtils.damp(
@@ -303,13 +313,41 @@ function ChildPusher({
     root.current.rotation.y =
       Math.atan2(-x, -z) - Math.atan2(sideOffset, distance)
 
-    const stride = reducedMotion ? 0 : Math.sin(clock.elapsedTime * 10) * speed
+    const stride = reducedMotion
+      ? 0
+      : Math.sin(clock.elapsedTime * 9.2) * speedLevel
     const bob = reducedMotion ? 0 : Math.abs(stride) * 0.035
     if (body.current) body.current.position.y = bob
-    if (leftLeg.current) leftLeg.current.rotation.x = stride * 0.55
-    if (rightLeg.current) rightLeg.current.rotation.x = -stride * 0.55
-    if (leftArm.current) leftArm.current.rotation.z = stride * 0.08
-    if (rightArm.current) rightArm.current.rotation.z = -stride * 0.08
+    if (torso.current) {
+      torso.current.rotation.x = MathUtils.damp(
+        torso.current.rotation.x,
+        -(0.035 + speedLevel * 0.1),
+        8,
+        delta,
+      )
+    }
+    if (leftThigh.current) leftThigh.current.rotation.x = stride * 0.5
+    if (rightThigh.current) rightThigh.current.rotation.x = -stride * 0.5
+    if (leftShin.current) {
+      leftShin.current.rotation.x = Math.max(0, -stride) * 0.62
+    }
+    if (rightShin.current) {
+      rightShin.current.rotation.x = Math.max(0, stride) * 0.62
+    }
+    if (leftUpperArm.current) {
+      leftUpperArm.current.rotation.x = 1.05 + stride * 0.06
+      leftUpperArm.current.rotation.z = -0.08 + stride * 0.04
+    }
+    if (rightUpperArm.current) {
+      rightUpperArm.current.rotation.x = 1.05 - stride * 0.06
+      rightUpperArm.current.rotation.z = 0.08 - stride * 0.04
+    }
+    if (leftForearm.current) {
+      leftForearm.current.rotation.x = 0.28 + Math.abs(stride) * 0.06
+    }
+    if (rightForearm.current) {
+      rightForearm.current.rotation.x = 0.28 + Math.abs(stride) * 0.06
+    }
   })
 
   return (
@@ -319,61 +357,152 @@ function ChildPusher({
       scale={helperScale}
     >
       <group ref={body}>
-        <mesh castShadow position={[0, 1.42, 0]}>
-          <sphereGeometry args={[0.27, 16, 12]} />
-          <meshStandardMaterial color="#F2B38A" roughness={0.72} />
+        <mesh
+          position={[0, 0.012, 0.02]}
+          rotation={[-Math.PI / 2, 0, 0]}
+          scale={[0.5, 0.32, 1]}
+        >
+          <circleGeometry args={[0.52, 20]} />
+          <meshBasicMaterial
+            color="#273548"
+            transparent
+            opacity={0.14}
+            depthWrite={false}
+          />
         </mesh>
-        <mesh castShadow position={[0, 1.53, 0.015]} scale={[1.04, 0.56, 1.03]}>
-          <sphereGeometry args={[0.275, 14, 10]} />
-          <meshStandardMaterial color="#3C2E39" roughness={0.9} />
-        </mesh>
-        <mesh castShadow position={[0, 0.94, 0]} scale={[0.52, 0.62, 0.34]}>
-          <boxGeometry />
-          <meshStandardMaterial color="#45A7A0" roughness={0.78} />
-        </mesh>
-        <mesh castShadow position={[0, 0.95, 0.2]} scale={[0.38, 0.42, 0.18]}>
-          <boxGeometry />
-          <meshStandardMaterial color="#F2C94C" roughness={0.82} />
-        </mesh>
-        <group ref={leftArm} position={[-0.36, 1.08, -0.03]} rotation={[1, 0, 0]}>
-          <mesh castShadow position={[0, -0.22, 0]}>
-            <cylinderGeometry args={[0.075, 0.08, 0.46, 10]} />
+
+        <group ref={torso} position={[0, 0.7, 0]}>
+          <mesh castShadow position={[0, 0.34, 0]} scale={[1, 1, 0.78]}>
+            <capsuleGeometry args={[0.27, 0.36, 6, 14]} />
+            <meshStandardMaterial color="#45A7A0" roughness={0.76} />
+          </mesh>
+          <mesh castShadow position={[0, 0.22, 0.24]} scale={[0.82, 1, 0.72]}>
+            <capsuleGeometry args={[0.22, 0.24, 5, 12]} />
+            <meshStandardMaterial color="#F2C94C" roughness={0.82} />
+          </mesh>
+          <mesh castShadow position={[0, 0.65, 0]}>
+            <cylinderGeometry args={[0.09, 0.1, 0.14, 12]} />
             <meshStandardMaterial color="#F2B38A" roughness={0.72} />
           </mesh>
-          <mesh castShadow position={[0, -0.46, 0]}>
-            <sphereGeometry args={[0.09, 10, 8]} />
-            <meshStandardMaterial color="#F2B38A" roughness={0.72} />
+          <mesh castShadow position={[0, 0.89, 0]}>
+            <sphereGeometry args={[0.28, 20, 16]} />
+            <meshStandardMaterial color="#F2B38A" roughness={0.7} />
           </mesh>
+          <mesh
+            castShadow
+            position={[0, 1.02, 0.035]}
+            scale={[1.04, 0.58, 1.02]}
+          >
+            <sphereGeometry args={[0.285, 18, 12]} />
+            <meshStandardMaterial color="#3C2E39" roughness={0.9} />
+          </mesh>
+          {[-0.09, 0.09].map((eyeX) => (
+            <mesh
+              key={`pusher-eye-${eyeX}`}
+              position={[eyeX, 0.92, -0.255]}
+            >
+              <sphereGeometry args={[0.025, 8, 6]} />
+              <meshStandardMaterial color="#273548" roughness={0.65} />
+            </mesh>
+          ))}
+          <mesh position={[0, 0.84, -0.278]} scale={[0.07, 0.022, 0.018]}>
+            <boxGeometry />
+            <meshStandardMaterial color="#C96868" roughness={0.78} />
+          </mesh>
+          <mesh castShadow position={[0, 0.35, 0.28]} scale={[0.62, 1, 0.72]}>
+            <capsuleGeometry args={[0.2, 0.26, 5, 12]} />
+            <meshStandardMaterial color="#F2C94C" roughness={0.82} />
+          </mesh>
+          <mesh position={[0, 0.35, 0.43]}>
+            <boxGeometry args={[0.18, 0.28, 0.04]} />
+            <meshStandardMaterial color="#FFFDF7" roughness={0.84} />
+          </mesh>
+
+          <group
+            ref={leftUpperArm}
+            position={[-0.31, 0.48, -0.03]}
+            rotation={[1.05, 0, -0.08]}
+          >
+            <mesh castShadow position={[0, -0.16, 0]}>
+              <capsuleGeometry args={[0.07, 0.2, 5, 10]} />
+              <meshStandardMaterial color="#45A7A0" roughness={0.76} />
+            </mesh>
+            <group ref={leftForearm} position={[0, -0.34, 0]} rotation={[0.28, 0, 0]}>
+              <mesh castShadow position={[0, -0.16, 0]}>
+                <capsuleGeometry args={[0.064, 0.2, 5, 10]} />
+                <meshStandardMaterial color="#F2B38A" roughness={0.72} />
+              </mesh>
+              <mesh castShadow position={[0, -0.34, -0.01]}>
+                <sphereGeometry args={[0.085, 10, 8]} />
+                <meshStandardMaterial color="#F2B38A" roughness={0.7} />
+              </mesh>
+            </group>
+          </group>
+          <group
+            ref={rightUpperArm}
+            position={[0.31, 0.48, -0.03]}
+            rotation={[1.05, 0, 0.08]}
+          >
+            <mesh castShadow position={[0, -0.16, 0]}>
+              <capsuleGeometry args={[0.07, 0.2, 5, 10]} />
+              <meshStandardMaterial color="#45A7A0" roughness={0.76} />
+            </mesh>
+            <group ref={rightForearm} position={[0, -0.34, 0]} rotation={[0.28, 0, 0]}>
+              <mesh castShadow position={[0, -0.16, 0]}>
+                <capsuleGeometry args={[0.064, 0.2, 5, 10]} />
+                <meshStandardMaterial color="#F2B38A" roughness={0.72} />
+              </mesh>
+              <mesh castShadow position={[0, -0.34, -0.01]}>
+                <sphereGeometry args={[0.085, 10, 8]} />
+                <meshStandardMaterial color="#F2B38A" roughness={0.7} />
+              </mesh>
+            </group>
+          </group>
         </group>
-        <group ref={rightArm} position={[0.36, 1.08, -0.03]} rotation={[1, 0, 0]}>
-          <mesh castShadow position={[0, -0.22, 0]}>
-            <cylinderGeometry args={[0.075, 0.08, 0.46, 10]} />
-            <meshStandardMaterial color="#F2B38A" roughness={0.72} />
+
+        <mesh castShadow position={[0, 0.67, 0]} scale={[0.5, 0.18, 0.34]}>
+          <sphereGeometry args={[0.5, 14, 9]} />
+          <meshStandardMaterial color="#273548" roughness={0.84} />
+        </mesh>
+        <group ref={leftThigh} position={[-0.14, 0.62, 0]}>
+          <mesh castShadow position={[0, -0.16, 0]}>
+            <capsuleGeometry args={[0.085, 0.18, 5, 10]} />
+            <meshStandardMaterial color="#273548" roughness={0.84} />
           </mesh>
-          <mesh castShadow position={[0, -0.46, 0]}>
-            <sphereGeometry args={[0.09, 10, 8]} />
-            <meshStandardMaterial color="#F2B38A" roughness={0.72} />
-          </mesh>
+          <group ref={leftShin} position={[0, -0.34, 0]}>
+            <mesh castShadow position={[0, -0.17, 0]}>
+              <capsuleGeometry args={[0.075, 0.2, 5, 10]} />
+              <meshStandardMaterial color="#3F5268" roughness={0.84} />
+            </mesh>
+            <mesh castShadow position={[0, -0.37, -0.08]} scale={[1, 0.58, 1.45]}>
+              <capsuleGeometry args={[0.09, 0.16, 5, 10]} />
+              <meshStandardMaterial color="#FFFDF7" roughness={0.86} />
+            </mesh>
+            <mesh position={[0, -0.395, -0.12]} scale={[0.12, 0.035, 0.24]}>
+              <boxGeometry />
+              <meshStandardMaterial color="#FF7B66" roughness={0.72} />
+            </mesh>
+          </group>
         </group>
-        <group ref={leftLeg} position={[-0.15, 0.62, 0]}>
-          <mesh castShadow position={[0, -0.26, 0]}>
-            <cylinderGeometry args={[0.095, 0.09, 0.52, 10]} />
+        <group ref={rightThigh} position={[0.14, 0.62, 0]}>
+          <mesh castShadow position={[0, -0.16, 0]}>
+            <capsuleGeometry args={[0.085, 0.18, 5, 10]} />
             <meshStandardMaterial color="#374151" roughness={0.86} />
           </mesh>
-          <mesh castShadow position={[0, -0.54, -0.045]} scale={[0.22, 0.11, 0.34]}>
-            <boxGeometry />
-            <meshStandardMaterial color="#FFFDF7" roughness={0.88} />
-          </mesh>
-        </group>
-        <group ref={rightLeg} position={[0.15, 0.62, 0]}>
-          <mesh castShadow position={[0, -0.26, 0]}>
-            <cylinderGeometry args={[0.095, 0.09, 0.52, 10]} />
-            <meshStandardMaterial color="#374151" roughness={0.86} />
-          </mesh>
-          <mesh castShadow position={[0, -0.54, -0.045]} scale={[0.22, 0.11, 0.34]}>
-            <boxGeometry />
-            <meshStandardMaterial color="#FFFDF7" roughness={0.88} />
-          </mesh>
+          <group ref={rightShin} position={[0, -0.34, 0]}>
+            <mesh castShadow position={[0, -0.17, 0]}>
+              <capsuleGeometry args={[0.075, 0.2, 5, 10]} />
+              <meshStandardMaterial color="#3F5268" roughness={0.84} />
+            </mesh>
+            <mesh castShadow position={[0, -0.37, -0.08]} scale={[1, 0.58, 1.45]}>
+              <capsuleGeometry args={[0.09, 0.16, 5, 10]} />
+              <meshStandardMaterial color="#FFFDF7" roughness={0.86} />
+            </mesh>
+            <mesh position={[0, -0.395, -0.12]} scale={[0.12, 0.035, 0.24]}>
+              <boxGeometry />
+              <meshStandardMaterial color="#4169D8" roughness={0.72} />
+            </mesh>
+          </group>
         </group>
       </group>
     </group>
@@ -566,6 +695,77 @@ function RapierWorldColliders({
           </RigidBody>
         )
       })}
+
+      {layout.terrainRamps.map((ramp) => {
+        const physics: PhysicsBodyData = {
+          kind: 'rideable',
+          label: ramp.label,
+          response: 'bounce',
+          quiet: true,
+        }
+
+        return (
+          <RigidBody
+            key={ramp.id}
+            type="fixed"
+            colliders={false}
+            position={[ramp.x, ramp.y, ramp.z]}
+            rotation={[ramp.rotationX, ramp.rotationY, 0]}
+            userData={{ physics }}
+          >
+            <CuboidCollider
+              args={[ramp.halfWidth, ramp.halfHeight, ramp.halfDepth]}
+              friction={0.98}
+              restitution={0}
+            />
+            <mesh castShadow receiveShadow>
+              <boxGeometry
+                args={[
+                  ramp.halfWidth * 2,
+                  ramp.halfHeight * 2,
+                  ramp.halfDepth * 2,
+                ]}
+              />
+              <meshStandardMaterial color={ramp.color} roughness={0.94} />
+            </mesh>
+          </RigidBody>
+        )
+      })}
+
+      {layout.surfaceZones.map((zone) => (
+        <group
+          key={zone.id}
+          position={[zone.x, 0.026, zone.z]}
+          rotation={[0, zone.rotationY, 0]}
+        >
+          <mesh
+            rotation={[-Math.PI / 2, 0, 0]}
+            scale={[zone.halfWidth, zone.halfDepth, 1]}
+            receiveShadow
+          >
+            <circleGeometry args={[1, 64]} />
+            <meshStandardMaterial
+              color={zone.color}
+              roughness={zone.kind === 'water' ? 0.28 : 0.96}
+              metalness={zone.kind === 'water' ? 0.08 : 0}
+              transparent
+              opacity={zone.kind === 'water' ? 0.68 : 0.9}
+            />
+          </mesh>
+          <mesh
+            rotation={[-Math.PI / 2, 0, 0]}
+            position={[0, 0.006, 0]}
+            scale={[zone.halfWidth, zone.halfDepth, 1]}
+          >
+            <ringGeometry args={[0.88, 1, 64]} />
+            <meshBasicMaterial
+              color={zone.kind === 'water' ? '#D7F6FF' : '#DDF4C8'}
+              transparent
+              opacity={0.58}
+            />
+          </mesh>
+        </group>
+      ))}
     </>
   )
 }
@@ -721,6 +921,7 @@ function GameWorld({
   const collisionFeedbackCooldown = useRef(0)
   const collisionRecoveryUntil = useRef(0)
   const activeSpeedZoneId = useRef<string | null>(null)
+  const activeSurfaceZoneId = useRef<string | null>(null)
   const cameraPosition = useRef(new Vector3(0, 7, 8))
   const cameraDirection = useRef(new Vector3(0, 0, -1))
   const heading = useRef(new Vector3(0, 0, -1))
@@ -857,7 +1058,14 @@ function GameWorld({
         position.x,
         position.z,
       )
-      const speedMultiplier = speedZone?.multiplier ?? 1
+      const surfaceZone = getActiveSurfaceZone(
+        physicsLayout,
+        position.x,
+        position.z,
+      )
+      const speedMultiplier =
+        (speedZone?.multiplier ?? 1) *
+        (surfaceZone?.multiplier ?? 1)
       const recovering =
         performance.now() < collisionRecoveryUntil.current
 
@@ -912,6 +1120,24 @@ function GameWorld({
       activeSpeedZoneId.current =
         nextSpeedZoneId && speedRatio > 0.16
           ? nextSpeedZoneId
+          : null
+
+      const nextSurfaceZoneId = surfaceZone?.id ?? null
+      if (
+        nextSurfaceZoneId &&
+        nextSurfaceZoneId !== activeSurfaceZoneId.current &&
+        rollingStep.speedRatio > 0.12 &&
+        state.clock.elapsedTime >= physicsFeedbackCooldown.current
+      ) {
+        physicsFeedbackCooldown.current = state.clock.elapsedTime + 1.1
+        onPhysicsFeedback({
+          type: 'slow',
+          label: surfaceZone?.label ?? '천천히 구간',
+        })
+      }
+      activeSurfaceZoneId.current =
+        nextSurfaceZoneId && rollingStep.speedRatio > 0.12
+          ? nextSurfaceZoneId
           : null
 
       const traveled = Math.hypot(

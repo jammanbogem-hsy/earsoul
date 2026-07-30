@@ -1184,7 +1184,7 @@ export function GardenSetDressing({
   receiveShadow = true,
   theme = 'sunny-plaza',
 }: GardenSetDressingProps) {
-  const parkSize = Math.max(72, Math.min(120, floorSize))
+  const parkSize = Math.max(88, Math.min(160, floorSize))
   const mapScale = parkSize / 60
   const themeColors = SCENERY_THEMES[theme]
   const scenery = useMemo(() => {
