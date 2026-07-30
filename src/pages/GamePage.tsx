@@ -5,7 +5,11 @@ import {
   useState,
   type CSSProperties,
 } from 'react'
-import { GameCanvas } from '../components/GameCanvas'
+import {
+  GameCanvas,
+  type PlayerMapPose,
+} from '../components/GameCanvas'
+import { GameMiniMap } from '../components/GameMiniMap'
 import {
   M3Button,
   M3IconButton,
@@ -83,7 +87,7 @@ const coachSteps: {
   {
     icon: 'play_arrow',
     title: '바라보는 방향을 따라 굴려요',
-    body: 'W·S(ㅈ·ㄴ)는 앞뒤, A·D(ㅁ·ㅇ)는 현재 방향의 좌우예요. 콘을 밀고 경사로를 오르거나 노란 승강 발판을 눌러 2층도 탐험해요.',
+    body: 'W·S(ㅈ·ㄴ)는 앞뒤, A·D(ㅁ·ㅇ)는 현재 방향의 좌우예요. 마우스를 드래그해 시점을 돌리고 휠로 확대해요. 미니맵의 화살표 승강기를 밟으면 각 2층으로 올라갈 수 있어요.',
   },
 ]
 
@@ -102,6 +106,12 @@ export function GamePage() {
   const [controlVector, setControlVector] = useState<ControlVector>({
     x: 0,
     z: 0,
+  })
+  const [playerPose, setPlayerPose] = useState<PlayerMapPose>({
+    x: 0,
+    z: 0,
+    headingX: 0,
+    headingZ: -1,
   })
   const [toast, setToast] = useState<{
     title: string
@@ -125,6 +135,7 @@ export function GamePage() {
     lastCollectedAt: 0,
   })
   const scoreFeedbackId = useRef(0)
+  const promptedStageIds = useRef(new Set<string>())
   const coachSeen = sessionStorage.getItem('earsoul-coach-v4-seen') === 'true'
   const [coachStep, setCoachStep] = useState(coachSeen ? -1 : 0)
   const reducedMotion =
@@ -142,6 +153,48 @@ export function GamePage() {
       mounted = false
     }
   }, [])
+
+  useEffect(() => {
+    if (
+      !session ||
+      session.status !== 'playing' ||
+      stagePromptOpen ||
+      paused ||
+      coachStep >= 0
+    ) {
+      return
+    }
+
+    const activeStage =
+      pack.stages[
+        Math.min(
+          session.currentStageIndex,
+          Math.max(0, pack.stages.length - 1),
+        )
+      ]
+    if (!activeStage || promptedStageIds.current.has(activeStage.id)) return
+
+    const activeProgress = getStageProgress(
+      activeStage.objects,
+      session.collectedIds,
+      activeStage,
+      session.stageScores?.[activeStage.id],
+    )
+    if (!activeProgress.ready) return
+
+    const promptTimer = window.setTimeout(() => {
+      promptedStageIds.current.add(activeStage.id)
+      setControlVector({ x: 0, z: 0 })
+      setStagePromptOpen(true)
+    }, 0)
+    return () => window.clearTimeout(promptTimer)
+  }, [
+    coachStep,
+    pack,
+    paused,
+    session,
+    stagePromptOpen,
+  ])
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -180,6 +233,9 @@ export function GamePage() {
     },
     [],
   )
+  const handlePlayerPosition = useCallback((pose: PlayerMapPose) => {
+    setPlayerPose(pose)
+  }, [])
 
   if (!session || session.status !== 'playing') {
     return <Redirect to="/" />
@@ -207,7 +263,10 @@ export function GamePage() {
   )
   const stageReady = stageProgress.ready
   const bonusCount = stageProgress.bonusCount
-  const ballRadius = calculateBallRadius(stageCollectedCount)
+  const ballRadius = calculateBallRadius(
+    stageCollectedCount,
+    stage.tierGoals.map((goal) => goal.requiredCount),
+  )
   const progress = stageProgress.progress
   const reachableTier = getReachableSizeTier(ballRadius)
   const nextTierGoal =
@@ -266,19 +325,6 @@ export function GamePage() {
       tone: 'learned',
     })
 
-    const nextStageProgress = getStageProgress(
-      stage.objects,
-      next.collectedIds,
-      stage,
-      next.stageScores?.[stage.id],
-    )
-    if (
-      !stageProgress.ready &&
-      nextStageProgress.ready
-    ) {
-      setControlVector({ x: 0, z: 0 })
-      window.setTimeout(() => setStagePromptOpen(true), 700)
-    }
   }
 
   const handleTooLarge = (item: LearningObject) => {
@@ -370,6 +416,7 @@ export function GamePage() {
     comboStateRef.current = { count: 0, lastCollectedAt: 0 }
     setComboMultiplier(1)
     setControlVector({ x: 0, z: 0 })
+    setPlayerPose({ x: 0, z: 0, headingX: 0, headingZ: -1 })
     setStagePromptOpen(false)
     sessionRef.current = next
     setSession(next)
@@ -410,6 +457,7 @@ export function GamePage() {
           paused={isGamePaused}
           reducedMotion={reducedMotion}
           controlVector={controlVector}
+          onPlayerPosition={handlePlayerPosition}
           onCollect={handleCollect}
           onTooLarge={handleTooLarge}
           onPhysicsFeedback={handlePhysicsFeedback}
@@ -566,11 +614,23 @@ export function GamePage() {
           <kbd>D</kbd>
         </span>
         <p>한글 ㅈㅁㄴㅇ·방향키도 가능해요</p>
+        <span className="desktop-controls__mouse">
+          <MaterialIcon name="mouse" />
+          <small>드래그 시점</small>
+          <MaterialIcon name="zoom_in" />
+          <small>휠 줌</small>
+        </span>
       </div>
 
       <div className="mobile-controls">
         {!isGamePaused && <TouchJoystick onChange={setControlVector} />}
       </div>
+
+      <GameMiniMap
+        stage={stage}
+        collectedIds={session.collectedIds}
+        player={playerPose}
+      />
 
       <div
         className={`game-collection-status ${

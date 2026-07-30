@@ -598,8 +598,8 @@ function createUpperDeckRamp(
   theme: StageTheme,
 ): TerrainRamp {
   const platform = createElevatedPlatforms(mapSize, theme)[0]
-  const halfDepth = Math.min(10, mapSize * 0.0625)
-  const halfWidth = 2.7
+  const halfDepth = Math.min(14, mapSize * 0.085)
+  const halfWidth = 3.15
   const halfHeight = 0.18
   const baseSurfaceY = 0.04
   const rotationMagnitude = Math.asin(
@@ -627,25 +627,26 @@ function createElevators(
   mapSize: number,
   theme: StageTheme,
 ): WorldElevator[] {
-  const landing = createElevatedPlatforms(mapSize, theme)[1]
   const halfHeight = 0.18
+  const platforms = createElevatedPlatforms(mapSize, theme)
 
-  return [
-    {
-      id: 'treasure-elevator',
-      label: '보물 승강 발판',
-      color: getUpperDeckColors(theme).elevator,
-      x: landing.x + landing.halfWidth + 2.05,
-      z: landing.z,
-      bottomY: halfHeight,
-      topY: UPPER_DECK_SURFACE_Y - halfHeight,
-      halfWidth: 2.05,
-      halfHeight,
-      halfDepth: 2.15,
-      buttonRadius: 0.92,
-      travelDuration: 2.8,
-    },
-  ]
+  return platforms.map((landing, index) => ({
+    id: index === 0 ? 'ramp-deck-elevator' : 'treasure-elevator',
+    label:
+      index === 0
+        ? '전망대 연결 승강 발판'
+        : '보물마당 연결 승강 발판',
+    color: getUpperDeckColors(theme).elevator,
+    x: landing.x + landing.halfWidth + 2.05,
+    z: landing.z,
+    bottomY: halfHeight,
+    topY: UPPER_DECK_SURFACE_Y - halfHeight,
+    halfWidth: 2.05,
+    halfHeight,
+    halfDepth: 2.15,
+    buttonRadius: 0.92,
+    travelDuration: 2.8,
+  }))
 }
 
 function createPushableProps(

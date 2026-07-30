@@ -113,12 +113,47 @@ const BALL_GROWTH_MILESTONES = [
   { collectedCount: 80, radius: 2.05 },
 ] as const
 
-export function calculateBallRadius(collectedCount: number): number {
-  const count = Math.max(0, collectedCount)
+function createStageGrowthMilestones(tierCounts: readonly number[]) {
+  if (tierCounts.length < 4) return BALL_GROWTH_MILESTONES
 
-  for (let index = 1; index < BALL_GROWTH_MILESTONES.length; index += 1) {
-    const start = BALL_GROWTH_MILESTONES[index - 1]
-    const end = BALL_GROWTH_MILESTONES[index]
+  const [tierOne, tierTwo, tierThree, tierFour] = tierCounts.map((count) =>
+    Math.max(1, Math.floor(count)),
+  )
+  const finalGrowthSpan = Math.max(2, tierFour - tierThree)
+
+  return [
+    { collectedCount: 0, radius: 0.42 },
+    { collectedCount: tierOne - 1, radius: 0.504 },
+    { collectedCount: tierOne, radius: 0.52 },
+    { collectedCount: tierTwo - 1, radius: 0.862 },
+    { collectedCount: tierTwo, radius: 0.88 },
+    { collectedCount: tierThree - 1, radius: 1.24 },
+    { collectedCount: tierThree, radius: 1.26 },
+    {
+      collectedCount: Math.round(tierThree + finalGrowthSpan * 0.43),
+      radius: 1.62,
+    },
+    {
+      collectedCount: Math.round(tierThree + finalGrowthSpan * 0.72),
+      radius: 1.9,
+    },
+    { collectedCount: tierFour, radius: 2.05 },
+  ]
+}
+
+export function calculateBallRadius(
+  collectedCount: number,
+  tierCounts: readonly number[] = [],
+): number {
+  const count = Math.max(0, collectedCount)
+  const growthMilestones =
+    tierCounts.length >= 4
+      ? createStageGrowthMilestones(tierCounts)
+      : BALL_GROWTH_MILESTONES
+
+  for (let index = 1; index < growthMilestones.length; index += 1) {
+    const start = growthMilestones[index - 1]
+    const end = growthMilestones[index]
     if (count > end.collectedCount) continue
 
     const progress =
@@ -127,7 +162,7 @@ export function calculateBallRadius(collectedCount: number): number {
     return start.radius + (end.radius - start.radius) * progress
   }
 
-  return BALL_GROWTH_MILESTONES[BALL_GROWTH_MILESTONES.length - 1].radius
+  return growthMilestones[growthMilestones.length - 1].radius
 }
 
 export function getStarRating(session: GameSession): number {

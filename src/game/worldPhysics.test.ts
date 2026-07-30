@@ -39,7 +39,7 @@ describe('world physics', () => {
       expect(layout.surfaceZones).toHaveLength(2)
       expect(layout.terrainRamps).toHaveLength(5)
       expect(layout.elevatedPlatforms).toHaveLength(2)
-      expect(layout.elevators).toHaveLength(1)
+      expect(layout.elevators).toHaveLength(2)
       expect(layout.pushableProps.length).toBeGreaterThanOrEqual(18)
       expect(layout.pushRewardSlots).toHaveLength(3)
       expect(
@@ -50,6 +50,25 @@ describe('world physics', () => {
       expect(
         layout.elevators.every(
           (elevator) => elevator.topY > elevator.bottomY + 2,
+        ),
+      ).toBe(true)
+      expect(
+        layout.elevatedPlatforms.every((platform) =>
+          layout.elevators.some(
+            (elevator) =>
+              Math.abs(
+                elevator.topY +
+                  elevator.halfHeight -
+                  (platform.y + platform.halfHeight),
+              ) < 0.1 &&
+              Math.abs(elevator.z - platform.z) <
+                platform.halfDepth &&
+              Math.abs(
+                elevator.x -
+                  elevator.halfWidth -
+                  (platform.x + platform.halfWidth),
+              ) < 0.1,
+          ),
         ),
       ).toBe(true)
       expect(

@@ -68,6 +68,7 @@ interface GameCanvasProps {
   paused: boolean
   reducedMotion: boolean
   controlVector: ControlVector
+  onPlayerPosition: (pose: PlayerMapPose) => void
   onCollect: (item: LearningObject) => void
   onTooLarge: (item: LearningObject) => void
   onPhysicsFeedback: (feedback: {
@@ -75,6 +76,13 @@ interface GameCanvasProps {
     label: string
     bounced?: boolean
   }) => void
+}
+
+export interface PlayerMapPose {
+  x: number
+  z: number
+  headingX: number
+  headingZ: number
 }
 
 const SUBJECT_COLORS = {
@@ -92,6 +100,15 @@ interface MotionState {
   velocityZ: number
   boost: number
   impact: number
+}
+
+interface CameraOrbitState {
+  zoom: number
+  pitch: number
+  pointerId: number | null
+  lastX: number
+  lastY: number
+  manualUntil: number
 }
 
 interface PhysicsBodyData {
@@ -1151,6 +1168,7 @@ function GameWorld({
   paused,
   reducedMotion,
   controlVector,
+  onPlayerPosition,
   onCollect,
   onTooLarge,
   onPhysicsFeedback,
@@ -1164,7 +1182,7 @@ function GameWorld({
   const playerPosition = useRef(new Vector3(0, ballRadius, 0))
   const orb = useRef<Group>(null)
   const keys = useKeyboard(paused)
-  const { camera } = useThree()
+  const { camera, gl } = useThree()
   const collectedSet = useRef(new Set(collectedIds))
   const tooLargeCooldown = useRef(0)
   const physicsFeedbackCooldown = useRef(0)
@@ -1174,11 +1192,21 @@ function GameWorld({
   const activeSurfaceZoneId = useRef<string | null>(null)
   const cameraPosition = useRef(new Vector3(0, 7, 8))
   const cameraDirection = useRef(new Vector3(0, 0, -1))
+  const cameraTargetDirection = useRef(new Vector3(0, 0, -1))
+  const cameraOrbit = useRef<CameraOrbitState>({
+    zoom: 1,
+    pitch: 0,
+    pointerId: null,
+    lastX: 0,
+    lastY: 0,
+    manualUntil: 0,
+  })
   const heading = useRef(new Vector3(0, 0, -1))
   const lookTarget = useRef(new Vector3())
   const rollAxis = useRef(new Vector3())
   const rollQuaternion = useRef(new Quaternion())
   const previousPosition = useRef(new Vector3(0, ballRadius, 0))
+  const lastMapUpdate = useRef(0)
   const motion = useRef<MotionState>({
     x: 0,
     z: -1,
@@ -1214,6 +1242,80 @@ function GameWorld({
     playerBody.current.setLinvel({ x: 0, y: 0, z: 0 }, true)
     playerBody.current.resetForces(true)
   }, [paused])
+
+  useEffect(() => {
+    const canvas = gl.domElement
+    const orbit = cameraOrbit.current
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (event.button !== 0 && event.button !== 2) return
+      orbit.pointerId = event.pointerId
+      orbit.lastX = event.clientX
+      orbit.lastY = event.clientY
+      orbit.manualUntil = Number.POSITIVE_INFINITY
+      canvas.setPointerCapture(event.pointerId)
+      canvas.classList.add('is-camera-dragging')
+    }
+    const handlePointerMove = (event: PointerEvent) => {
+      if (orbit.pointerId !== event.pointerId) return
+      const deltaX = event.clientX - orbit.lastX
+      const deltaY = event.clientY - orbit.lastY
+      orbit.lastX = event.clientX
+      orbit.lastY = event.clientY
+
+      const currentAngle = Math.atan2(
+        cameraTargetDirection.current.x,
+        cameraTargetDirection.current.z,
+      )
+      const nextAngle = currentAngle - deltaX * 0.006
+      cameraTargetDirection.current.set(
+        Math.sin(nextAngle),
+        0,
+        Math.cos(nextAngle),
+      )
+      orbit.pitch = MathUtils.clamp(
+        orbit.pitch - deltaY * 0.012,
+        -1.35,
+        4.2,
+      )
+    }
+    const finishPointer = (event: PointerEvent) => {
+      if (orbit.pointerId !== event.pointerId) return
+      orbit.pointerId = null
+      orbit.manualUntil = performance.now() + 5200
+      if (canvas.hasPointerCapture(event.pointerId)) {
+        canvas.releasePointerCapture(event.pointerId)
+      }
+      canvas.classList.remove('is-camera-dragging')
+    }
+    const handleWheel = (event: WheelEvent) => {
+      event.preventDefault()
+      orbit.zoom = MathUtils.clamp(
+        orbit.zoom + event.deltaY * 0.0012,
+        0.62,
+        1.75,
+      )
+      orbit.manualUntil = performance.now() + 5200
+    }
+    const preventContextMenu = (event: MouseEvent) => event.preventDefault()
+
+    canvas.addEventListener('pointerdown', handlePointerDown)
+    canvas.addEventListener('pointermove', handlePointerMove)
+    canvas.addEventListener('pointerup', finishPointer)
+    canvas.addEventListener('pointercancel', finishPointer)
+    canvas.addEventListener('wheel', handleWheel, { passive: false })
+    canvas.addEventListener('contextmenu', preventContextMenu)
+
+    return () => {
+      canvas.removeEventListener('pointerdown', handlePointerDown)
+      canvas.removeEventListener('pointermove', handlePointerMove)
+      canvas.removeEventListener('pointerup', finishPointer)
+      canvas.removeEventListener('pointercancel', finishPointer)
+      canvas.removeEventListener('wheel', handleWheel)
+      canvas.removeEventListener('contextmenu', preventContextMenu)
+      canvas.classList.remove('is-camera-dragging')
+    }
+  }, [gl])
 
   const handleCollisionEnter = ({ other }: CollisionEnterPayload) => {
     const physics = (
@@ -1273,7 +1375,10 @@ function GameWorld({
         (keys.current.backward ? 1 : 0) -
         controlVector.z
       const driveStep = stepRelativeDrive(
-        { x: heading.current.x, z: heading.current.z },
+        {
+          x: cameraDirection.current.x,
+          z: cameraDirection.current.z,
+        },
         lateralInput,
         forwardInput,
       )
@@ -1436,25 +1541,48 @@ function GameWorld({
 
     previousPosition.current.set(position.x, position.y, position.z)
 
+    if (
+      cameraOrbit.current.pointerId === null &&
+      performance.now() >= cameraOrbit.current.manualUntil
+    ) {
+      cameraTargetDirection.current.x = MathUtils.damp(
+        cameraTargetDirection.current.x,
+        heading.current.x,
+        2.6,
+        delta,
+      )
+      cameraTargetDirection.current.z = MathUtils.damp(
+        cameraTargetDirection.current.z,
+        heading.current.z,
+        2.6,
+        delta,
+      )
+      cameraTargetDirection.current.normalize()
+    }
     cameraDirection.current.x = MathUtils.damp(
       cameraDirection.current.x,
-      heading.current.x,
-      5.2,
+      cameraTargetDirection.current.x,
+      8.2,
       delta,
     )
     cameraDirection.current.z = MathUtils.damp(
       cameraDirection.current.z,
-      heading.current.z,
-      5.2,
+      cameraTargetDirection.current.z,
+      8.2,
       delta,
     )
     cameraDirection.current.normalize()
 
-    const cameraDistance = 4.8 + ballRadius * 1.6
+    const cameraDistance =
+      (4.8 + ballRadius * 1.6) * cameraOrbit.current.zoom
     const elevation = Math.max(0, position.y - ballRadius)
     cameraPosition.current.set(
       position.x - cameraDirection.current.x * cameraDistance,
-      3.2 + ballRadius * 1.35 + elevation,
+      3.2 +
+        ballRadius * 1.35 +
+        elevation +
+        cameraOrbit.current.pitch +
+        (cameraOrbit.current.zoom - 1) * 1.35,
       position.z - cameraDirection.current.z * cameraDistance,
     )
     if (!reducedMotion && motion.current.impact > 0) {
@@ -1470,6 +1598,16 @@ function GameWorld({
       position.z + cameraDirection.current.z * ballRadius * 0.7,
     )
     camera.lookAt(lookTarget.current)
+
+    if (state.clock.elapsedTime - lastMapUpdate.current >= 0.12) {
+      lastMapUpdate.current = state.clock.elapsedTime
+      onPlayerPosition({
+        x: position.x,
+        z: position.z,
+        headingX: heading.current.x,
+        headingZ: heading.current.z,
+      })
+    }
 
   })
 
@@ -1638,7 +1776,7 @@ export function GameCanvas(props: GameCanvasProps) {
       className="game-canvas"
       shadows
       dpr={[1, 1.7]}
-      camera={{ position: [0, 7, 8], fov: 48, near: 0.1, far: 180 }}
+      camera={{ position: [0, 7, 8], fov: 48, near: 0.1, far: 240 }}
       gl={{ antialias: true, alpha: false, powerPreference: 'high-performance' }}
     >
       <Suspense fallback={null}>

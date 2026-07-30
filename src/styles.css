@@ -987,6 +987,14 @@ md-switch:focus-visible,
   height: 100% !important;
 }
 
+.game-canvas {
+  cursor: grab;
+}
+
+.game-canvas.is-camera-dragging {
+  cursor: grabbing;
+}
+
 .game-hud {
   position: absolute;
   z-index: 10;
@@ -1385,8 +1393,184 @@ md-switch:focus-visible,
   font-weight: 700;
 }
 
+.desktop-controls .desktop-controls__mouse {
+  align-items: center;
+  gap: 4px;
+  border-left: 1px solid rgba(82, 107, 132, 0.2);
+  margin-left: 2px;
+  padding-left: 9px;
+}
+
+.desktop-controls__mouse .material-symbol {
+  width: 15px;
+  height: 15px;
+  color: var(--blue);
+}
+
+.desktop-controls__mouse small {
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 800;
+}
+
 .mobile-controls {
   display: none;
+}
+
+.game-minimap {
+  --minimap-ground: #e9efd9;
+  position: absolute;
+  z-index: 15;
+  right: 16px;
+  bottom: 16px;
+  width: 190px;
+  pointer-events: none;
+  border: 1px solid rgba(82, 107, 132, 0.24);
+  border-radius: 21px;
+  padding: 9px;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 10px 28px rgba(34, 62, 85, 0.18);
+  backdrop-filter: blur(12px);
+  user-select: none;
+}
+
+.game-minimap.is-forest-trail {
+  --minimap-ground: #dcebd8;
+}
+
+.game-minimap.is-starlight-river {
+  --minimap-ground: #dce5f3;
+}
+
+.game-minimap header,
+.game-minimap footer {
+  display: flex;
+  align-items: center;
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.game-minimap header {
+  justify-content: space-between;
+  gap: 7px;
+  padding: 1px 3px 7px;
+}
+
+.game-minimap header span {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.game-minimap header .material-symbol {
+  width: 16px;
+  height: 16px;
+  color: var(--blue);
+}
+
+.game-minimap svg {
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  border: 1px solid rgba(82, 107, 132, 0.16);
+  border-radius: 15px;
+}
+
+.minimap-ground {
+  fill: var(--minimap-ground);
+}
+
+.minimap-surfaces ellipse {
+  opacity: 0.72;
+}
+
+.minimap-surfaces .is-grass {
+  fill: #79bd78;
+}
+
+.minimap-surfaces .is-water {
+  fill: #69c6e4;
+}
+
+.minimap-routes rect {
+  fill: #ffd44f;
+  opacity: 0.8;
+}
+
+.minimap-upper-levels rect {
+  fill: rgba(102, 75, 180, 0.24);
+  stroke: #664bb4;
+  stroke-dasharray: 2 1.4;
+  stroke-width: 0.75;
+}
+
+.minimap-upper-levels line {
+  stroke: #7c5bc7;
+  stroke-linecap: round;
+  stroke-width: 2.4;
+}
+
+.minimap-upper-levels circle {
+  fill: #f3c91d;
+  stroke: #fff;
+  stroke-width: 0.7;
+}
+
+.minimap-upper-levels path {
+  fill: #24324a;
+}
+
+.minimap-items circle {
+  opacity: 0.8;
+  stroke: rgba(255, 255, 255, 0.8);
+  stroke-width: 0.18;
+}
+
+.minimap-items circle.is-elevated {
+  stroke: #664bb4;
+  stroke-width: 0.36;
+}
+
+.minimap-player circle {
+  fill: #fff;
+  stroke: #24324a;
+  stroke-width: 1.1;
+}
+
+.minimap-player path {
+  fill: var(--blue);
+  stroke: #fff;
+  stroke-linejoin: round;
+  stroke-width: 0.65;
+}
+
+.game-minimap footer {
+  justify-content: flex-end;
+  gap: 4px;
+  padding: 6px 3px 0;
+}
+
+.game-minimap footer i {
+  display: inline-block;
+  width: 9px;
+  height: 7px;
+  border-radius: 2px;
+}
+
+.game-minimap footer i.is-upper {
+  margin-left: 6px;
+  border: 1px dashed #664bb4;
+  background: rgba(102, 75, 180, 0.2);
+}
+
+.game-minimap footer i.is-elevator {
+  margin-left: 5px;
+  border-radius: 50%;
+  background: #f3c91d;
 }
 
 .game-collection-status {
@@ -2029,6 +2213,23 @@ md-switch:focus-visible,
     display: none;
   }
 
+  .game-minimap {
+    right: max(12px, env(safe-area-inset-right));
+    bottom: 92px;
+    width: 154px;
+    border-radius: 18px;
+    padding: 7px;
+  }
+
+  .game-minimap header {
+    padding-bottom: 5px;
+  }
+
+  .game-minimap header small,
+  .game-minimap footer {
+    display: none;
+  }
+
   .mobile-controls {
     position: absolute;
     z-index: 20;
@@ -2319,8 +2520,25 @@ md-switch:focus-visible,
 
   .stage-ready-button {
     right: 10px;
-    bottom: 78px;
+    bottom: 232px;
     --md-filled-button-container-height: 40px;
+  }
+
+  .game-minimap {
+    right: max(10px, env(safe-area-inset-right));
+    bottom: 78px;
+    width: 128px;
+    border-radius: 16px;
+    padding: 6px;
+  }
+
+  .game-minimap header span {
+    font-size: 10px;
+  }
+
+  .game-minimap header .material-symbol {
+    width: 14px;
+    height: 14px;
   }
 
   .mobile-controls {

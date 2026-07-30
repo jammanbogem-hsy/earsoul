@@ -392,31 +392,32 @@ interface StageBlueprint {
 }
 
 function createTierGoals(
+  requiredCounts: [number, number, number, number],
   requiredScores: [number, number, number, number],
 ): StageTierGoal[] {
   return [
     {
       level: 1,
       label: '작은 보물과 친해지기',
-      requiredCount: 6,
+      requiredCount: requiredCounts[0],
       requiredScore: requiredScores[0],
     },
     {
       level: 2,
       label: '보통 보물 이어 붙이기',
-      requiredCount: 18,
+      requiredCount: requiredCounts[1],
       requiredScore: requiredScores[1],
     },
     {
       level: 3,
       label: '큰 보물 찾아가기',
-      requiredCount: 36,
+      requiredCount: requiredCounts[2],
       requiredScore: requiredScores[2],
     },
     {
       level: 4,
       label: '아주 큰 보물로 마무리',
-      requiredCount: 44,
+      requiredCount: requiredCounts[3],
       requiredScore: requiredScores[3],
     },
   ]
@@ -430,9 +431,12 @@ const stageBlueprints: StageBlueprint[] = [
     description: '넓은 광장, 경사로와 보물 엘리베이터를 오가며 러닝 보물을 모아요.',
     theme: 'sunny-plaza',
     mapSize: 144,
-    objectiveCount: 44,
-    scoreGoal: 1600,
-    tierGoals: createTierGoals([80, 400, 1200, 1600]),
+    objectiveCount: 80,
+    scoreGoal: 6000,
+    tierGoals: createTierGoals(
+      [10, 28, 52, 80],
+      [250, 1200, 3300, 6000],
+    ),
     accentColor: '#16866A',
     skyColor: '#D9F2FF',
     fogColor: '#D9F2FF',
@@ -445,12 +449,15 @@ const stageBlueprints: StageBlueprint[] = [
     description: '나무, 개울, 2층 숲 전망대 사이의 여러 동선에서 러닝 장비를 찾아요.',
     theme: 'forest-trail',
     mapSize: 168,
-    objectiveCount: 44,
-    scoreGoal: 2000,
-    tierGoals: createTierGoals([110, 520, 1450, 2000]),
+    objectiveCount: 92,
+    scoreGoal: 7500,
+    tierGoals: createTierGoals(
+      [12, 32, 60, 92],
+      [350, 1600, 4200, 7500],
+    ),
     unlockRequirement: {
       previousStageId: 'sunny-start',
-      requiredScore: 1600,
+      requiredScore: 6000,
       requiredTierLevel: 4,
     },
     accentColor: '#477A38',
@@ -465,12 +472,15 @@ const stageBlueprints: StageBlueprint[] = [
     description: '별빛 강변, 높은 전망대와 승강 발판을 오가며 큰 보물을 모아요.',
     theme: 'starlight-river',
     mapSize: 192,
-    objectiveCount: 44,
-    scoreGoal: 2400,
-    tierGoals: createTierGoals([140, 650, 1750, 2400]),
+    objectiveCount: 104,
+    scoreGoal: 9000,
+    tierGoals: createTierGoals(
+      [14, 36, 68, 104],
+      [450, 2000, 5000, 9000],
+    ),
     unlockRequirement: {
       previousStageId: 'wind-forest',
-      requiredScore: 2000,
+      requiredScore: 7500,
       requiredTierLevel: 4,
     },
     accentColor: '#6557C8',
@@ -630,7 +640,7 @@ const stages: GameStage[] = stageBlueprints.map((blueprint, index) => ({
 }))
 
 export const fallbackLearningPack: LearningPack = {
-  version: 7,
+  version: 8,
   title: '러닝크루 월드 투어',
   stages,
   objects: stages.flatMap((stage) => stage.objects),

@@ -15,11 +15,13 @@ import keyboardArrowRight from '@material-symbols/svg-400/rounded/keyboard_arrow
 import keyboardArrowUp from '@material-symbols/svg-400/rounded/keyboard_arrow_up.svg'
 import localFlorist from '@material-symbols/svg-400/rounded/local_florist.svg'
 import localDrink from '@material-symbols/svg-400/rounded/local_drink.svg'
+import mapIcon from '@material-symbols/svg-400/rounded/map.svg'
 import looksOne from '@material-symbols/svg-400/rounded/looks_one.svg'
 import looksTwo from '@material-symbols/svg-400/rounded/looks_two.svg'
 import looks3 from '@material-symbols/svg-400/rounded/looks_3.svg'
 import looks4 from '@material-symbols/svg-400/rounded/looks_4.svg'
 import musicNote from '@material-symbols/svg-400/rounded/music_note.svg'
+import mouse from '@material-symbols/svg-400/rounded/mouse.svg'
 import pause from '@material-symbols/svg-400/rounded/pause.svg'
 import pauseCircle from '@material-symbols/svg-400/rounded/pause_circle.svg'
 import playArrow from '@material-symbols/svg-400/rounded/play_arrow.svg'
@@ -35,6 +37,7 @@ import trendingUp from '@material-symbols/svg-400/rounded/trending_up.svg'
 import volumeOff from '@material-symbols/svg-400/rounded/volume_off.svg'
 import volumeUp from '@material-symbols/svg-400/rounded/volume_up.svg'
 import wandStars from '@material-symbols/svg-400/rounded/wand_stars.svg'
+import zoomIn from '@material-symbols/svg-400/rounded/zoom_in.svg'
 
 const iconSources = {
   add,
@@ -53,11 +56,13 @@ const iconSources = {
   keyboard_arrow_up: keyboardArrowUp,
   local_florist: localFlorist,
   local_drink: localDrink,
+  map: mapIcon,
   looks_one: looksOne,
   looks_two: looksTwo,
   looks_3: looks3,
   looks_4: looks4,
   music_note: musicNote,
+  mouse,
   pause,
   pause_circle: pauseCircle,
   play_arrow: playArrow,
@@ -73,6 +78,7 @@ const iconSources = {
   volume_off: volumeOff,
   volume_up: volumeUp,
   wand_stars: wandStars,
+  zoom_in: zoomIn,
 } as const
 
 export type MaterialIconName = keyof typeof iconSources

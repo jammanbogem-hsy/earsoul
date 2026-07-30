@@ -57,12 +57,49 @@ describe('rolling collection progression', () => {
     expect(getReachableSizeTier(calculateBallRadius(35)).level).toBe(3)
     expect(getReachableSizeTier(calculateBallRadius(36)).level).toBe(4)
 
-    fallbackLearningPack.stages.forEach((stage) => {
+    const expectedCounts = [
+      [10, 28, 52, 80],
+      [12, 32, 60, 92],
+      [14, 36, 68, 104],
+    ]
+    expect(fallbackLearningPack.stages.map((stage) => stage.scoreGoal)).toEqual([
+      6000, 7500, 9000,
+    ])
+    fallbackLearningPack.stages.forEach((stage, stageIndex) => {
       expect(stage.tierGoals.map((goal) => goal.level)).toEqual([1, 2, 3, 4])
-      expect(stage.tierGoals.map((goal) => goal.requiredCount)).toEqual([
-        6, 18, 36, 44,
-      ])
+      expect(stage.tierGoals.map((goal) => goal.requiredCount)).toEqual(
+        expectedCounts[stageIndex],
+      )
       expect(stage.tierGoals[3].requiredScore).toBe(stage.scoreGoal)
+
+      const tierCounts = stage.tierGoals.map((goal) => goal.requiredCount)
+      expect(
+        getReachableSizeTier(
+          calculateBallRadius(tierCounts[0] - 1, tierCounts),
+        ).level,
+      ).toBe(1)
+      expect(
+        getReachableSizeTier(calculateBallRadius(tierCounts[0], tierCounts))
+          .level,
+      ).toBe(2)
+      expect(
+        getReachableSizeTier(
+          calculateBallRadius(tierCounts[1] - 1, tierCounts),
+        ).level,
+      ).toBe(2)
+      expect(
+        getReachableSizeTier(calculateBallRadius(tierCounts[1], tierCounts))
+          .level,
+      ).toBe(3)
+      expect(
+        getReachableSizeTier(
+          calculateBallRadius(tierCounts[2] - 1, tierCounts),
+        ).level,
+      ).toBe(3)
+      expect(
+        getReachableSizeTier(calculateBallRadius(tierCounts[2], tierCounts))
+          .level,
+      ).toBe(4)
     })
   })
 
@@ -245,7 +282,7 @@ describe('rolling collection progression', () => {
     expect(complete.ready).toBe(true)
     expect(complete.progress).toBe(1)
     expect(complete.completedTierLevel).toBe(4)
-    expect(complete.bonusCount).toBe(212)
+    expect(complete.bonusCount).toBe(176)
   })
 
   it('accepts the combo-awarded map score while retaining tier requirements', () => {
@@ -265,7 +302,7 @@ describe('rolling collection progression', () => {
 
     const earlyCombo = getStageProgress(
       stage.objects,
-      stage.objects.slice(0, 6).map((item) => item.id),
+      stage.objects.slice(0, 9).map((item) => item.id),
       stage,
       stage.scoreGoal,
     )
