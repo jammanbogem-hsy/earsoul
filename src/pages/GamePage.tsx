@@ -83,7 +83,7 @@ const coachSteps: {
   {
     icon: 'play_arrow',
     title: '바라보는 방향을 따라 굴려요',
-    body: 'W·S(ㅈ·ㄴ)는 앞뒤, A·D(ㅁ·ㅇ)는 지금 보는 방향의 좌우로 움직여요. 조이스틱도 같은 방식이에요.',
+    body: 'W·S(ㅈ·ㄴ)는 앞뒤, A·D(ㅁ·ㅇ)는 지금 보는 방향의 좌우예요. 빛나는 길에서는 빨라지고 나무와 의자는 피해야 해요.',
   },
 ]
 
@@ -198,27 +198,21 @@ export function GamePage() {
   const stageProgress = getStageProgress(
     stage.objects,
     session.collectedIds,
-    stage.objectiveCount,
+    stage,
+    session.stageScores?.[stage.id],
   )
   const stageCollectedCount = stageProgress.collectedCount
-  const attachedObjects = pack.objects.filter((item) =>
+  const attachedObjects = stage.objects.filter((item) =>
     session.collectedIds.includes(item.id),
   )
   const stageReady = stageProgress.ready
   const bonusCount = stageProgress.bonusCount
-  const previewCollectedCount =
-    import.meta.env.DEV &&
-    Number.isInteger(previewStageIndex) &&
-    previewStageIndex >= 0
-      ? pack.stages
-          .slice(0, stageIndex)
-          .reduce((total, map) => total + map.objectiveCount, 0)
-      : 0
-  const ballRadius = calculateBallRadius(
-    Math.max(session.collectedIds.length, previewCollectedCount),
-  )
+  const ballRadius = calculateBallRadius(stageCollectedCount)
   const progress = stageProgress.progress
   const reachableTier = getReachableSizeTier(ballRadius)
+  const nextTierGoal =
+    stageProgress.nextTierGoal ??
+    stage.tierGoals[stage.tierGoals.length - 1]
 
   const handleCollect = (item: LearningObject) => {
     const current = sessionRef.current
@@ -275,7 +269,8 @@ export function GamePage() {
     const nextStageProgress = getStageProgress(
       stage.objects,
       next.collectedIds,
-      stage.objectiveCount,
+      stage,
+      next.stageScores?.[stage.id],
     )
     if (
       !stageProgress.ready &&
@@ -295,6 +290,36 @@ export function GamePage() {
         tone: 'wait',
       },
       1800,
+    )
+  }
+
+  const handlePhysicsFeedback = (feedback: {
+    type: 'collision' | 'boost'
+    label: string
+    bounced?: boolean
+  }) => {
+    if (feedback.type === 'boost') {
+      showToast(
+        {
+          title: `${feedback.label} · 속도 상승`,
+          body: '빛나는 길을 따라 달리면 더 빠르게 굴러가요.',
+          tone: 'learned',
+        },
+        1500,
+      )
+      return
+    }
+
+    playChime(soundEnabled, false)
+    showToast(
+      {
+        title: `${feedback.label}에 부딪혔어요`,
+        body: feedback.bounced
+          ? '러닝볼이 살짝 뒤로 튕겼어요. 방향을 바꿔 다시 출발해요.'
+          : '러닝볼이 멈췄어요. 좌우로 돌아서 다른 길을 찾아봐요.',
+        tone: 'wait',
+      },
+      1500,
     )
   }
 
@@ -363,60 +388,72 @@ export function GamePage() {
           controlVector={controlVector}
           onCollect={handleCollect}
           onTooLarge={handleTooLarge}
+          onPhysicsFeedback={handlePhysicsFeedback}
         />
       </div>
 
       <header className="game-hud" aria-label="놀이 상태와 설정">
         <section
           className="game-size-status"
-          data-stage={stageIndex + 1}
-          style={{ '--tier-color': stage.accentColor } as CSSProperties}
-          aria-label={`${pack.stages.length}개 중 ${stageIndex + 1}번째 맵 ${stage.title}, 목표 ${stage.objectiveCount}개 중 ${stageCollectedCount}개 수집`}
+          data-tier={reachableTier.level}
+          style={{ '--tier-color': reachableTier.color } as CSSProperties}
+          aria-label={`${pack.stages.length}개 중 ${stageIndex + 1}번째 맵 ${stage.title}, ${reachableTier.level}단계 크기, 맵 점수 ${stageProgress.stageScore}점, 목표 ${stage.scoreGoal}점`}
         >
           <span
             className="game-size-status__level"
             aria-hidden="true"
           >
-            <small>맵</small>
-            <strong>{stageIndex + 1}</strong>
+            <small>크기</small>
+            <strong>{reachableTier.level}</strong>
           </span>
           <div className="game-size-status__copy">
             <span>
-              스테이지 {stageIndex + 1}/{pack.stages.length} ·{' '}
-              {reachableTier.level}단계 크기
+              맵 {stageIndex + 1}/{pack.stages.length} ·{' '}
+              {stageReady
+                ? '점수 목표 완료'
+                : `다음 목표 ${nextTierGoal.level}단계`}
             </span>
             <strong>{stage.title}</strong>
             <M3LinearProgress
               className="game-size-progress"
-              aria-label="현재 맵 목표"
-              aria-valuetext={`목표 ${stage.objectiveCount}개 중 ${stageCollectedCount}개를 붙였어요`}
+              aria-label="현재 맵 성장과 점수 목표"
+              aria-valuetext={`${stage.objectiveCount}개 중 ${stageCollectedCount}개, ${stage.scoreGoal}점 중 ${stageProgress.stageScore}점을 모았어요`}
               value={progress}
             />
           </div>
           <span className="game-size-status__count" aria-hidden="true">
-            <strong>{Math.min(stageCollectedCount, stage.objectiveCount)}</strong>
-            <small>/{stage.objectiveCount}</small>
+            <strong>{stageProgress.stageScore.toLocaleString()}</strong>
+            <small>/{stage.scoreGoal.toLocaleString()}점</small>
           </span>
-          <ol className="game-tier-legend" aria-label="세 개의 러닝 맵">
-            {pack.stages.map((map, index) => (
-              <li
-                key={map.id}
-                className={[
-                  index < stageIndex ? 'is-reached' : '',
-                  index === stageIndex ? 'is-current' : '',
-                ]
-                  .filter(Boolean)
-                  .join(' ')}
-                style={{ '--tier-color': map.accentColor } as CSSProperties}
-                aria-current={
-                  index === stageIndex ? 'step' : undefined
-                }
-                aria-label={`${index + 1}단계 ${map.title}`}
-              >
-                <i aria-hidden="true" />
-                <span>{index + 1}</span>
-              </li>
-            ))}
+          <ol className="game-tier-legend" aria-label="현재 맵의 네 크기 단계">
+            {stage.tierGoals.map((tierGoal) => {
+              const tierStatus = stageProgress.tierProgress.find(
+                (tier) => tier.level === tierGoal.level,
+              )
+              const isCurrent =
+                !stageReady && nextTierGoal.level === tierGoal.level
+
+              return (
+                <li
+                  key={tierGoal.level}
+                  className={[
+                    tierStatus?.ready ? 'is-reached' : '',
+                    isCurrent ? 'is-current' : '',
+                  ]
+                    .filter(Boolean)
+                    .join(' ')}
+                  aria-current={isCurrent ? 'step' : undefined}
+                  aria-label={`${tierGoal.level}단계, ${tierGoal.requiredCount}개와 ${tierGoal.requiredScore}점 ${
+                    tierStatus?.ready ? '달성' : '목표'
+                  }`}
+                >
+                  <i aria-hidden="true" />
+                  <span>
+                    {tierGoal.level} · {tierGoal.requiredCount}개
+                  </span>
+                </li>
+              )
+            })}
           </ol>
         </section>
 
@@ -492,7 +529,7 @@ export function GamePage() {
           }}
         >
           {stageIndex < pack.stages.length - 1
-            ? '다음 맵 열림'
+            ? '점수 목표 달성 · 다음 맵'
             : '기록 완성하기'}
         </M3Button>
       )}
@@ -534,15 +571,21 @@ export function GamePage() {
             {toast
               ? toast.title
               : stageReady
-                ? `${stage.title} 목표를 달성했어요`
-                : `${stage.title} · ${stageCollectedCount}/${stage.objectiveCount}`}
+                ? `${stage.title} 점수 목표를 달성했어요`
+                : `${reachableTier.level}단계 크기 · ${stageProgress.stageScore.toLocaleString()}/${stage.scoreGoal.toLocaleString()}점`}
           </strong>
           <p>
             {toast
               ? toast.body
               : stageReady
                 ? `보너스 ${bonusCount}개 · 더 모으거나 다음 맵으로 갈 수 있어요.`
-                : `64개 중 원하는 길을 골라 ${stage.objectiveCount - stageCollectedCount}개만 더 모아요.`}
+                : `${nextTierGoal.label} · ${Math.max(
+                    0,
+                    nextTierGoal.requiredCount - stageCollectedCount,
+                  )}개와 ${Math.max(
+                    0,
+                    nextTierGoal.requiredScore - stageProgress.stageScore,
+                  ).toLocaleString()}점만 더 모아요.`}
           </p>
         </div>
       </div>
@@ -601,21 +644,22 @@ export function GamePage() {
               />
             </span>
             <p className="section-kicker">
-              스테이지 {stageIndex + 1}/{pack.stages.length} 목표 달성
+              맵 {stageIndex + 1}/{pack.stages.length} 점수 목표 달성
             </p>
-            <h2 id="stage-complete-title">{stage.title} 길이 열렸어요!</h2>
+            <h2 id="stage-complete-title">{stage.title} 완주!</h2>
             <p>
-              목표 {stage.objectiveCount}개를 모았어요.
+              크기 4단계와 목표 {stage.scoreGoal.toLocaleString()}점을 모두
+              달성했어요.
               {bonusCount > 0 && ` 보너스 아이템도 ${bonusCount}개 더 찾았어요.`}
             </p>
             <div className="stage-complete-card__stats">
               <span>
                 <MaterialIcon name="star" />
-                {session.score.toLocaleString()}점
+                맵 {stageProgress.stageScore.toLocaleString()}점
               </span>
               <span>
                 <MaterialIcon name="progress_activity" />
-                최고 x{session.bestCombo}
+                {stageCollectedCount}개 · 최고 x{session.bestCombo}
               </span>
             </div>
             <M3Button

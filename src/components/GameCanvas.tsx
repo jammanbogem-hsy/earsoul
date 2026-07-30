@@ -29,6 +29,11 @@ import {
   type DriveControl,
 } from '../game/input'
 import { stepRollingMotion } from '../game/rollingMotion'
+import {
+  createWorldPhysicsLayout,
+  getActiveSpeedZone,
+  resolveWorldPhysics,
+} from '../game/worldPhysics'
 import { MaterialIcon } from './MaterialIcon'
 import {
   AttachedObjectMesh,
@@ -46,6 +51,11 @@ interface GameCanvasProps {
   controlVector: ControlVector
   onCollect: (item: LearningObject) => void
   onTooLarge: (item: LearningObject) => void
+  onPhysicsFeedback: (feedback: {
+    type: 'collision' | 'boost'
+    label: string
+    bounced?: boolean
+  }) => void
 }
 
 const SUBJECT_COLORS = {
@@ -61,6 +71,8 @@ interface MotionState {
   speed: number
   velocityX: number
   velocityZ: number
+  boost: number
+  impact: number
 }
 
 function useKeyboard(disabled: boolean) {
@@ -353,7 +365,7 @@ function MotionEffects({
   const puffs = useRef<(Mesh | null)[]>([])
 
   useFrame(({ clock }) => {
-    const { x, z, speed } = motion.current
+    const { x, z, speed, boost, impact } = motion.current
     puffs.current.forEach((puff, index) => {
       if (!puff) return
       const sideX = -z
@@ -367,8 +379,11 @@ function MotionEffects({
         -z * behind + sideZ * spread,
       )
       const material = puff.material as MeshBasicMaterial
-      material.opacity = reducedMotion ? 0 : speed * (1 - phase) * 0.32
-      const scale = 0.7 + phase * 1.6
+      material.color.set(boost > 1 ? '#B6F3FF' : impact > 0 ? '#FFD29B' : '#FFF3D4')
+      material.opacity = reducedMotion
+        ? 0
+        : Math.min(0.58, speed * boost * (1 - phase) * 0.36 + impact * 0.12)
+      const scale = 0.7 + phase * (boost > 1 ? 2.15 : 1.6)
       puff.scale.set(scale, 0.18, scale * 0.72)
     })
   })
@@ -406,14 +421,21 @@ function GameWorld({
   controlVector,
   onCollect,
   onTooLarge,
+  onPhysicsFeedback,
 }: GameCanvasProps) {
   const objects = stage.objects
+  const physicsLayout = useMemo(
+    () => createWorldPhysicsLayout(stage),
+    [stage],
+  )
   const player = useRef<Group>(null)
   const orb = useRef<Group>(null)
   const keys = useKeyboard(paused)
   const { camera } = useThree()
   const collectedSet = useRef(new Set(collectedIds))
   const tooLargeCooldown = useRef(0)
+  const physicsFeedbackCooldown = useRef(0)
+  const activeSpeedZoneId = useRef<string | null>(null)
   const cameraPosition = useRef(new Vector3(0, 7, 8))
   const cameraDirection = useRef(new Vector3(0, 0, -1))
   const heading = useRef(new Vector3(0, 0, -1))
@@ -426,6 +448,8 @@ function GameWorld({
     speed: 0,
     velocityX: 0,
     velocityZ: 0,
+    boost: 1,
+    impact: 0,
   })
 
   useEffect(() => {
@@ -482,30 +506,104 @@ function GameWorld({
       const previousX = position.x
       const previousZ = position.z
       const movementLimit = stage.mapSize / 2 - ballRadius
+      const speedZone = getActiveSpeedZone(
+        physicsLayout,
+        previousX,
+        previousZ,
+      )
+      const speedMultiplier = speedZone?.multiplier ?? 1
+      const frameDelta = Math.min(delta, 1 / 30)
+      const candidateVelocityX = rollingStep.velocityX * speedMultiplier
+      const candidateVelocityZ = rollingStep.velocityZ * speedMultiplier
+      const candidateX = MathUtils.clamp(
+        position.x + candidateVelocityX * frameDelta,
+        -movementLimit,
+        movementLimit,
+      )
+      const candidateZ = MathUtils.clamp(
+        position.z + candidateVelocityZ * frameDelta,
+        -movementLimit,
+        movementLimit,
+      )
+      const physicsStep = resolveWorldPhysics(
+        {
+          startX: previousX,
+          startZ: previousZ,
+          nextX: candidateX,
+          nextZ: candidateZ,
+          velocityX: candidateVelocityX,
+          velocityZ: candidateVelocityZ,
+          ballRadius,
+        },
+        physicsLayout,
+      )
       const nextX = MathUtils.clamp(
-        position.x + rollingStep.velocityX * Math.min(delta, 1 / 30),
+        physicsStep.x,
         -movementLimit,
         movementLimit,
       )
       const nextZ = MathUtils.clamp(
-        position.z + rollingStep.velocityZ * Math.min(delta, 1 / 30),
+        physicsStep.z,
         -movementLimit,
         movementLimit,
       )
       position.x = nextX
       position.z = nextZ
 
+      const resolvedVelocityX = physicsStep.impact
+        ? physicsStep.velocityX
+        : rollingStep.velocityX
+      const resolvedVelocityZ = physicsStep.impact
+        ? physicsStep.velocityZ
+        : rollingStep.velocityZ
       motion.current.velocityX =
-        nextX === previousX && Math.abs(rollingStep.velocityX) > 0
+        nextX === previousX && Math.abs(resolvedVelocityX) > 0
           ? 0
-          : rollingStep.velocityX
+          : resolvedVelocityX
       motion.current.velocityZ =
-        nextZ === previousZ && Math.abs(rollingStep.velocityZ) > 0
+        nextZ === previousZ && Math.abs(resolvedVelocityZ) > 0
           ? 0
-          : rollingStep.velocityZ
+          : resolvedVelocityZ
       motion.current.x = heading.current.x
       motion.current.z = heading.current.z
-      motion.current.speed = rollingStep.speedRatio
+      motion.current.speed = Math.min(
+        1.35,
+        rollingStep.speedRatio * physicsStep.speedMultiplier,
+      )
+      motion.current.boost = physicsStep.speedMultiplier
+      motion.current.impact = physicsStep.impact
+        ? 1
+        : Math.max(0, motion.current.impact - delta * 4.5)
+
+      if (
+        physicsStep.impact &&
+        state.clock.elapsedTime >= physicsFeedbackCooldown.current
+      ) {
+        physicsFeedbackCooldown.current = state.clock.elapsedTime + 1.1
+        onPhysicsFeedback({
+          type: 'collision',
+          label: physicsStep.impact.obstacle.label,
+          bounced: physicsStep.impact.response === 'bounce',
+        })
+      }
+
+      const nextSpeedZoneId = physicsStep.speedZone?.id ?? null
+      if (
+        nextSpeedZoneId &&
+        nextSpeedZoneId !== activeSpeedZoneId.current &&
+        rollingStep.speedRatio > 0.16 &&
+        state.clock.elapsedTime >= physicsFeedbackCooldown.current
+      ) {
+        physicsFeedbackCooldown.current = state.clock.elapsedTime + 1.1
+        onPhysicsFeedback({
+          type: 'boost',
+          label: physicsStep.speedZone?.label ?? '스피드 길',
+        })
+      }
+      activeSpeedZoneId.current =
+        nextSpeedZoneId && rollingStep.speedRatio > 0.16
+          ? nextSpeedZoneId
+          : null
 
       const traveled = Math.hypot(nextX - previousX, nextZ - previousZ)
       if (orb.current && traveled > 0.0001) {
@@ -578,6 +676,12 @@ function GameWorld({
       3.2 + ballRadius * 1.35,
       position.z - cameraDirection.current.z * cameraDistance,
     )
+    if (!reducedMotion && motion.current.impact > 0) {
+      const shake =
+        Math.sin(state.clock.elapsedTime * 58) * motion.current.impact * 0.075
+      cameraPosition.current.x += shake
+      cameraPosition.current.y += Math.abs(shake) * 0.5
+    }
     camera.position.lerp(cameraPosition.current, reducedMotion ? 0.18 : 0.1)
     lookTarget.current.set(
       position.x + cameraDirection.current.x * ballRadius * 0.7,

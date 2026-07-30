@@ -1,5 +1,6 @@
 export type LearningSubject = '한글' | '수학' | '과학' | '생활'
 export type StageTheme = 'sunny-plaza' | 'forest-trail' | 'starlight-river'
+export type SizeTierLevel = 1 | 2 | 3 | 4
 
 export type ObjectShape =
   | 'box'
@@ -26,6 +27,19 @@ export interface LearningObject {
   symbol?: string
 }
 
+export interface StageTierGoal {
+  level: SizeTierLevel
+  label: string
+  requiredCount: number
+  requiredScore: number
+}
+
+export interface StageUnlockRequirement {
+  previousStageId: string
+  requiredScore: number
+  requiredTierLevel: SizeTierLevel
+}
+
 export interface GameStage {
   id: string
   title: string
@@ -33,7 +47,11 @@ export interface GameStage {
   description: string
   theme: StageTheme
   mapSize: number
+  /** Legacy count target retained for older sessions and remote packs. */
   objectiveCount: number
+  scoreGoal: number
+  tierGoals: StageTierGoal[]
+  unlockRequirement?: StageUnlockRequirement
   accentColor: string
   skyColor: string
   fogColor: string
@@ -55,6 +73,7 @@ export interface GameSession {
   score: number
   bestCombo: number
   currentStageIndex: number
+  stageScores: Record<string, number>
   collectedIds: string[]
   collectedLabels: string[]
   durationSeconds: number

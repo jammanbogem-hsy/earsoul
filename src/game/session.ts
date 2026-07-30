@@ -12,6 +12,7 @@ const emptySession = (): GameSession => {
     score: 0,
     bestCombo: 0,
     currentStageIndex: 0,
+    stageScores: {},
     collectedIds: [],
     collectedLabels: [],
     durationSeconds: 0,
@@ -28,6 +29,7 @@ export function readSession(): GameSession | null {
       ...session,
       bestCombo: session.bestCombo ?? 0,
       currentStageIndex: Math.max(0, session.currentStageIndex ?? 0),
+      stageScores: session.stageScores ?? {},
     }
   } catch {
     return null
@@ -46,18 +48,26 @@ export function startSession(): GameSession {
 
 export function recordCollection(
   session: GameSession,
-  item: { id: string; label: string; points: number },
+  item: { id: string; stageId?: string; label: string; points: number },
   options: { multiplier?: number; combo?: number } = {},
 ): GameSession {
   if (session.collectedIds.includes(item.id)) return session
 
   const multiplier = Math.max(1, Math.min(5, options.multiplier ?? 1))
   const combo = Math.max(1, options.combo ?? 1)
+  const awardedPoints = Math.round(item.points * multiplier)
+  const stageScores = session.stageScores ?? {}
 
   return saveSession({
     ...session,
-    score: session.score + Math.round(item.points * multiplier),
+    score: session.score + awardedPoints,
     bestCombo: Math.max(session.bestCombo ?? 0, combo),
+    stageScores: item.stageId
+      ? {
+          ...stageScores,
+          [item.stageId]: (stageScores[item.stageId] ?? 0) + awardedPoints,
+        }
+      : stageScores,
     collectedIds: [...session.collectedIds, item.id],
     collectedLabels: [...session.collectedLabels, item.label],
   })

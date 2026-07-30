@@ -456,39 +456,206 @@ function RunningShoe({
   color: string
   compact?: boolean
 }) {
+  const laceRows = compact
+    ? [{ x: 0.02, y: 0.2 }]
+    : [
+        { x: -0.14, y: 0.23 },
+        { x: 0.04, y: 0.19 },
+        { x: 0.22, y: 0.13 },
+      ]
+
   return (
     <group rotation={[0, -0.14, 0]}>
-      <BoxPart
-        color={PAPER}
-        position={[0.08, -0.3, 0]}
-        scale={[1.24, 0.2, 0.58]}
-      />
-      <BoxPart
-        color={color}
-        position={[-0.24, -0.02, 0]}
-        rotation={[0, 0, -0.08]}
-        scale={[0.68, 0.48, 0.5]}
-      />
-      <mesh castShadow position={[0.38, -0.11, 0]} scale={[0.48, 0.28, 0.47]}>
-        <dodecahedronGeometry args={[1, 0]} />
-        <Paint color={color} />
+      {/* Dark rubber outsole: a flattened capsule keeps the footprint rounded. */}
+      <mesh
+        castShadow
+        receiveShadow
+        position={[0.04, -0.38, 0]}
+        rotation={[0, 0, Math.PI / 2]}
+        scale={[0.3, 1, 0.96]}
+      >
+        <capsuleGeometry args={[0.3, 0.68, 5, 18]} />
+        <Paint color={INK} roughness={0.88} />
+      </mesh>
+
+      {/* The light midsole separates the upper from the ground at every scale. */}
+      <mesh
+        castShadow
+        receiveShadow
+        position={[0.04, -0.29, 0]}
+        rotation={[0, 0, Math.PI / 2]}
+        scale={[0.42, 1, 1]}
+      >
+        <capsuleGeometry args={[0.3, 0.69, 5, 18]} />
+        <Paint color={PAPER} roughness={0.76} />
+      </mesh>
+
+      {/* Layered textile upper: heel quarter, forefoot and toe cap. */}
+      <mesh
+        castShadow
+        receiveShadow
+        position={[-0.3, -0.01, 0]}
+        rotation={[0, 0, Math.PI / 2 - 0.08]}
+        scale={[0.78, 0.62, 0.98]}
+      >
+        <capsuleGeometry args={[0.31, 0.45, 5, 18]} />
+        <Paint color={color} roughness={0.62} />
+      </mesh>
+      <mesh
+        castShadow
+        receiveShadow
+        position={[0.27, -0.1, 0]}
+        scale={[0.54, 0.25, 0.45]}
+      >
+        <sphereGeometry args={[1, 18, 10]} />
+        <Paint color={color} roughness={0.58} />
+      </mesh>
+      <mesh
+        castShadow
+        position={[0.59, -0.18, 0]}
+        scale={[0.25, 0.16, 0.43]}
+      >
+        <sphereGeometry args={[1, 16, 8]} />
+        <Paint color={PAPER} roughness={0.72} />
+      </mesh>
+
+      {/* Padded heel collar and a fabric tongue make the shoe readable in profile. */}
+      <mesh
+        castShadow
+        position={[-0.43, 0.27, 0]}
+        rotation={[Math.PI / 2, 0, 0]}
+        scale={[1.18, 0.82, 0.78]}
+      >
+        <torusGeometry args={[0.22, 0.075, 7, 22]} />
+        <Paint color={INK} roughness={0.82} />
       </mesh>
       <BoxPart
         color={INK}
-        position={[-0.52, 0.18, 0]}
-        rotation={[0, 0, -0.08]}
-        scale={[0.16, 0.64, 0.48]}
+        position={[-0.08, 0.24, 0]}
+        rotation={[0, 0, -0.3]}
+        scale={[0.43, 0.48, 0.36]}
       />
-      {!compact &&
-        [-0.18, 0.02, 0.22].map((x) => (
+      <BoxPart
+        color={color}
+        position={[-0.04, 0.28, 0]}
+        rotation={[0, 0, -0.3]}
+        scale={[0.34, 0.42, 0.38]}
+      />
+
+      {/* Contrasting side chevrons stay visible from either camera side. */}
+      {[-1, 1].flatMap((side) => [
+        <BoxPart
+          key={`stripe-a-${side}`}
+          color={PAPER}
+          position={[0.03, -0.01, side * 0.42]}
+          rotation={[0, 0, -0.32]}
+          scale={[0.43, 0.085, 0.035]}
+          shadow={false}
+        />,
+        <BoxPart
+          key={`stripe-b-${side}`}
+          color={PAPER}
+          position={[0.3, -0.06, side * 0.4]}
+          rotation={[0, 0, 0.24]}
+          scale={[0.28, 0.075, 0.035]}
+          shadow={false}
+        />,
+      ])}
+
+      {/* Cross-laced bars sit above the tongue instead of being painted on. */}
+      {laceRows.flatMap(({ x, y }) => [
+        <BoxPart
+          key={`lace-left-${x}`}
+          color={PAPER}
+          position={[x, y, 0]}
+          rotation={[0, 0.19, -0.08]}
+          scale={[0.045, 0.035, 0.58]}
+          shadow={false}
+        />,
+        <BoxPart
+          key={`lace-right-${x}`}
+          color={PAPER}
+          position={[x, y + 0.006, 0]}
+          rotation={[0, -0.19, -0.08]}
+          scale={[0.045, 0.035, 0.58]}
+          shadow={false}
+        />,
+        ...(!compact
+          ? [
+              <mesh
+                key={`eyelet-left-${x}`}
+                position={[x - 0.055, y, 0.3]}
+                rotation={[Math.PI / 2, 0, 0]}
+              >
+                <torusGeometry args={[0.035, 0.012, 5, 10]} />
+                <Paint color={GOLD} roughness={0.42} />
+              </mesh>,
+              <mesh
+                key={`eyelet-right-${x}`}
+                position={[x - 0.055, y, -0.3]}
+                rotation={[Math.PI / 2, 0, 0]}
+              >
+                <torusGeometry args={[0.035, 0.012, 5, 10]} />
+                <Paint color={GOLD} roughness={0.42} />
+              </mesh>,
+            ]
+          : []),
+      ])}
+
+      {!compact && (
+        <>
+          {/* Tread blocks catch light during rolling and sell the rubber sole. */}
+          {[-0.42, -0.14, 0.14, 0.42].map((x) => (
+            <BoxPart
+              key={`tread-${x}`}
+              color={INK}
+              position={[x, -0.49, 0]}
+              scale={[0.17, 0.045, 0.45]}
+            />
+          ))}
+          {/* Small toe vents and a rear pull loop add close-up detail. */}
+          {[-0.16, 0, 0.16].map((z) => (
+            <mesh
+              key={`vent-${z}`}
+              position={[0.4, 0.02, z]}
+              scale={[0.022, 0.022, 0.022]}
+            >
+              <sphereGeometry args={[1, 7, 5]} />
+              <Paint color={INK} roughness={0.9} />
+            </mesh>
+          ))}
+          <mesh
+            castShadow
+            position={[-0.62, 0.39, 0]}
+            scale={[0.55, 0.92, 0.55]}
+          >
+            <torusGeometry args={[0.12, 0.025, 6, 14]} />
+            <Paint color={color} roughness={0.72} />
+          </mesh>
           <BoxPart
-            key={x}
-            color={PAPER}
-            position={[x, 0.22, 0.29]}
-            rotation={[Math.PI / 2, 0, 0]}
-            scale={[0.08, 0.44, 0.04]}
+            color={color}
+            position={[-0.62, 0.28, 0]}
+            scale={[0.07, 0.25, 0.08]}
           />
-        ))}
+        </>
+      )}
+
+      {/* A slim heel counter prevents the rounded layers from reading as a toy. */}
+      <BoxPart
+        color={INK}
+        position={[-0.59, 0.02, 0]}
+        rotation={[0, 0, -0.07]}
+        scale={[0.1, 0.43, 0.43]}
+      />
+      {!compact && (
+        <BoxPart
+          color={PAPER}
+          position={[-0.645, 0.01, 0]}
+          rotation={[0, 0, -0.07]}
+          scale={[0.025, 0.16, 0.45]}
+          shadow={false}
+        />
+      )}
     </group>
   )
 }

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import {
+  SESSION_KEY,
   advanceSessionStage,
   calculateBallRadius,
   finishSession,
@@ -30,6 +31,7 @@ describe('single session score', () => {
     expect(twice.collectedIds).toEqual(['runner-lace'])
     expect(readSession()?.score).toBe(10)
     expect(readSession()?.bestCombo).toBe(1)
+    expect(readSession()?.stageScores).toEqual({})
   })
 
   it('applies a capped combo multiplier and remembers the best combo', () => {
@@ -43,6 +45,42 @@ describe('single session score', () => {
     expect(combo.score).toBe(60)
     expect(combo.bestCombo).toBe(4)
     expect(readSession()?.bestCombo).toBe(4)
+  })
+
+  it('adds combo points to the current map goal without double counting', () => {
+    const session = startSession()
+    const once = recordCollection(
+      session,
+      {
+        id: 'sunny-shoe',
+        stageId: 'sunny-start',
+        label: '운동화',
+        points: 20,
+      },
+      { multiplier: 3 },
+    )
+    const twice = recordCollection(
+      once,
+      {
+        id: 'sunny-shoe',
+        stageId: 'sunny-start',
+        label: '운동화',
+        points: 20,
+      },
+      { multiplier: 5 },
+    )
+
+    expect(twice.score).toBe(60)
+    expect(twice.stageScores).toEqual({ 'sunny-start': 60 })
+    expect(readSession()?.stageScores).toEqual({ 'sunny-start': 60 })
+  })
+
+  it('migrates sessions saved before map scores were introduced', () => {
+    const legacy = startSession()
+    const legacyWithoutStageScores = { ...legacy, stageScores: undefined }
+    sessionStorage.setItem(SESSION_KEY, JSON.stringify(legacyWithoutStageScores))
+
+    expect(readSession()?.stageScores).toEqual({})
   })
 
   it('finishes the current browser session', () => {

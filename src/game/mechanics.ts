@@ -1,5 +1,9 @@
 import { calculateBallRadius } from './session'
-import type { LearningObject } from '../types'
+import type {
+  GameStage,
+  LearningObject,
+  StageTierGoal,
+} from '../types'
 
 export const COLLECTIBLE_RATIO = 0.95
 
@@ -37,25 +41,155 @@ export function getObjectVisualScale(objectSize: number): number {
   return OBJECT_VISUAL_SCALES[getSizeTier(objectSize).level - 1]
 }
 
-export function getStageProgress(
-  objects: Pick<LearningObject, 'id'>[],
+type StageGoalConfig = Pick<
+  GameStage,
+  'objectiveCount' | 'scoreGoal' | 'tierGoals'
+>
+
+export interface StageTierProgress extends StageTierGoal {
+  collectedCount: number
+  score: number
+  ready: boolean
+  progress: number
+}
+
+export interface CircularWorldObstacle {
+  x: number
+  z: number
+  radius: number
+}
+
+export function isCollectionPositionClear(
+  item: Pick<LearningObject, 'position' | 'size'>,
+  obstacles: CircularWorldObstacle[],
+  extraClearance = 0.35,
+): boolean {
+  const itemRadius = Math.max(0.22, item.size * 0.64)
+
+  return obstacles.every(
+    (obstacle) =>
+      Math.hypot(
+        item.position[0] - obstacle.x,
+        item.position[2] - obstacle.z,
+      ) >=
+      obstacle.radius + itemRadius + extraClearance,
+  )
+}
+
+export function getStageScore(
+  objects: Pick<LearningObject, 'id' | 'points'>[],
   collectedIds: string[],
-  objectiveCount: number,
+): number {
+  const collectedSet = new Set(collectedIds)
+  return objects.reduce(
+    (score, item) => score + (collectedSet.has(item.id) ? item.points : 0),
+    0,
+  )
+}
+
+export function getStageProgress(
+  objects: Pick<LearningObject, 'id' | 'points'>[],
+  collectedIds: string[],
+  goalConfig: number | StageGoalConfig,
+  awardedStageScore?: number,
 ) {
   const collectedSet = new Set(collectedIds)
   const collectedCount = objects.reduce(
     (count, item) => count + (collectedSet.has(item.id) ? 1 : 0),
     0,
   )
+  const stageScore = Number.isFinite(awardedStageScore)
+    ? Math.max(0, awardedStageScore ?? 0)
+    : getStageScore(objects, collectedIds)
+  const isLegacyGoal = typeof goalConfig === 'number'
+  const objectiveCount = isLegacyGoal
+    ? goalConfig
+    : goalConfig.objectiveCount
   const goal = Math.max(1, Math.min(objects.length, objectiveCount))
+  const scoreGoal = isLegacyGoal ? 0 : Math.max(1, goalConfig.scoreGoal)
+  const tierGoals = isLegacyGoal
+    ? []
+    : [...goalConfig.tierGoals].sort((a, b) => a.level - b.level)
+  const tierProgress: StageTierProgress[] = tierGoals.map((tierGoal) => {
+    const countProgress = Math.min(
+      1,
+      collectedCount / Math.max(1, tierGoal.requiredCount),
+    )
+    const scoreProgress = Math.min(
+      1,
+      stageScore / Math.max(1, tierGoal.requiredScore),
+    )
+
+    return {
+      ...tierGoal,
+      collectedCount,
+      score: stageScore,
+      ready:
+        collectedCount >= tierGoal.requiredCount &&
+        stageScore >= tierGoal.requiredScore,
+      progress: Math.min(countProgress, scoreProgress),
+    }
+  })
+  const completedTierLevel =
+    [...tierProgress].reverse().find((tier) => tier.ready)?.level ?? 0
+  const nextTierGoal = tierProgress.find((tier) => !tier.ready) ?? null
+  const finalTierGoal = tierGoals[tierGoals.length - 1]
+  const completionCount = finalTierGoal?.requiredCount ?? goal
+  const completionCountProgress = Math.min(
+    1,
+    collectedCount / Math.max(1, completionCount),
+  )
+  const ready = isLegacyGoal
+    ? collectedCount >= goal
+    : stageScore >= scoreGoal && tierProgress.every((tier) => tier.ready)
 
   return {
     collectedCount,
-    goal,
-    bonusCount: Math.max(0, collectedCount - goal),
-    ready: collectedCount >= goal,
-    progress: Math.min(1, collectedCount / goal),
+    goal: isLegacyGoal ? goal : scoreGoal,
+    objectiveCount: goal,
+    stageScore,
+    scoreGoal,
+    scoreRemaining: Math.max(0, scoreGoal - stageScore),
+    tierProgress,
+    completedTierLevel,
+    nextTierGoal,
+    bonusCount: Math.max(0, collectedCount - completionCount),
+    ready,
+    progress: isLegacyGoal
+      ? Math.min(1, collectedCount / goal)
+      : Math.min(
+          completionCountProgress,
+          Math.min(1, stageScore / scoreGoal),
+        ),
   }
+}
+
+export function isStageUnlocked(
+  stage: Pick<GameStage, 'unlockRequirement'>,
+  stages: GameStage[],
+  collectedIds: string[],
+  stageScores: Record<string, number> = {},
+): boolean {
+  const requirement = stage.unlockRequirement
+  if (!requirement) return true
+
+  const previousStage = stages.find(
+    (candidate) => candidate.id === requirement.previousStageId,
+  )
+  if (!previousStage) return false
+
+  const progress = getStageProgress(
+    previousStage.objects,
+    collectedIds,
+    previousStage,
+    stageScores[previousStage.id],
+  )
+
+  return (
+    progress.ready &&
+    progress.stageScore >= requirement.requiredScore &&
+    progress.completedTierLevel >= requirement.requiredTierLevel
+  )
 }
 
 export function getReachableSizeTier(ballRadius: number) {

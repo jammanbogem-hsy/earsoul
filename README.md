@@ -13,9 +13,12 @@
 - 운동화, 음료수 캔, 시계, 메달, 보석, 보물함 등 비폭력 수집물
 - 자체 제작 저폴리 어린이 캐릭터가 러닝볼을 미는 동작
 - 회전 색띠, 바닥 먼지와 걸음 애니메이션으로 보이는 굴림 효과
-- 숫자·이름·바닥 원 개수로 구분되는 네 단계 수집물 크기
-- 58×58 단위 러닝 파크와 네 단계 크기 진행
+- 각 맵에서 6·18·36·44개 수집으로 이어지는 네 단계 크기 진행
+- 88·100·112 단위의 서로 다른 세 개 러닝 파크
+- 맵별 1,600·2,000·2,400점 목표와 콤보 점수 기반 다음 맵 해금
 - 4.5초 연속 수집, 최대 5배 점수와 최고 콤보 기록
+- 나무·의자·장비대·쉼터의 정지/반동 충돌과 테마별 가속 구역
+- 곡면 밑창·갑피·교차 끈·트레드를 갖춘 절차적 3D 러닝화
 - `/`, `/play`, `/results`로 분리된 SPA 라우팅
 - 이름·채팅·공개 순위표 없이 `sessionStorage`에만 유지되는 단일 세션 점수
 - Firebase Firestore 버전형 콘텐츠 읽기와 로컬 기본 데이터 폴백
@@ -42,7 +45,7 @@ npm run build
 1. `.env.example`을 `.env.local`로 복사합니다.
 2. Firebase 웹 앱의 공개 설정 값을 입력합니다.
 3. Firestore의 `learningPacks/default` 문서에 `LearningPack` 형태의 콘텐츠를
-   넣으면 원격 콘텐츠를 사용합니다. 현재 팩과 동일한 `version: 2`가
+   넣으면 원격 콘텐츠를 사용합니다. 현재 팩과 동일한 `version: 4`가
    필요합니다. 문서가 없거나 버전이 다르거나 연결되지 않으면
    `src/data/learningPack.ts`의 안전한 기본 콘텐츠를 사용합니다.
 4. 배포합니다.
@@ -60,6 +63,7 @@ npm run firebase:deploy
 interface LearningPack {
   version?: number
   title: string
+  stages: GameStage[]
   objects: LearningObject[]
 }
 ```

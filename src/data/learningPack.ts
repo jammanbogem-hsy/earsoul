@@ -2,8 +2,12 @@ import type {
   GameStage,
   LearningObject,
   LearningPack,
+  StageTierGoal,
   StageTheme,
+  StageUnlockRequirement,
 } from '../types'
+import { isCollectionPositionClear } from '../game/mechanics'
+import { createWorldPhysicsLayout } from '../game/worldPhysics'
 
 const objectTemplates: LearningObject[] = [
   {
@@ -349,12 +353,44 @@ interface StageBlueprint {
   theme: StageTheme
   mapSize: number
   objectiveCount: number
+  scoreGoal: number
+  tierGoals: StageTierGoal[]
+  unlockRequirement?: StageUnlockRequirement
   accentColor: string
   skyColor: string
   fogColor: string
-  templateStart: number
-  templateEnd: number
   colors: string[]
+}
+
+function createTierGoals(
+  requiredScores: [number, number, number, number],
+): StageTierGoal[] {
+  return [
+    {
+      level: 1,
+      label: '작은 보물과 친해지기',
+      requiredCount: 6,
+      requiredScore: requiredScores[0],
+    },
+    {
+      level: 2,
+      label: '보통 보물 이어 붙이기',
+      requiredCount: 18,
+      requiredScore: requiredScores[1],
+    },
+    {
+      level: 3,
+      label: '큰 보물 찾아가기',
+      requiredCount: 36,
+      requiredScore: requiredScores[2],
+    },
+    {
+      level: 4,
+      label: '아주 큰 보물로 마무리',
+      requiredCount: 44,
+      requiredScore: requiredScores[3],
+    },
+  ]
 }
 
 const stageBlueprints: StageBlueprint[] = [
@@ -365,12 +401,12 @@ const stageBlueprints: StageBlueprint[] = [
     description: '넓은 광장과 러닝 트랙 사이에서 작은 기어와 보물을 모아요.',
     theme: 'sunny-plaza',
     mapSize: 88,
-    objectiveCount: 14,
+    objectiveCount: 44,
+    scoreGoal: 1600,
+    tierGoals: createTierGoals([80, 400, 1200, 1600]),
     accentColor: '#16866A',
     skyColor: '#D9F2FF',
     fogColor: '#D9F2FF',
-    templateStart: 0,
-    templateEnd: 12,
     colors: ['#FF6B6B', '#38BDF8', '#FBBF24', '#2DD4BF', '#A78BFA'],
   },
   {
@@ -380,12 +416,17 @@ const stageBlueprints: StageBlueprint[] = [
     description: '나무 사이의 여러 오솔길을 고르며 러닝 장비와 기록 아이템을 찾아요.',
     theme: 'forest-trail',
     mapSize: 100,
-    objectiveCount: 16,
+    objectiveCount: 44,
+    scoreGoal: 2000,
+    tierGoals: createTierGoals([110, 520, 1450, 2000]),
+    unlockRequirement: {
+      previousStageId: 'sunny-start',
+      requiredScore: 1600,
+      requiredTierLevel: 4,
+    },
     accentColor: '#477A38',
     skyColor: '#CDE7D4',
     fogColor: '#CDE7D4',
-    templateStart: 8,
-    templateEnd: 23,
     colors: ['#0EA5E9', '#F97316', '#22C55E', '#8B5CF6', '#EC4899'],
   },
   {
@@ -395,12 +436,17 @@ const stageBlueprints: StageBlueprint[] = [
     description: '별빛 산책로와 컬러 브리지를 자유롭게 오가며 큰 보물을 모아요.',
     theme: 'starlight-river',
     mapSize: 112,
-    objectiveCount: 18,
+    objectiveCount: 44,
+    scoreGoal: 2400,
+    tierGoals: createTierGoals([140, 650, 1750, 2400]),
+    unlockRequirement: {
+      previousStageId: 'wind-forest',
+      requiredScore: 2000,
+      requiredTierLevel: 4,
+    },
     accentColor: '#6557C8',
     skyColor: '#263657',
     fogColor: '#34486B',
-    templateStart: 16,
-    templateEnd: objectTemplates.length,
     colors: ['#60A5FA', '#FB7185', '#A78BFA', '#FBBF24', '#2DD4BF'],
   },
 ]
@@ -409,11 +455,9 @@ function createStageObjects(
   blueprint: StageBlueprint,
   stageIndex: number,
 ): LearningObject[] {
-  const templates = objectTemplates.slice(
-    blueprint.templateStart,
-    blueprint.templateEnd,
-  )
+  const templates = objectTemplates
   const maxRadius = blueprint.mapSize / 2 - 5
+  const physicsLayout = createWorldPhysicsLayout(blueprint)
 
   return Array.from({ length: OBJECTS_PER_STAGE }, (_, index) => {
     const template = templates[index % templates.length]
@@ -422,25 +466,39 @@ function createStageObjects(
     const radius = starter
       ? 2.4 + index * 0.58
       : 7 + Math.sqrt(progress) * (maxRadius - 7)
-    const angle =
+    const baseAngle =
       index * GOLDEN_ANGLE +
       stageIndex * 0.83 +
       Math.sin(index * 1.7 + stageIndex) * 0.11
     const sizeVariation = ((index % 3) - 1) * 0.012
+    const size = Math.max(0.2, template.size + sizeVariation)
+    const position = Array.from({ length: 32 }, (_, attempt) => {
+      const angle = baseAngle + attempt * 0.37
+      return [
+        Number((Math.cos(angle) * radius).toFixed(2)),
+        0,
+        Number((Math.sin(angle) * radius).toFixed(2)),
+      ] as [number, number, number]
+    }).find((candidate) =>
+      isCollectionPositionClear(
+        { position: candidate, size },
+        physicsLayout.obstacles,
+      ),
+    ) ?? [
+      Number((Math.cos(baseAngle) * radius).toFixed(2)),
+      0,
+      Number((Math.sin(baseAngle) * radius).toFixed(2)),
+    ]
 
     return {
       ...template,
       id: `${blueprint.id}-${template.id}-${index + 1}`,
       modelId: template.id,
       stageId: blueprint.id,
-      size: Math.max(0.2, template.size + sizeVariation),
+      size,
       points: template.points + stageIndex * 8 + (index % 4) * 2,
       color: blueprint.colors[(index + stageIndex) % blueprint.colors.length],
-      position: [
-        Number((Math.cos(angle) * radius).toFixed(2)),
-        0,
-        Number((Math.sin(angle) * radius).toFixed(2)),
-      ],
+      position,
     }
   })
 }
@@ -453,6 +511,9 @@ const stages: GameStage[] = stageBlueprints.map((blueprint, index) => ({
   theme: blueprint.theme,
   mapSize: blueprint.mapSize,
   objectiveCount: blueprint.objectiveCount,
+  scoreGoal: blueprint.scoreGoal,
+  tierGoals: blueprint.tierGoals,
+  unlockRequirement: blueprint.unlockRequirement,
   accentColor: blueprint.accentColor,
   skyColor: blueprint.skyColor,
   fogColor: blueprint.fogColor,
@@ -460,7 +521,7 @@ const stages: GameStage[] = stageBlueprints.map((blueprint, index) => ({
 }))
 
 export const fallbackLearningPack: LearningPack = {
-  version: 3,
+  version: 4,
   title: '러닝크루 월드 투어',
   stages,
   objects: stages.flatMap((stage) => stage.objects),

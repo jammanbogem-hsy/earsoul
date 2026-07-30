@@ -85,8 +85,8 @@ export function HomePage() {
           </h1>
           <p className="hero-description">
             서로 다른 세 개의 넓은 맵을 누비며 운동화, 음료수 캔, 시계와
-            보물조각을 모아요. 원하는 길을 고르고 빠르게 이어 모을수록
-            콤보 점수가 커져요.
+            보물조각을 모아요. 한 맵 안에서 네 크기 단계를 차례로 키우고,
+            콤보로 기준 점수를 넘으면 다음 맵이 열려요.
           </p>
           <M3Button
             className="primary-button"
@@ -220,8 +220,8 @@ export function HomePage() {
                 <MaterialIcon name="looks_4" />
               </i>
             </div>
-            <h3>크기 단계를 살펴봐요</h3>
-            <p>숫자와 바닥 원을 보고 작은 아이템부터 차례로 모아요.</p>
+            <h3>네 단계와 점수를 채워요</h3>
+            <p>6·18·36·44개 목표를 지나 콤보 점수까지 채우면 다음 맵이 열려요.</p>
           </li>
         </ol>
       </section>
