@@ -556,15 +556,19 @@ export function GamePage() {
         </section>
 
         <div className="game-hud__actions">
-          <div className="game-score-stack">
+          <div
+            className="game-score-stack"
+            role="group"
+            aria-label={`누적 점수 ${session.score.toLocaleString()}점, 현재 맵 수집 ${stageCollectedCount}개, 최대 성장 목표 ${stage.objectiveCount}개`}
+          >
             <div
               className={`game-score ${
                 scoreFeedback ? 'is-increasing' : ''
               }`}
-              aria-label={`점수 ${session.score.toLocaleString()}점`}
+              aria-label={`누적 점수 ${session.score.toLocaleString()}점`}
             >
               <MaterialIcon name="star" />
-              <span>점수</span>
+              <span>누적 점수</span>
               <strong>{session.score.toLocaleString()}</strong>
               {scoreFeedback && (
                 <span
@@ -575,6 +579,29 @@ export function GamePage() {
                   +{scoreFeedback.points}
                 </span>
               )}
+            </div>
+            <div
+              className={`game-collection ${
+                scoreFeedback ? 'is-increasing' : ''
+              } ${
+                stageCollectedCount >= stage.objectiveCount
+                  ? 'is-complete'
+                  : ''
+              }`}
+              aria-label={`현재 맵 수집 ${stageCollectedCount}개, 최대 성장 목표 ${stage.objectiveCount}개`}
+            >
+              <MaterialIcon
+                name={
+                  stageCollectedCount >= stage.objectiveCount
+                    ? 'check'
+                    : 'adjust'
+                }
+              />
+              <span>맵 수집</span>
+              <strong>
+                {stageCollectedCount}
+                <small>/{stage.objectiveCount}개</small>
+              </strong>
             </div>
             <div
               className={`game-combo ${

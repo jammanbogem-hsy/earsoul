@@ -1016,6 +1016,7 @@ md-switch:focus-visible,
 
 .game-size-status,
 .game-score,
+.game-collection,
 .desktop-controls {
   border: 1px solid rgba(82, 107, 132, 0.25);
   background: rgba(255, 255, 255, 0.9);
@@ -1076,7 +1077,8 @@ md-switch:focus-visible,
 }
 
 .game-size-status__copy > span,
-.game-score > span {
+.game-score > span,
+.game-collection > span {
   color: var(--muted);
   font-size: 9px;
   font-weight: 900;
@@ -1204,10 +1206,13 @@ md-switch:focus-visible,
 .game-score-stack {
   position: relative;
   display: grid;
+  width: 184px;
   gap: 4px;
+  grid-template-columns: repeat(2, minmax(88px, 1fr));
 }
 
-.game-score {
+.game-score,
+.game-collection {
   position: relative;
   display: grid;
   min-width: 88px;
@@ -1227,7 +1232,16 @@ md-switch:focus-visible,
   color: var(--yellow);
 }
 
-.game-score strong {
+.game-collection .material-symbol {
+  width: 17px;
+  height: 17px;
+  grid-row: 1 / -1;
+  align-self: center;
+  color: var(--green);
+}
+
+.game-score strong,
+.game-collection strong {
   color: var(--blue-dark);
   font-size: 18px;
   font-variant-numeric: tabular-nums;
@@ -1235,8 +1249,19 @@ md-switch:focus-visible,
   line-height: 1.05;
 }
 
-.game-score.is-increasing strong {
+.game-collection strong small {
+  font-size: 9px;
+  font-weight: 850;
+}
+
+.game-score.is-increasing strong,
+.game-collection.is-increasing strong {
   animation: game-score-bump 420ms ease-out;
+}
+
+.game-collection.is-complete {
+  border-color: color-mix(in srgb, var(--green), transparent 68%);
+  background: color-mix(in srgb, var(--green), white 88%);
 }
 
 .game-score__gain {
@@ -1277,6 +1302,7 @@ md-switch:focus-visible,
     color 160ms ease,
     background-color 160ms ease,
     transform 160ms ease;
+  grid-column: 1 / -1;
 }
 
 .game-combo .material-symbol {
@@ -2202,7 +2228,18 @@ md-switch:focus-visible,
   }
 
   .game-size-status {
-    width: min(300px, calc(100% - 190px));
+    width: min(300px, calc(100% - 280px));
+  }
+
+  .game-score-stack {
+    width: 156px;
+    grid-template-columns: repeat(2, minmax(76px, 1fr));
+  }
+
+  .game-score,
+  .game-collection {
+    min-width: 76px;
+    height: 48px;
   }
 
   .hud-button {
@@ -2455,33 +2492,43 @@ md-switch:focus-visible,
   }
 
   .game-score-stack {
-    width: 60px;
+    width: 116px;
+    grid-template-columns: repeat(2, 56px);
   }
 
-  .game-score {
-    min-width: 60px;
-    width: 60px;
+  .game-score,
+  .game-collection {
+    min-width: 0;
+    width: 56px;
     height: 44px;
     gap: 0;
     grid-template-columns: 1fr;
     justify-items: end;
     border-radius: 15px;
-    padding: 5px 8px;
+    padding: 5px 6px;
   }
 
-  .game-score .material-symbol {
+  .game-score .material-symbol,
+  .game-collection .material-symbol {
     display: none;
   }
 
-  .game-score > span {
-    font-size: 8px;
+  .game-score > span,
+  .game-collection > span {
+    font-size: 7px;
   }
 
-  .game-score strong {
+  .game-score strong,
+  .game-collection strong {
     max-width: 100%;
     overflow: hidden;
-    font-size: 15px;
+    font-size: 13px;
     text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .game-collection strong small {
+    font-size: 7px;
   }
 
   .game-score__gain {

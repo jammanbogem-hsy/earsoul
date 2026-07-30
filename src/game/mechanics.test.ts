@@ -63,7 +63,7 @@ describe('rolling collection progression', () => {
       [14, 36, 68, 104],
     ]
     expect(fallbackLearningPack.stages.map((stage) => stage.scoreGoal)).toEqual([
-      6000, 7500, 9000,
+      3000, 3750, 4500,
     ])
     fallbackLearningPack.stages.forEach((stage, stageIndex) => {
       expect(stage.tierGoals.map((goal) => goal.level)).toEqual([1, 2, 3, 4])
@@ -71,6 +71,13 @@ describe('rolling collection progression', () => {
         expectedCounts[stageIndex],
       )
       expect(stage.tierGoals[3].requiredScore).toBe(stage.scoreGoal)
+      expect(stage.tierGoals.map((goal) => goal.requiredScore)).toEqual(
+        [
+          [125, 600, 1650, 3000],
+          [175, 800, 2100, 3750],
+          [225, 1000, 2500, 4500],
+        ][stageIndex],
+      )
 
       const tierCounts = stage.tierGoals.map((goal) => goal.requiredCount)
       expect(

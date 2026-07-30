@@ -61,6 +61,7 @@ import {
   getActiveSpeedZone,
   getActiveSurfaceZone,
   getElevatorDeckY,
+  getPushableCollectionAssist,
   type SurfaceKind,
   type SurfaceZone,
   type ObstacleResponse,
@@ -1547,9 +1548,24 @@ function GameWorld({
     )
     if (
       !import.meta.env.DEV ||
-      (teleportMode !== 'collect' && teleportMode !== 'elevated')
+      (teleportMode !== 'collect' &&
+        teleportMode !== 'elevated' &&
+        teleportMode !== 'cone')
     ) {
       return null
+    }
+    if (teleportMode === 'cone') {
+      return (
+        stage.objects.find(
+          (item) =>
+            item.position[1] < 0.2 &&
+            canCollect(0.42, item.size) &&
+            getPushableCollectionAssist(
+              item,
+              physicsLayout.pushableProps,
+            ) > 0,
+        ) ?? null
+      )
     }
     const needsElevatedItem = teleportMode === 'elevated'
     return (
@@ -1562,7 +1578,11 @@ function GameWorld({
           canCollect(0.42, item.size),
       ) ?? null
     )
-  }, [stage.objects])
+  }, [physicsLayout.pushableProps, stage.objects])
+  const debugTeleportMode =
+    import.meta.env.DEV
+      ? new URLSearchParams(window.location.search).get('teleport')
+      : null
   const spawnX = debugSurface?.x ?? 0
   const spawnZ = debugSurface?.z ?? 0
   const spawnTranslation = useMemo(
@@ -1635,9 +1655,33 @@ function GameWorld({
   useEffect(() => {
     const body = playerBody.current
     if (!body || !debugCollectionTarget) return
+    let targetX = debugCollectionTarget.position[0]
+    let targetZ = debugCollectionTarget.position[2]
+    if (debugTeleportMode === 'cone') {
+      const nearestCone = physicsLayout.pushableProps
+        .filter((prop) => prop.kind === 'cone')
+        .sort(
+          (left, right) =>
+            Math.hypot(
+              targetX - left.x,
+              targetZ - left.z,
+            ) -
+            Math.hypot(
+              targetX - right.x,
+              targetZ - right.z,
+            ),
+        )[0]
+      if (nearestCone) {
+        const awayX = targetX - nearestCone.x
+        const awayZ = targetZ - nearestCone.z
+        const distance = Math.max(0.001, Math.hypot(awayX, awayZ))
+        targetX += (awayX / distance) * 0.72
+        targetZ += (awayZ / distance) * 0.72
+      }
+    }
     const translation = getPlayerSpawnTranslation(
-      debugCollectionTarget.position[0],
-      debugCollectionTarget.position[2],
+      targetX,
+      targetZ,
     )
     translation[1] += debugCollectionTarget.position[1]
     body.setTranslation(
@@ -1646,7 +1690,11 @@ function GameWorld({
     )
     playerPosition.current.set(...translation)
     previousPosition.current.set(...translation)
-  }, [debugCollectionTarget])
+  }, [
+    debugCollectionTarget,
+    debugTeleportMode,
+    physicsLayout.pushableProps,
+  ])
 
   useEffect(() => {
     const canvas = gl.domElement
@@ -1983,9 +2031,13 @@ function GameWorld({
       for (const item of objects) {
         if (collectedSet.current.has(item.id)) continue
 
+        const collectionAssist = getPushableCollectionAssist(
+          item,
+          physicsLayout.pushableProps,
+        )
         const touchesItem = isObjectTouchingBall(
           position,
-          ballRadius,
+          ballRadius + collectionAssist,
           item,
         )
 

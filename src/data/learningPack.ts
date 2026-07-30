@@ -368,6 +368,11 @@ const PLATFORM_SLOT_RATIOS = [
   [0.42, 0.58],
 ] as const
 const TIER_MIX_PATTERN = [0, 2, 1, 3] as const
+export const SCORE_GOAL_SCALE = 0.5
+
+function scaleScoreGoal(score: number): number {
+  return Math.round(score * SCORE_GOAL_SCALE)
+}
 
 interface SpecialObjectSlot {
   position: [number, number, number]
@@ -400,25 +405,25 @@ function createTierGoals(
       level: 1,
       label: '작은 보물과 친해지기',
       requiredCount: requiredCounts[0],
-      requiredScore: requiredScores[0],
+      requiredScore: scaleScoreGoal(requiredScores[0]),
     },
     {
       level: 2,
       label: '보통 보물 이어 붙이기',
       requiredCount: requiredCounts[1],
-      requiredScore: requiredScores[1],
+      requiredScore: scaleScoreGoal(requiredScores[1]),
     },
     {
       level: 3,
       label: '큰 보물 찾아가기',
       requiredCount: requiredCounts[2],
-      requiredScore: requiredScores[2],
+      requiredScore: scaleScoreGoal(requiredScores[2]),
     },
     {
       level: 4,
       label: '아주 큰 보물로 마무리',
       requiredCount: requiredCounts[3],
-      requiredScore: requiredScores[3],
+      requiredScore: scaleScoreGoal(requiredScores[3]),
     },
   ]
 }
@@ -432,7 +437,7 @@ const stageBlueprints: StageBlueprint[] = [
     theme: 'sunny-plaza',
     mapSize: 144,
     objectiveCount: 80,
-    scoreGoal: 6000,
+    scoreGoal: scaleScoreGoal(6000),
     tierGoals: createTierGoals(
       [10, 28, 52, 80],
       [250, 1200, 3300, 6000],
@@ -450,14 +455,14 @@ const stageBlueprints: StageBlueprint[] = [
     theme: 'forest-trail',
     mapSize: 168,
     objectiveCount: 92,
-    scoreGoal: 7500,
+    scoreGoal: scaleScoreGoal(7500),
     tierGoals: createTierGoals(
       [12, 32, 60, 92],
       [350, 1600, 4200, 7500],
     ),
     unlockRequirement: {
       previousStageId: 'sunny-start',
-      requiredScore: 6000,
+      requiredScore: scaleScoreGoal(6000),
       requiredTierLevel: 4,
     },
     accentColor: '#477A38',
@@ -473,14 +478,14 @@ const stageBlueprints: StageBlueprint[] = [
     theme: 'starlight-river',
     mapSize: 192,
     objectiveCount: 104,
-    scoreGoal: 9000,
+    scoreGoal: scaleScoreGoal(9000),
     tierGoals: createTierGoals(
       [14, 36, 68, 104],
       [450, 2000, 5000, 9000],
     ),
     unlockRequirement: {
       previousStageId: 'wind-forest',
-      requiredScore: 7500,
+      requiredScore: scaleScoreGoal(7500),
       requiredTierLevel: 4,
     },
     accentColor: '#6557C8',
@@ -640,7 +645,7 @@ const stages: GameStage[] = stageBlueprints.map((blueprint, index) => ({
 }))
 
 export const fallbackLearningPack: LearningPack = {
-  version: 8,
+  version: 9,
   title: '러닝크루 월드 투어',
   stages,
   objects: stages.flatMap((stage) => stage.objects),

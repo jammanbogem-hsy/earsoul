@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { fallbackLearningPack } from '../data/learningPack'
 import {
+  CONE_COLLECTION_ASSIST,
   createWorldPhysicsLayout,
   getActiveSpeedZone,
   getActiveSurfaceZone,
   getElevatorDeckY,
+  getPushableCollectionAssist,
   resolveWorldPhysics,
   type WorldPhysicsLayout,
 } from './worldPhysics'
@@ -102,6 +104,35 @@ describe('world physics', () => {
     expect(getElevatorDeckY(elevator, 0.75)).toBeGreaterThan(
       getElevatorDeckY(elevator, 0.25),
     )
+  })
+
+  it('adds a small pickup assist only beside pushable cones', () => {
+    const layout = createWorldPhysicsLayout(
+      fallbackLearningPack.stages[0],
+    )
+    const cone = layout.pushableProps.find(
+      (prop) => prop.kind === 'cone',
+    )
+
+    expect(cone).toBeDefined()
+    expect(
+      getPushableCollectionAssist(
+        {
+          position: [
+            (cone?.x ?? 0) + 1.6,
+            0,
+            cone?.z ?? 0,
+          ],
+        },
+        layout.pushableProps,
+      ),
+    ).toBe(CONE_COLLECTION_ASSIST)
+    expect(
+      getPushableCollectionAssist(
+        { position: [0, 0, 0] },
+        [],
+      ),
+    ).toBe(0)
   })
 
   it('stops the ball at a solid tree instead of passing through it', () => {

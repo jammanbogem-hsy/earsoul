@@ -102,6 +102,25 @@ export interface PushableProp {
   rotationY: number
 }
 
+export const CONE_COLLECTION_ASSIST = 0.24
+const CONE_COLLECTION_ASSIST_DISTANCE = 2.1
+
+export function getPushableCollectionAssist(
+  item: Pick<GameStage['objects'][number], 'position'>,
+  props: readonly PushableProp[],
+): number {
+  const nextToCone = props.some(
+    (prop) =>
+      prop.kind === 'cone' &&
+      Math.hypot(
+        item.position[0] - prop.x,
+        item.position[2] - prop.z,
+      ) <= CONE_COLLECTION_ASSIST_DISTANCE,
+  )
+
+  return nextToCone ? CONE_COLLECTION_ASSIST : 0
+}
+
 export function getElevatorDeckY(
   elevator: WorldElevator,
   progress: number,
