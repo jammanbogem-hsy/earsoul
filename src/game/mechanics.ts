@@ -157,13 +157,25 @@ export function getStageProgress(
   const nextTierGoal = tierProgress.find((tier) => !tier.ready) ?? null
   const finalTierGoal = tierGoals[tierGoals.length - 1]
   const completionCount = finalTierGoal?.requiredCount ?? goal
-  const completionCountProgress = Math.min(
+  const finalTierEntryGoal =
+    tierGoals[Math.max(0, tierGoals.length - 2)] ?? finalTierGoal
+  const finalTierEntryProgress = Math.min(
     1,
-    collectedCount / Math.max(1, completionCount),
+    collectedCount /
+      Math.max(1, finalTierEntryGoal?.requiredCount ?? completionCount),
   )
+  const reachedTierLevel = isLegacyGoal
+    ? 0
+    : getReachableSizeTier(
+        calculateBallRadius(
+          collectedCount,
+          tierGoals.map((tier) => tier.requiredCount),
+        ),
+      ).level
   const ready = isLegacyGoal
     ? collectedCount >= goal
-    : stageScore >= scoreGoal && tierProgress.every((tier) => tier.ready)
+    : stageScore >= scoreGoal &&
+      reachedTierLevel >= (finalTierGoal?.level ?? 1)
 
   return {
     collectedCount,
@@ -173,16 +185,19 @@ export function getStageProgress(
     scoreGoal,
     scoreRemaining: Math.max(0, scoreGoal - stageScore),
     tierProgress,
-    completedTierLevel,
+    completedTierLevel: Math.max(completedTierLevel, reachedTierLevel),
+    reachedTierLevel,
     nextTierGoal,
     bonusCount: Math.max(0, collectedCount - completionCount),
     ready,
     progress: isLegacyGoal
       ? Math.min(1, collectedCount / goal)
-      : Math.min(
-          completionCountProgress,
-          Math.min(1, stageScore / scoreGoal),
-        ),
+      : ready
+        ? 1
+        : Math.min(
+            finalTierEntryProgress,
+            Math.min(1, stageScore / scoreGoal),
+          ),
   }
 }
 
@@ -210,7 +225,7 @@ export function isStageUnlocked(
   return (
     progress.ready &&
     progress.stageScore >= requirement.requiredScore &&
-    progress.completedTierLevel >= requirement.requiredTierLevel
+    progress.reachedTierLevel >= requirement.requiredTierLevel
   )
 }
 

@@ -285,28 +285,36 @@ describe('rolling collection progression', () => {
     expect(complete.bonusCount).toBe(176)
   })
 
-  it('accepts the combo-awarded map score while retaining tier requirements', () => {
+  it('completes at the score goal after entering the final size tier', () => {
     const stage = fallbackLearningPack.stages[0]
-    const goalCountIds = stage.objects
-      .slice(0, stage.objectiveCount)
+    const finalTierEntryCount =
+      stage.tierGoals[stage.tierGoals.length - 2].requiredCount
+    const finalTierIds = stage.objects
+      .slice(0, finalTierEntryCount)
       .map((item) => item.id)
     const complete = getStageProgress(
       stage.objects,
-      goalCountIds,
+      finalTierIds,
       stage,
       stage.scoreGoal,
     )
 
     expect(complete.stageScore).toBe(stage.scoreGoal)
     expect(complete.ready).toBe(true)
+    expect(complete.reachedTierLevel).toBe(4)
+    expect(complete.collectedCount).toBeLessThan(stage.objectiveCount)
+    expect(complete.progress).toBe(1)
 
     const earlyCombo = getStageProgress(
       stage.objects,
-      stage.objects.slice(0, 9).map((item) => item.id),
+      stage.objects
+        .slice(0, finalTierEntryCount - 1)
+        .map((item) => item.id),
       stage,
       stage.scoreGoal,
     )
     expect(earlyCombo.ready).toBe(false)
+    expect(earlyCombo.reachedTierLevel).toBe(3)
     expect(earlyCombo.progress).toBeLessThan(1)
   })
 

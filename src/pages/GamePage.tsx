@@ -688,7 +688,9 @@ export function GamePage() {
             {toast
               ? toast.body
               : stageReady
-                ? `보너스 ${bonusCount}개 · 더 모으거나 다음 맵으로 갈 수 있어요.`
+                ? bonusCount > 0
+                  ? `보너스 ${bonusCount}개 · 더 모으거나 다음 맵으로 갈 수 있어요.`
+                  : '다음 맵으로 갈 수 있어요. 더 모으는 것은 선택이에요.'
                 : `${nextTierGoal.label} · ${Math.max(
                     0,
                     nextTierGoal.requiredCount - stageCollectedCount,
