@@ -16,10 +16,22 @@ import {
 } from './mechanics'
 
 describe('rolling collection progression', () => {
-  it('only welcomes objects at or below the current size limit', () => {
-    expect(canCollect(0.5, 0.47)).toBe(true)
+  it('uses one tier rule for both the HUD and collection', () => {
+    expect(canCollect(0.5, 0.45)).toBe(true)
     expect(canCollect(0.5, 0.48)).toBe(false)
-    expect(getCollectibleLimit(1)).toBe(0.95)
+    expect(getCollectibleLimit(0.5)).toBe(0.45)
+
+    const tierTwoRadius = calculateBallRadius(6)
+    expect(getReachableSizeTier(tierTwoRadius).level).toBe(2)
+    expect(getCollectibleLimit(tierTwoRadius)).toBe(0.8)
+    expect(canCollect(tierTwoRadius, 0.8)).toBe(true)
+    expect(canCollect(tierTwoRadius, 0.82)).toBe(false)
+
+    const tierThreeRadius = calculateBallRadius(18)
+    expect(canCollect(tierThreeRadius, 1.15)).toBe(true)
+    expect(canCollect(tierThreeRadius, 1.18)).toBe(false)
+
+    expect(canCollect(calculateBallRadius(36), 1.5)).toBe(true)
   })
 
   it('keeps every map completable from a fresh size-one ball', () => {
@@ -62,10 +74,10 @@ describe('rolling collection progression', () => {
 
   it('offers three increasingly wide maps with many optional routes', () => {
     expect(fallbackLearningPack.stages).toHaveLength(3)
-    expect(fallbackLearningPack.objects).toHaveLength(192)
+    expect(fallbackLearningPack.objects).toHaveLength(288)
 
     fallbackLearningPack.stages.forEach((stage) => {
-      expect(stage.objects).toHaveLength(64)
+      expect(stage.objects).toHaveLength(96)
       expect(stage.objects.length - stage.objectiveCount).toBeGreaterThanOrEqual(
         20,
       )
@@ -82,7 +94,7 @@ describe('rolling collection progression', () => {
           stage.objects.filter((item) => getSizeTier(item.size).level === level)
             .length,
       )
-      expect(Math.min(...tierCounts)).toBeGreaterThanOrEqual(12)
+      expect(Math.min(...tierCounts)).toBeGreaterThanOrEqual(20)
       expect(getStageScore(stage.objects, stage.objects.map((item) => item.id)))
         .toBeGreaterThan(stage.scoreGoal)
 
@@ -135,7 +147,7 @@ describe('rolling collection progression', () => {
     expect(complete.ready).toBe(true)
     expect(complete.progress).toBe(1)
     expect(complete.completedTierLevel).toBe(4)
-    expect(complete.bonusCount).toBe(20)
+    expect(complete.bonusCount).toBe(52)
   })
 
   it('accepts the combo-awarded map score while retaining tier requirements', () => {

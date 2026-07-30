@@ -1,6 +1,16 @@
 import { Html } from '@react-three/drei'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import {
+  BallCollider,
+  CuboidCollider,
+  CylinderCollider,
+  Physics,
+  RigidBody,
+  type CollisionEnterPayload,
+  type RapierRigidBody,
+} from '@react-three/rapier'
+import {
+  Suspense,
   useEffect,
   useMemo,
   useRef,
@@ -28,11 +38,16 @@ import {
   stepRelativeDrive,
   type DriveControl,
 } from '../game/input'
-import { stepRollingMotion } from '../game/rollingMotion'
+import {
+  capRapierHorizontalVelocity,
+  getRapierDriveForce,
+} from '../game/rapierMotion'
+import { getRollingTopSpeed } from '../game/rollingMotion'
 import {
   createWorldPhysicsLayout,
   getActiveSpeedZone,
-  resolveWorldPhysics,
+  type ObstacleResponse,
+  type WorldPhysicsLayout,
 } from '../game/worldPhysics'
 import { MaterialIcon } from './MaterialIcon'
 import {
@@ -73,6 +88,18 @@ interface MotionState {
   velocityZ: number
   boost: number
   impact: number
+}
+
+interface PhysicsBodyData {
+  kind:
+    | 'floor'
+    | 'boundary'
+    | 'obstacle'
+    | 'dynamic-prop'
+    | 'large-item'
+  label: string
+  response: ObstacleResponse
+  quiet?: boolean
 }
 
 function useKeyboard(disabled: boolean) {
@@ -411,6 +438,232 @@ function MotionEffects({
   )
 }
 
+function RapierWorldColliders({
+  mapSize,
+  layout,
+}: {
+  mapSize: number
+  layout: WorldPhysicsLayout
+}) {
+  const halfMap = mapSize / 2
+  const boundaryData: PhysicsBodyData = {
+    kind: 'boundary',
+    label: '공원 경계',
+    response: 'stop',
+    quiet: true,
+  }
+
+  return (
+    <>
+      <RigidBody
+        type="fixed"
+        colliders={false}
+        userData={{
+          physics: {
+            kind: 'floor',
+            label: '공원 바닥',
+            response: 'stop',
+            quiet: true,
+          } satisfies PhysicsBodyData,
+        }}
+      >
+        <CuboidCollider
+          args={[halfMap, 0.1, halfMap]}
+          position={[0, -0.1, 0]}
+          friction={1}
+          restitution={0}
+        />
+      </RigidBody>
+
+      {[
+        {
+          id: 'north',
+          position: [0, 2.5, -halfMap - 0.3] as [number, number, number],
+          args: [halfMap + 0.6, 2.5, 0.3] as [number, number, number],
+        },
+        {
+          id: 'south',
+          position: [0, 2.5, halfMap + 0.3] as [number, number, number],
+          args: [halfMap + 0.6, 2.5, 0.3] as [number, number, number],
+        },
+        {
+          id: 'west',
+          position: [-halfMap - 0.3, 2.5, 0] as [number, number, number],
+          args: [0.3, 2.5, halfMap + 0.6] as [number, number, number],
+        },
+        {
+          id: 'east',
+          position: [halfMap + 0.3, 2.5, 0] as [number, number, number],
+          args: [0.3, 2.5, halfMap + 0.6] as [number, number, number],
+        },
+      ].map((wall) => (
+        <RigidBody
+          key={`boundary-${wall.id}`}
+          type="fixed"
+          colliders={false}
+          position={wall.position}
+          userData={{ physics: boundaryData }}
+        >
+          <CuboidCollider
+            args={wall.args}
+            friction={0.9}
+            restitution={0.04}
+          />
+        </RigidBody>
+      ))}
+
+      {layout.obstacles.map((obstacle) => {
+        const physics: PhysicsBodyData = {
+          kind: 'obstacle',
+          label: obstacle.label,
+          response: obstacle.response,
+        }
+
+        return (
+          <RigidBody
+            key={obstacle.id}
+            type="fixed"
+            colliders={false}
+            position={[obstacle.x, 0, obstacle.z]}
+            userData={{ physics }}
+          >
+            <CylinderCollider
+              args={[2.5, obstacle.radius]}
+              position={[0, 2.5, 0]}
+              friction={0.92}
+              restitution={obstacle.response === 'bounce' ? 0.42 : 0.02}
+            />
+          </RigidBody>
+        )
+      })}
+    </>
+  )
+}
+
+const DYNAMIC_PRACTICE_PROPS = [
+  { id: 'block-a', kind: 'block', position: [5.2, 0.36, -4.6], color: '#FF7B66' },
+  { id: 'block-b', kind: 'block', position: [6.1, 0.36, -4.2], color: '#4169D8' },
+  { id: 'block-c', kind: 'block', position: [7, 0.36, -4.8], color: '#F2C94C' },
+  { id: 'cone-a', kind: 'cone', position: [-5.3, 0.38, -4.8], color: '#FF8A3D' },
+  { id: 'cone-b', kind: 'cone', position: [-6.2, 0.38, -4.3], color: '#45A7A0' },
+  { id: 'cone-c', kind: 'cone', position: [-7.1, 0.38, -4.9], color: '#A78BFA' },
+  { id: 'pin-a', kind: 'pin', position: [3.9, 0.36, 5.8], color: '#38BDF8' },
+  { id: 'pin-b', kind: 'pin', position: [4.7, 0.36, 6.2], color: '#FB7185' },
+  { id: 'pin-c', kind: 'pin', position: [5.5, 0.36, 5.7], color: '#22C55E' },
+] as const
+
+function DynamicPracticeProps({ stageId }: { stageId: string }) {
+  return (
+    <>
+      {DYNAMIC_PRACTICE_PROPS.map((prop, index) => {
+        const physics: PhysicsBodyData = {
+          kind: 'dynamic-prop',
+          label:
+            prop.kind === 'cone'
+              ? '말랑 연습 콘'
+              : prop.kind === 'pin'
+                ? '컬러 트레이닝 핀'
+                : '폼 연습 블록',
+          response: 'bounce',
+        }
+
+        return (
+          <RigidBody
+            key={`${stageId}-${prop.id}`}
+            colliders={false}
+            position={prop.position}
+            rotation={[0, index * 0.41, index % 2 ? 0.12 : -0.08]}
+            mass={prop.kind === 'block' ? 0.62 : 0.4}
+            linearDamping={0.38}
+            angularDamping={0.54}
+            ccd
+            userData={{ physics }}
+          >
+            {prop.kind === 'block' ? (
+              <>
+                <CuboidCollider
+                  args={[0.34, 0.34, 0.34]}
+                  friction={0.78}
+                  restitution={0.34}
+                />
+                <mesh castShadow receiveShadow>
+                  <boxGeometry args={[0.68, 0.68, 0.68]} />
+                  <meshStandardMaterial color={prop.color} roughness={0.76} />
+                </mesh>
+              </>
+            ) : (
+              <>
+                <CylinderCollider
+                  args={[0.36, prop.kind === 'cone' ? 0.28 : 0.2]}
+                  friction={0.72}
+                  restitution={0.42}
+                />
+                {prop.kind === 'cone' ? (
+                  <mesh castShadow receiveShadow>
+                    <coneGeometry args={[0.3, 0.72, 16]} />
+                    <meshStandardMaterial color={prop.color} roughness={0.72} />
+                  </mesh>
+                ) : (
+                  <group>
+                    <mesh castShadow receiveShadow>
+                      <cylinderGeometry args={[0.17, 0.21, 0.72, 16]} />
+                      <meshStandardMaterial color={prop.color} roughness={0.66} />
+                    </mesh>
+                    <mesh position={[0, 0.12, 0]} scale={[1.03, 0.13, 1.03]}>
+                      <cylinderGeometry args={[0.18, 0.18, 0.72, 16]} />
+                      <meshStandardMaterial color="#FFFDF7" roughness={0.7} />
+                    </mesh>
+                  </group>
+                )}
+              </>
+            )}
+          </RigidBody>
+        )
+      })}
+    </>
+  )
+}
+
+function TooLargeItemColliders({
+  items,
+  ballRadius,
+}: {
+  items: LearningObject[]
+  ballRadius: number
+}) {
+  return (
+    <>
+      {items
+        .filter((item) => !canCollect(ballRadius, item.size))
+        .map((item) => {
+          const radius = Math.max(0.22, item.size * 0.64)
+          const physics: PhysicsBodyData = {
+            kind: 'large-item',
+            label: item.label,
+            response: 'bounce',
+            quiet: true,
+          }
+
+          return (
+            <RigidBody
+              key={`large-item-${item.id}`}
+              type="fixed"
+              colliders={false}
+              position={[item.position[0], radius, item.position[2]]}
+              userData={{ physics }}
+            >
+              <BallCollider
+                args={[radius]}
+                friction={0.76}
+                restitution={0.28}
+              />
+            </RigidBody>
+          )
+        })}
+    </>
+  )
+}
+
 function GameWorld({
   stage,
   attachedObjects,
@@ -428,13 +681,14 @@ function GameWorld({
     () => createWorldPhysicsLayout(stage),
     [stage],
   )
-  const player = useRef<Group>(null)
+  const playerBody = useRef<RapierRigidBody>(null)
   const orb = useRef<Group>(null)
   const keys = useKeyboard(paused)
   const { camera } = useThree()
   const collectedSet = useRef(new Set(collectedIds))
   const tooLargeCooldown = useRef(0)
   const physicsFeedbackCooldown = useRef(0)
+  const collisionFeedbackCooldown = useRef(0)
   const activeSpeedZoneId = useRef<string | null>(null)
   const cameraPosition = useRef(new Vector3(0, 7, 8))
   const cameraDirection = useRef(new Vector3(0, 0, -1))
@@ -442,6 +696,7 @@ function GameWorld({
   const lookTarget = useRef(new Vector3())
   const rollAxis = useRef(new Vector3())
   const rollQuaternion = useRef(new Quaternion())
+  const previousPosition = useRef(new Vector3(0, ballRadius, 0))
   const motion = useRef<MotionState>({
     x: 0,
     z: -1,
@@ -456,10 +711,68 @@ function GameWorld({
     collectedSet.current = new Set(collectedIds)
   }, [collectedIds])
 
-  useFrame((state, delta) => {
-    if (!player.current) return
+  useEffect(() => {
+    const body = playerBody.current
+    if (!body) return
+    const position = body.translation()
+    body.setTranslation(
+      { x: position.x, y: ballRadius, z: position.z },
+      true,
+    )
+    body.wakeUp()
+  }, [ballRadius])
 
-    const position = player.current.position
+  useEffect(() => {
+    if (!paused || !playerBody.current) return
+    playerBody.current.setLinvel({ x: 0, y: 0, z: 0 }, true)
+    playerBody.current.resetForces(true)
+  }, [paused])
+
+  const handleCollisionEnter = ({ other }: CollisionEnterPayload) => {
+    const physics = (
+      other.rigidBodyObject?.userData.physics ??
+      other.colliderObject?.userData.physics
+    ) as PhysicsBodyData | undefined
+    const body = playerBody.current
+    if (!body || !physics || physics.kind === 'floor') return
+
+    const velocity = body.linvel()
+    if (physics.response === 'stop') {
+      body.setLinvel({ x: 0, y: velocity.y, z: 0 }, true)
+    } else if (physics.kind === 'obstacle') {
+      const position = body.translation()
+      const obstaclePosition = other.rigidBody?.translation()
+      const offsetX = position.x - (obstaclePosition?.x ?? position.x)
+      const offsetZ = position.z - (obstaclePosition?.z ?? position.z)
+      const distance = Math.max(0.001, Math.hypot(offsetX, offsetZ))
+      const impulse = body.mass() * 0.72
+      body.applyImpulse(
+        {
+          x: (offsetX / distance) * impulse,
+          y: 0,
+          z: (offsetZ / distance) * impulse,
+        },
+        true,
+      )
+    }
+
+    motion.current.impact = physics.quiet ? 0.42 : 1
+    const now = performance.now()
+    if (physics.quiet || now < collisionFeedbackCooldown.current) return
+    collisionFeedbackCooldown.current = now + 900
+    onPhysicsFeedback({
+      type: 'collision',
+      label: physics.label,
+      bounced: physics.response === 'bounce',
+    })
+  }
+
+  useFrame((state, delta) => {
+    const body = playerBody.current
+    if (!body) return
+
+    const position = body.translation()
+    let velocity = body.linvel()
     if (!paused) {
       const lateralInput =
         (keys.current.right ? 1 : 0) -
@@ -474,144 +787,111 @@ function GameWorld({
         lateralInput,
         forwardInput,
       )
-      const rollingStep = stepRollingMotion(
-        {
-          velocityX: motion.current.velocityX,
-          velocityZ: motion.current.velocityZ,
-        },
-        driveStep.moveX,
-        driveStep.moveZ,
-        ballRadius,
-        delta,
-      )
+      const inputStrength = Math.hypot(driveStep.moveX, driveStep.moveZ)
       if (
         forwardInput >= 0 &&
-        Math.hypot(driveStep.moveX, driveStep.moveZ) > 0.05 &&
-        rollingStep.speedRatio > 0.04
+        inputStrength > 0.05
       ) {
         heading.current.x = MathUtils.damp(
           heading.current.x,
-          rollingStep.directionX,
+          driveStep.moveX,
           4.6,
           delta,
         )
         heading.current.z = MathUtils.damp(
           heading.current.z,
-          rollingStep.directionZ,
+          driveStep.moveZ,
           4.6,
           delta,
         )
         heading.current.normalize()
       }
-      const previousX = position.x
-      const previousZ = position.z
-      const movementLimit = stage.mapSize / 2 - ballRadius
       const speedZone = getActiveSpeedZone(
         physicsLayout,
-        previousX,
-        previousZ,
+        position.x,
+        position.z,
       )
       const speedMultiplier = speedZone?.multiplier ?? 1
-      const frameDelta = Math.min(delta, 1 / 30)
-      const candidateVelocityX = rollingStep.velocityX * speedMultiplier
-      const candidateVelocityZ = rollingStep.velocityZ * speedMultiplier
-      const candidateX = MathUtils.clamp(
-        position.x + candidateVelocityX * frameDelta,
-        -movementLimit,
-        movementLimit,
+      const driveForce = getRapierDriveForce(
+        driveStep.moveX,
+        driveStep.moveZ,
+        body.mass(),
+        speedMultiplier,
       )
-      const candidateZ = MathUtils.clamp(
-        position.z + candidateVelocityZ * frameDelta,
-        -movementLimit,
-        movementLimit,
-      )
-      const physicsStep = resolveWorldPhysics(
-        {
-          startX: previousX,
-          startZ: previousZ,
-          nextX: candidateX,
-          nextZ: candidateZ,
-          velocityX: candidateVelocityX,
-          velocityZ: candidateVelocityZ,
-          ballRadius,
-        },
-        physicsLayout,
-      )
-      const nextX = MathUtils.clamp(
-        physicsStep.x,
-        -movementLimit,
-        movementLimit,
-      )
-      const nextZ = MathUtils.clamp(
-        physicsStep.z,
-        -movementLimit,
-        movementLimit,
-      )
-      position.x = nextX
-      position.z = nextZ
-
-      const resolvedVelocityX = physicsStep.impact
-        ? physicsStep.velocityX
-        : rollingStep.velocityX
-      const resolvedVelocityZ = physicsStep.impact
-        ? physicsStep.velocityZ
-        : rollingStep.velocityZ
-      motion.current.velocityX =
-        nextX === previousX && Math.abs(resolvedVelocityX) > 0
-          ? 0
-          : resolvedVelocityX
-      motion.current.velocityZ =
-        nextZ === previousZ && Math.abs(resolvedVelocityZ) > 0
-          ? 0
-          : resolvedVelocityZ
-      motion.current.x = heading.current.x
-      motion.current.z = heading.current.z
-      motion.current.speed = Math.min(
-        1.35,
-        rollingStep.speedRatio * physicsStep.speedMultiplier,
-      )
-      motion.current.boost = physicsStep.speedMultiplier
-      motion.current.impact = physicsStep.impact
-        ? 1
-        : Math.max(0, motion.current.impact - delta * 4.5)
-
-      if (
-        physicsStep.impact &&
-        state.clock.elapsedTime >= physicsFeedbackCooldown.current
-      ) {
-        physicsFeedbackCooldown.current = state.clock.elapsedTime + 1.1
-        onPhysicsFeedback({
-          type: 'collision',
-          label: physicsStep.impact.obstacle.label,
-          bounced: physicsStep.impact.response === 'bounce',
-        })
+      if (inputStrength > 0.05) {
+        body.addForce(
+          { x: driveForce.x, y: 0, z: driveForce.z },
+          true,
+        )
+      } else if (Math.hypot(velocity.x, velocity.z) < 0.045) {
+        body.setLinvel({ x: 0, y: velocity.y, z: 0 }, true)
       }
 
-      const nextSpeedZoneId = physicsStep.speedZone?.id ?? null
+      const cappedVelocity = capRapierHorizontalVelocity(
+        velocity.x,
+        velocity.z,
+        ballRadius,
+        speedMultiplier,
+      )
+      if (
+        cappedVelocity.x !== velocity.x ||
+        cappedVelocity.z !== velocity.z
+      ) {
+        body.setLinvel(
+          {
+            x: cappedVelocity.x,
+            y: velocity.y,
+            z: cappedVelocity.z,
+          },
+          true,
+        )
+        velocity = body.linvel()
+      }
+
+      const speed = Math.hypot(velocity.x, velocity.z)
+      const speedRatio = Math.min(
+        1.35,
+        speed / getRollingTopSpeed(ballRadius),
+      )
+      motion.current.velocityX = velocity.x
+      motion.current.velocityZ = velocity.z
+      motion.current.x = heading.current.x
+      motion.current.z = heading.current.z
+      motion.current.speed = speedRatio
+      motion.current.boost = speedMultiplier
+      motion.current.impact = Math.max(
+        0,
+        motion.current.impact - delta * 4.5,
+      )
+
+      const nextSpeedZoneId = speedZone?.id ?? null
       if (
         nextSpeedZoneId &&
         nextSpeedZoneId !== activeSpeedZoneId.current &&
-        rollingStep.speedRatio > 0.16 &&
+        speedRatio > 0.16 &&
         state.clock.elapsedTime >= physicsFeedbackCooldown.current
       ) {
         physicsFeedbackCooldown.current = state.clock.elapsedTime + 1.1
         onPhysicsFeedback({
           type: 'boost',
-          label: physicsStep.speedZone?.label ?? '스피드 길',
+          label: speedZone?.label ?? '스피드 길',
         })
       }
       activeSpeedZoneId.current =
-        nextSpeedZoneId && rollingStep.speedRatio > 0.16
+        nextSpeedZoneId && speedRatio > 0.16
           ? nextSpeedZoneId
           : null
 
-      const traveled = Math.hypot(nextX - previousX, nextZ - previousZ)
-      if (orb.current && traveled > 0.0001) {
+      const traveled = Math.hypot(
+        position.x - previousPosition.current.x,
+        position.z - previousPosition.current.z,
+      )
+      if (orb.current && traveled > 0.0001 && traveled < 2) {
         rollAxis.current
           .set(
-            (nextZ - previousZ) / traveled,
+            (position.z - previousPosition.current.z) / traveled,
             0,
-            -(nextX - previousX) / traveled,
+            -(position.x - previousPosition.current.x) / traveled,
           )
           .normalize()
         rollQuaternion.current.setFromAxisAngle(
@@ -634,18 +914,6 @@ function GameWorld({
           collectedSet.current.add(item.id)
           onCollect(item)
         } else if (touchesItem) {
-          const offsetX = position.x - item.position[0]
-          const offsetZ = position.z - item.position[2]
-          const safeDistance = Math.max(distance, 0.001)
-          const overlap = Math.min(
-            0.2,
-            ballRadius + item.size * 0.64 - safeDistance,
-          )
-          position.x += (offsetX / safeDistance) * overlap
-          position.z += (offsetZ / safeDistance) * overlap
-          motion.current.velocityX *= -0.16
-          motion.current.velocityZ *= -0.16
-
           if (state.clock.elapsedTime > tooLargeCooldown.current) {
             tooLargeCooldown.current = state.clock.elapsedTime + 1.7
             onTooLarge(item)
@@ -654,7 +922,7 @@ function GameWorld({
       }
     }
 
-    position.y = ballRadius
+    previousPosition.current.set(position.x, position.y, position.z)
 
     cameraDirection.current.x = MathUtils.damp(
       cameraDirection.current.x,
@@ -724,6 +992,11 @@ function GameWorld({
       />
 
       <GardenSetDressing floorSize={stage.mapSize} theme={stage.theme} />
+      <RapierWorldColliders
+        mapSize={stage.mapSize}
+        layout={physicsLayout}
+      />
+      <DynamicPracticeProps stageId={stage.id} />
 
       {visibleObjects.map((item) => (
         <LearningItem
@@ -733,8 +1006,33 @@ function GameWorld({
           available={canCollect(ballRadius, item.size)}
         />
       ))}
+      <TooLargeItemColliders
+        items={visibleObjects}
+        ballRadius={ballRadius}
+      />
 
-      <group ref={player} name="rolling-player">
+      <RigidBody
+        key={stage.id}
+        ref={playerBody}
+        name="rolling-player"
+        colliders={false}
+        position={[0, ballRadius, 0]}
+        gravityScale={0}
+        enabledTranslations={[true, false, true]}
+        enabledRotations={[false, false, false]}
+        linearDamping={2.7}
+        angularDamping={1}
+        mass={Math.max(1.8, ballRadius * 3.4)}
+        canSleep={false}
+        ccd
+        onCollisionEnter={handleCollisionEnter}
+      >
+        <BallCollider
+          key={`player-ball-${ballRadius.toFixed(3)}`}
+          args={[ballRadius]}
+          friction={0.92}
+          restitution={0.12}
+        />
         <group ref={orb} name="rolling-orb">
           <mesh castShadow receiveShadow>
             <sphereGeometry args={[ballRadius, 32, 24]} />
@@ -798,7 +1096,7 @@ function GameWorld({
           motion={motion}
           reducedMotion={reducedMotion}
         />
-      </group>
+      </RigidBody>
     </>
   )
 }
@@ -809,10 +1107,20 @@ export function GameCanvas(props: GameCanvasProps) {
       className="game-canvas"
       shadows
       dpr={[1, 1.7]}
-      camera={{ position: [0, 7, 8], fov: 48, near: 0.1, far: 110 }}
+      camera={{ position: [0, 7, 8], fov: 48, near: 0.1, far: 180 }}
       gl={{ antialias: true, alpha: false, powerPreference: 'high-performance' }}
     >
-      <GameWorld {...props} />
+      <Suspense fallback={null}>
+        <Physics
+          gravity={[0, -16, 0]}
+          paused={props.paused}
+          timeStep={1 / 60}
+          numSolverIterations={8}
+          maxCcdSubsteps={4}
+        >
+          <GameWorld {...props} />
+        </Physics>
+      </Suspense>
     </Canvas>
   )
 }

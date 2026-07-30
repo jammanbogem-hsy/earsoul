@@ -22,12 +22,18 @@ export const SIZE_TIERS = [
 
 const OBJECT_VISUAL_SCALES = [0.34, 0.68, 1.1, 1.65] as const
 
-export function getCollectibleLimit(ballRadius: number): number {
+function getRawCollectibleLimit(ballRadius: number): number {
   return ballRadius * COLLECTIBLE_RATIO
 }
 
+export function getCollectibleLimit(ballRadius: number): number {
+  return getReachableSizeTier(ballRadius).maxSize
+}
+
 export function canCollect(ballRadius: number, objectSize: number): boolean {
-  return objectSize <= getCollectibleLimit(ballRadius)
+  return (
+    getSizeTier(objectSize).level <= getReachableSizeTier(ballRadius).level
+  )
 }
 
 export function getSizeTier(objectSize: number) {
@@ -193,7 +199,7 @@ export function isStageUnlocked(
 }
 
 export function getReachableSizeTier(ballRadius: number) {
-  const limit = getCollectibleLimit(ballRadius)
+  const limit = getRawCollectibleLimit(ballRadius)
   return (
     [...SIZE_TIERS].reverse().find((tier) => tier.minSize <= limit) ??
     SIZE_TIERS[0]

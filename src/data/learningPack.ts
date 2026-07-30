@@ -6,7 +6,10 @@ import type {
   StageTheme,
   StageUnlockRequirement,
 } from '../types'
-import { isCollectionPositionClear } from '../game/mechanics'
+import {
+  getSizeTier,
+  isCollectionPositionClear,
+} from '../game/mechanics'
 import { createWorldPhysicsLayout } from '../game/worldPhysics'
 
 const objectTemplates: LearningObject[] = [
@@ -343,7 +346,7 @@ const objectTemplates: LearningObject[] = [
 ]
 
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5))
-const OBJECTS_PER_STAGE = 64
+const OBJECTS_PER_STAGE = 96
 
 interface StageBlueprint {
   id: string
@@ -456,12 +459,23 @@ function createStageObjects(
   stageIndex: number,
 ): LearningObject[] {
   const templates = objectTemplates
+  const templatesByTier = [1, 2, 3, 4].map((level) =>
+    templates.filter((template) => getSizeTier(template.size).level === level),
+  )
   const maxRadius = blueprint.mapSize / 2 - 5
   const physicsLayout = createWorldPhysicsLayout(blueprint)
 
   return Array.from({ length: OBJECTS_PER_STAGE }, (_, index) => {
-    const template = templates[index % templates.length]
     const starter = index < 8
+    const mixedIndex = Math.max(0, index - 8)
+    const mixedTierIndex = (mixedIndex + stageIndex) % templatesByTier.length
+    const mixedTierTemplates = templatesByTier[mixedTierIndex]
+    const template = starter
+      ? templates[index]
+      : mixedTierTemplates[
+          Math.floor(mixedIndex / templatesByTier.length) %
+            mixedTierTemplates.length
+        ]
     const progress = Math.max(0, (index - 7) / (OBJECTS_PER_STAGE - 8))
     const radius = starter
       ? 2.4 + index * 0.58
