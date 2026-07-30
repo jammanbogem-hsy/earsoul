@@ -48,6 +48,10 @@ import {
   stepRollingMotion,
 } from '../game/rollingMotion'
 import {
+  getPlayerSpawnTranslation,
+  preservePlayerTranslationWhileGrowing,
+} from '../game/playerPhysics'
+import {
   createWorldPhysicsLayout,
   getActiveSpeedZone,
   getActiveSurfaceZone,
@@ -1452,13 +1456,41 @@ function GameWorld({
       physicsLayout.surfaceZones.find((zone) => zone.kind === 'water') ?? null
     )
   }, [physicsLayout])
+  const debugCollectionTarget = useMemo(() => {
+    const teleportMode = new URLSearchParams(window.location.search).get(
+      'teleport',
+    )
+    if (
+      !import.meta.env.DEV ||
+      (teleportMode !== 'collect' && teleportMode !== 'elevated')
+    ) {
+      return null
+    }
+    const needsElevatedItem = teleportMode === 'elevated'
+    return (
+      stage.objects.find(
+        (item) =>
+          (needsElevatedItem
+            ? item.position[1] > 3
+            : item.position[1] < 0.2) &&
+          Math.hypot(item.position[0], item.position[2]) > 20 &&
+          canCollect(0.42, item.size),
+      ) ?? null
+    )
+  }, [stage.objects])
   const spawnX = debugSurface?.x ?? 0
   const spawnZ = debugSurface?.z ?? 0
+  const spawnTranslation = useMemo(
+    () => getPlayerSpawnTranslation(spawnX, spawnZ),
+    [spawnX, spawnZ],
+  )
   const debugAutoDrive =
     import.meta.env.DEV &&
     new URLSearchParams(window.location.search).get('autodrive') === 'true'
   const playerBody = useRef<RapierRigidBody>(null)
-  const playerPosition = useRef(new Vector3(spawnX, ballRadius, spawnZ))
+  const playerPosition = useRef(
+    new Vector3(...spawnTranslation),
+  )
   const orb = useRef<Group>(null)
   const keys = useKeyboard(paused)
   const { camera, gl } = useThree()
@@ -1485,7 +1517,9 @@ function GameWorld({
   const lookTarget = useRef(new Vector3())
   const rollAxis = useRef(new Vector3())
   const rollQuaternion = useRef(new Quaternion())
-  const previousPosition = useRef(new Vector3(spawnX, ballRadius, spawnZ))
+  const previousPosition = useRef(
+    new Vector3(...spawnTranslation),
+  )
   const lastMapUpdate = useRef(0)
   const motion = useRef<MotionState>({
     x: 0,
@@ -1508,11 +1542,7 @@ function GameWorld({
     const position = body.translation()
     playerPosition.current.set(position.x, position.y, position.z)
     body.setTranslation(
-      {
-        x: position.x,
-        y: Math.max(position.y, ballRadius + 0.02),
-        z: position.z,
-      },
+      preservePlayerTranslationWhileGrowing(position, ballRadius),
       true,
     )
     body.wakeUp()
@@ -1523,6 +1553,22 @@ function GameWorld({
     playerBody.current.setLinvel({ x: 0, y: 0, z: 0 }, true)
     playerBody.current.resetForces(true)
   }, [paused])
+
+  useEffect(() => {
+    const body = playerBody.current
+    if (!body || !debugCollectionTarget) return
+    const translation = getPlayerSpawnTranslation(
+      debugCollectionTarget.position[0],
+      debugCollectionTarget.position[2],
+    )
+    translation[1] += debugCollectionTarget.position[1]
+    body.setTranslation(
+      { x: translation[0], y: translation[1], z: translation[2] },
+      true,
+    )
+    playerPosition.current.set(...translation)
+    previousPosition.current.set(...translation)
+  }, [debugCollectionTarget])
 
   useEffect(() => {
     const canvas = gl.domElement
@@ -1992,13 +2038,12 @@ function GameWorld({
         ref={playerBody}
         name="rolling-player"
         colliders={false}
-        position={[spawnX, ballRadius + 0.02, spawnZ]}
+        position={spawnTranslation}
         gravityScale={1}
         enabledTranslations={[true, true, true]}
         enabledRotations={[false, false, false]}
         linearDamping={0.12}
         angularDamping={1}
-        mass={Math.max(1.8, ballRadius * 3.4)}
         canSleep={false}
         ccd
         onCollisionEnter={handleCollisionEnter}
