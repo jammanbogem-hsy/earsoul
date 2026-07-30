@@ -22,8 +22,21 @@ export interface SpeedZone {
   multiplier: number
 }
 
+export interface RideableObstacle {
+  id: string
+  label: string
+  x: number
+  y: number
+  z: number
+  halfWidth: number
+  halfHeight: number
+  halfDepth: number
+  rotationY: number
+}
+
 export interface WorldPhysicsLayout {
   obstacles: WorldObstacle[]
+  rideableObstacles: RideableObstacle[]
   speedZones: SpeedZone[]
 }
 
@@ -204,6 +217,25 @@ function createSpeedZones(
   ]
 }
 
+function createRideableObstacles(mapSize: number): RideableObstacle[] {
+  const mapScale = mapSize / 60
+
+  return Array.from(
+    { length: Math.round(18 * mapScale) },
+    (_, index) => ({
+      id: `stepping-block-${index}`,
+      label: '컬러 발판',
+      x: -8.5 * mapScale + index,
+      y: 0.13 + (index % 3) * 0.04,
+      z: -12.3 * mapScale + Math.sin(index * 0.8) * 0.8,
+      halfWidth: 0.29,
+      halfHeight: 0.12,
+      halfDepth: 0.29,
+      rotationY: index * 0.22,
+    }),
+  )
+}
+
 export function createWorldPhysicsLayout(
   stage: Pick<GameStage, 'mapSize' | 'theme'>,
 ): WorldPhysicsLayout {
@@ -217,6 +249,7 @@ export function createWorldPhysicsLayout(
         ? createForestTrees(stage.mapSize)
         : []),
     ],
+    rideableObstacles: createRideableObstacles(stage.mapSize),
     speedZones: createSpeedZones(stage.mapSize, stage.theme),
   }
 }

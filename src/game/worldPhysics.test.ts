@@ -18,6 +18,7 @@ const stopLayout: WorldPhysicsLayout = {
       response: 'stop',
     },
   ],
+  rideableObstacles: [],
   speedZones: [],
 }
 
@@ -27,6 +28,12 @@ describe('world physics', () => {
       const layout = createWorldPhysicsLayout(stage)
       expect(layout.obstacles.length).toBeGreaterThan(30)
       expect(layout.speedZones.length).toBeGreaterThan(0)
+      expect(layout.rideableObstacles.length).toBeGreaterThan(20)
+      expect(
+        layout.rideableObstacles.every(
+          (obstacle) => obstacle.halfHeight <= 0.12,
+        ),
+      ).toBe(true)
       expect(layout.obstacles.some((obstacle) => obstacle.label.includes('나무'))).toBe(
         true,
       )
@@ -79,6 +86,7 @@ describe('world physics', () => {
   it('applies a speed multiplier only while crossing a marked route', () => {
     const layout: WorldPhysicsLayout = {
       obstacles: [],
+      rideableObstacles: [],
       speedZones: [
         {
           id: 'route',

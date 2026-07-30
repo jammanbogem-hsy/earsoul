@@ -39,10 +39,9 @@ import {
   type DriveControl,
 } from '../game/input'
 import {
-  capRapierHorizontalVelocity,
-  getRapierDriveForce,
-} from '../game/rapierMotion'
-import { getRollingTopSpeed } from '../game/rollingMotion'
+  getRollingTopSpeed,
+  stepRollingMotion,
+} from '../game/rollingMotion'
 import {
   createWorldPhysicsLayout,
   getActiveSpeedZone,
@@ -95,6 +94,7 @@ interface PhysicsBodyData {
     | 'floor'
     | 'boundary'
     | 'obstacle'
+    | 'rideable'
     | 'dynamic-prop'
     | 'large-item'
   label: string
@@ -536,6 +536,36 @@ function RapierWorldColliders({
           </RigidBody>
         )
       })}
+
+      {layout.rideableObstacles.map((obstacle) => {
+        const physics: PhysicsBodyData = {
+          kind: 'rideable',
+          label: obstacle.label,
+          response: 'bounce',
+          quiet: true,
+        }
+
+        return (
+          <RigidBody
+            key={obstacle.id}
+            type="fixed"
+            colliders={false}
+            position={[obstacle.x, obstacle.y, obstacle.z]}
+            rotation={[0, obstacle.rotationY, 0]}
+            userData={{ physics }}
+          >
+            <CuboidCollider
+              args={[
+                obstacle.halfWidth,
+                obstacle.halfHeight,
+                obstacle.halfDepth,
+              ]}
+              friction={0.96}
+              restitution={0}
+            />
+          </RigidBody>
+        )
+      })}
     </>
   )
 }
@@ -689,6 +719,7 @@ function GameWorld({
   const tooLargeCooldown = useRef(0)
   const physicsFeedbackCooldown = useRef(0)
   const collisionFeedbackCooldown = useRef(0)
+  const collisionRecoveryUntil = useRef(0)
   const activeSpeedZoneId = useRef<string | null>(null)
   const cameraPosition = useRef(new Vector3(0, 7, 8))
   const cameraDirection = useRef(new Vector3(0, 0, -1))
@@ -716,7 +747,11 @@ function GameWorld({
     if (!body) return
     const position = body.translation()
     body.setTranslation(
-      { x: position.x, y: ballRadius, z: position.z },
+      {
+        x: position.x,
+        y: Math.max(position.y, ballRadius + 0.02),
+        z: position.z,
+      },
       true,
     )
     body.wakeUp()
@@ -737,27 +772,27 @@ function GameWorld({
     if (!body || !physics || physics.kind === 'floor') return
 
     const velocity = body.linvel()
-    if (physics.response === 'stop') {
+    if (
+      physics.response === 'stop' &&
+      physics.kind !== 'rideable'
+    ) {
       body.setLinvel({ x: 0, y: velocity.y, z: 0 }, true)
-    } else if (physics.kind === 'obstacle') {
-      const position = body.translation()
-      const obstaclePosition = other.rigidBody?.translation()
-      const offsetX = position.x - (obstaclePosition?.x ?? position.x)
-      const offsetZ = position.z - (obstaclePosition?.z ?? position.z)
-      const distance = Math.max(0.001, Math.hypot(offsetX, offsetZ))
-      const impulse = body.mass() * 0.72
-      body.applyImpulse(
-        {
-          x: (offsetX / distance) * impulse,
-          y: 0,
-          z: (offsetZ / distance) * impulse,
-        },
-        true,
-      )
     }
 
     motion.current.impact = physics.quiet ? 0.42 : 1
     const now = performance.now()
+    if (physics.kind !== 'rideable') {
+      const recoveryDuration =
+        physics.kind === 'dynamic-prop'
+          ? 90
+          : physics.response === 'bounce'
+            ? 260
+            : 190
+      collisionRecoveryUntil.current = Math.max(
+        collisionRecoveryUntil.current,
+        now + recoveryDuration,
+      )
+    }
     if (physics.quiet || now < collisionFeedbackCooldown.current) return
     collisionFeedbackCooldown.current = now + 900
     onPhysicsFeedback({
@@ -772,7 +807,7 @@ function GameWorld({
     if (!body) return
 
     const position = body.translation()
-    let velocity = body.linvel()
+    const velocity = body.linvel()
     if (!paused) {
       const lateralInput =
         (keys.current.right ? 1 : 0) -
@@ -787,20 +822,31 @@ function GameWorld({
         lateralInput,
         forwardInput,
       )
+      const rollingStep = stepRollingMotion(
+        {
+          velocityX: motion.current.velocityX,
+          velocityZ: motion.current.velocityZ,
+        },
+        driveStep.moveX,
+        driveStep.moveZ,
+        ballRadius,
+        delta,
+      )
       const inputStrength = Math.hypot(driveStep.moveX, driveStep.moveZ)
       if (
         forwardInput >= 0 &&
-        inputStrength > 0.05
+        inputStrength > 0.05 &&
+        rollingStep.speedRatio > 0.04
       ) {
         heading.current.x = MathUtils.damp(
           heading.current.x,
-          driveStep.moveX,
+          rollingStep.directionX,
           4.6,
           delta,
         )
         heading.current.z = MathUtils.damp(
           heading.current.z,
-          driveStep.moveZ,
+          rollingStep.directionZ,
           4.6,
           delta,
         )
@@ -812,49 +858,35 @@ function GameWorld({
         position.z,
       )
       const speedMultiplier = speedZone?.multiplier ?? 1
-      const driveForce = getRapierDriveForce(
-        driveStep.moveX,
-        driveStep.moveZ,
-        body.mass(),
-        speedMultiplier,
-      )
-      if (inputStrength > 0.05) {
-        body.addForce(
-          { x: driveForce.x, y: 0, z: driveForce.z },
-          true,
-        )
-      } else if (Math.hypot(velocity.x, velocity.z) < 0.045) {
-        body.setLinvel({ x: 0, y: velocity.y, z: 0 }, true)
-      }
+      const recovering =
+        performance.now() < collisionRecoveryUntil.current
 
-      const cappedVelocity = capRapierHorizontalVelocity(
-        velocity.x,
-        velocity.z,
-        ballRadius,
-        speedMultiplier,
-      )
-      if (
-        cappedVelocity.x !== velocity.x ||
-        cappedVelocity.z !== velocity.z
-      ) {
+      if (recovering) {
+        const physicalSpeed = Math.hypot(velocity.x, velocity.z)
+        motion.current.velocityX = velocity.x / speedMultiplier
+        motion.current.velocityZ = velocity.z / speedMultiplier
+        motion.current.speed = Math.min(
+          1.35,
+          physicalSpeed / getRollingTopSpeed(ballRadius),
+        )
+      } else {
         body.setLinvel(
           {
-            x: cappedVelocity.x,
+            x: rollingStep.velocityX * speedMultiplier,
             y: velocity.y,
-            z: cappedVelocity.z,
+            z: rollingStep.velocityZ * speedMultiplier,
           },
           true,
         )
-        velocity = body.linvel()
+        motion.current.velocityX = rollingStep.velocityX
+        motion.current.velocityZ = rollingStep.velocityZ
+        motion.current.speed = Math.min(
+          1.35,
+          rollingStep.speedRatio * speedMultiplier,
+        )
       }
 
-      const speed = Math.hypot(velocity.x, velocity.z)
-      const speedRatio = Math.min(
-        1.35,
-        speed / getRollingTopSpeed(ballRadius),
-      )
-      motion.current.velocityX = velocity.x
-      motion.current.velocityZ = velocity.z
+      const speedRatio = motion.current.speed
       motion.current.x = heading.current.x
       motion.current.z = heading.current.z
       motion.current.speed = speedRatio
@@ -939,9 +971,10 @@ function GameWorld({
     cameraDirection.current.normalize()
 
     const cameraDistance = 4.8 + ballRadius * 1.6
+    const elevation = Math.max(0, position.y - ballRadius)
     cameraPosition.current.set(
       position.x - cameraDirection.current.x * cameraDistance,
-      3.2 + ballRadius * 1.35,
+      3.2 + ballRadius * 1.35 + elevation,
       position.z - cameraDirection.current.z * cameraDistance,
     )
     if (!reducedMotion && motion.current.impact > 0) {
@@ -953,7 +986,7 @@ function GameWorld({
     camera.position.lerp(cameraPosition.current, reducedMotion ? 0.18 : 0.1)
     lookTarget.current.set(
       position.x + cameraDirection.current.x * ballRadius * 0.7,
-      ballRadius * 0.72,
+      ballRadius * 0.72 + elevation,
       position.z + cameraDirection.current.z * ballRadius * 0.7,
     )
     camera.lookAt(lookTarget.current)
@@ -1016,11 +1049,11 @@ function GameWorld({
         ref={playerBody}
         name="rolling-player"
         colliders={false}
-        position={[0, ballRadius, 0]}
-        gravityScale={0}
-        enabledTranslations={[true, false, true]}
+        position={[0, ballRadius + 0.02, 0]}
+        gravityScale={1}
+        enabledTranslations={[true, true, true]}
         enabledRotations={[false, false, false]}
-        linearDamping={2.7}
+        linearDamping={0.12}
         angularDamping={1}
         mass={Math.max(1.8, ballRadius * 3.4)}
         canSleep={false}
@@ -1030,8 +1063,8 @@ function GameWorld({
         <BallCollider
           key={`player-ball-${ballRadius.toFixed(3)}`}
           args={[ballRadius]}
-          friction={0.92}
-          restitution={0.12}
+          friction={0.88}
+          restitution={0.04}
         />
         <group ref={orb} name="rolling-orb">
           <mesh castShadow receiveShadow>
