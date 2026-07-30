@@ -29,6 +29,7 @@ import {
   advanceCombo,
   type ComboState,
 } from '../game/combo'
+import { getCollectedObjectsInOrder } from '../game/collectionOrder'
 import {
   advanceSessionStage,
   calculateBallRadius,
@@ -45,19 +46,33 @@ import {
 import type { GameSession, LearningObject, LearningPack } from '../types'
 import { Redirect, useAppNavigate } from '../navigation'
 
+let chimeContext: AudioContext | null = null
+
+function getChimeContext(): AudioContext | null {
+  if (chimeContext && chimeContext.state !== 'closed') {
+    return chimeContext
+  }
+
+  const AudioContextClass =
+    window.AudioContext ||
+    (
+      window as typeof window & {
+        webkitAudioContext?: typeof AudioContext
+      }
+    ).webkitAudioContext
+  if (!AudioContextClass) return null
+
+  chimeContext = new AudioContextClass()
+  return chimeContext
+}
+
 function playChime(enabled: boolean, success = true) {
   if (!enabled) return
 
   try {
-    const AudioContextClass =
-      window.AudioContext ||
-      (
-        window as typeof window & {
-          webkitAudioContext?: typeof AudioContext
-        }
-      ).webkitAudioContext
-    if (!AudioContextClass) return
-    const context = new AudioContextClass()
+    const context = getChimeContext()
+    if (!context) return
+    if (context.state === 'suspended') void context.resume()
     const oscillator = context.createOscillator()
     const gain = context.createGain()
     oscillator.type = 'sine'
@@ -73,7 +88,14 @@ function playChime(enabled: boolean, success = true) {
     gain.connect(context.destination)
     oscillator.start()
     oscillator.stop(context.currentTime + 0.24)
-    oscillator.addEventListener('ended', () => void context.close())
+    oscillator.addEventListener(
+      'ended',
+      () => {
+        oscillator.disconnect()
+        gain.disconnect()
+      },
+      { once: true },
+    )
   } catch {
     // Sound is a progressive enhancement; gameplay remains fully usable.
   }
@@ -258,8 +280,9 @@ export function GamePage() {
     session.stageScores?.[stage.id],
   )
   const stageCollectedCount = stageProgress.collectedCount
-  const attachedObjects = stage.objects.filter((item) =>
-    session.collectedIds.includes(item.id),
+  const attachedObjects = getCollectedObjectsInOrder(
+    stage.objects,
+    session.collectedIds,
   )
   const stageReady = stageProgress.ready
   const bonusCount = stageProgress.bonusCount

@@ -18,16 +18,19 @@ export function getPlayerSpawnTranslation(
   ]
 }
 
-export function preservePlayerTranslationWhileGrowing(
+export function getPlayerColliderRadius(ballRadius: number): number {
+  return Math.max(INITIAL_PLAYER_RADIUS, ballRadius)
+}
+
+export function preservePlayerFootHeightWhileGrowing(
   current: PlayerTranslation,
+  previousRadius: number,
   nextRadius: number,
 ): PlayerTranslation {
+  const growth = Math.max(0, nextRadius - previousRadius)
   return {
     x: current.x,
-    y: Math.max(
-      current.y,
-      nextRadius + PLAYER_FLOOR_CLEARANCE,
-    ),
+    y: current.y + growth,
     z: current.z,
   }
 }

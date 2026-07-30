@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
+  getPlayerColliderRadius,
   getPlayerSpawnTranslation,
-  preservePlayerTranslationWhileGrowing,
+  preservePlayerFootHeightWhileGrowing,
 } from './playerPhysics'
 
 describe('player growth physics', () => {
@@ -10,21 +11,18 @@ describe('player growth physics', () => {
     expect(getPlayerSpawnTranslation(18, -27)).toEqual([18, 0.44, -27])
   })
 
-  it('preserves the current map position while raising a growing ball', () => {
-    expect(
-      preservePlayerTranslationWhileGrowing(
-        { x: 24.5, y: 0.44, z: -31.25 },
-        0.7,
-      ),
-    ).toEqual({ x: 24.5, y: 0.72, z: -31.25 })
+  it('resizes the existing collider without shrinking below the start size', () => {
+    expect(getPlayerColliderRadius(0.2)).toBe(0.42)
+    expect(getPlayerColliderRadius(0.88)).toBe(0.88)
   })
 
-  it('does not pull a growing ball down from an upper floor', () => {
+  it('keeps the ball foot height and horizontal position while growing', () => {
     expect(
-      preservePlayerTranslationWhileGrowing(
+      preservePlayerFootHeightWhileGrowing(
         { x: -12, y: 4.1, z: 17 },
+        0.7,
         1.2,
       ),
-    ).toEqual({ x: -12, y: 4.1, z: 17 })
+    ).toEqual({ x: -12, y: 4.6, z: 17 })
   })
 })

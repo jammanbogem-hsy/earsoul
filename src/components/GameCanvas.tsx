@@ -7,11 +7,14 @@ import {
   Physics,
   RigidBody,
   type CollisionEnterPayload,
+  type RapierCollider,
   type RapierRigidBody,
 } from '@react-three/rapier'
 import {
+  memo,
   Suspense,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   type CSSProperties,
@@ -48,8 +51,10 @@ import {
   stepRollingMotion,
 } from '../game/rollingMotion'
 import {
+  getPlayerColliderRadius,
   getPlayerSpawnTranslation,
-  preservePlayerTranslationWhileGrowing,
+  INITIAL_PLAYER_RADIUS,
+  preservePlayerFootHeightWhileGrowing,
 } from '../game/playerPhysics'
 import {
   createWorldPhysicsLayout,
@@ -197,7 +202,7 @@ function useKeyboard(disabled: boolean) {
   return keys
 }
 
-function LearningItem({
+const LearningItem = memo(function LearningItem({
   item,
   reducedMotion,
   available,
@@ -299,6 +304,68 @@ function LearningItem({
       </Html>
     </group>
   )
+})
+
+function RollingBallCore({
+  ballRadius,
+  reducedMotion,
+}: {
+  ballRadius: number
+  reducedMotion: boolean
+}) {
+  const core = useRef<Group>(null)
+
+  useFrame((_, delta) => {
+    if (!core.current) return
+    const radius = reducedMotion
+      ? ballRadius
+      : MathUtils.damp(core.current.scale.x, ballRadius, 16, delta)
+    core.current.scale.setScalar(radius)
+  })
+
+  return (
+    <group ref={core} scale={INITIAL_PLAYER_RADIUS}>
+      <mesh castShadow receiveShadow>
+        <sphereGeometry args={[1, 32, 24]} />
+        <meshStandardMaterial
+          color="#FFF1D3"
+          roughness={0.62}
+          metalness={0.02}
+        />
+      </mesh>
+      {[0, Math.PI / 3, -Math.PI / 3].map((rotation, index) => (
+        <mesh
+          key={`rolling-band-${index}`}
+          rotation={[rotation, 0, index * 0.9]}
+        >
+          <torusGeometry args={[0.945, 0.063, 10, 56]} />
+          <meshStandardMaterial
+            color={['#45A7A0', '#F2C94C', '#FF7B66'][index]}
+            roughness={0.58}
+          />
+        </mesh>
+      ))}
+      {[
+        [0, 0, 0.98],
+        [0.74, 0.48, 0.44],
+        [-0.72, 0.55, 0.4],
+        [0.68, -0.58, -0.4],
+        [-0.65, -0.62, -0.42],
+      ].map((direction, index) => (
+        <mesh
+          key={`rolling-dot-${index}`}
+          position={[direction[0], direction[1], direction[2]]}
+          scale={index === 0 ? 0.13 : 0.1}
+        >
+          <sphereGeometry args={[1, 12, 9]} />
+          <meshStandardMaterial
+            color={['#4169D8', '#45A7A0', '#FF7B66'][index % 3]}
+            roughness={0.55}
+          />
+        </mesh>
+      ))}
+    </group>
+  )
 }
 
 function ChildPusher({
@@ -323,6 +390,10 @@ function ChildPusher({
   const rightForearm = useRef<Group>(null)
   const helperScale = Math.min(0.96, 0.66 + ballRadius * 0.14)
 
+  useLayoutEffect(() => {
+    if (root.current) root.current.position.y = -ballRadius
+  }, [ballRadius])
+
   useFrame(({ clock }, delta) => {
     if (!root.current) return
 
@@ -345,6 +416,13 @@ function ChildPusher({
       delta,
     )
     root.current.position.y = -ballRadius
+    const scale = MathUtils.damp(
+      root.current.scale.x,
+      helperScale,
+      16,
+      delta,
+    )
+    root.current.scale.setScalar(scale)
     root.current.rotation.y =
       Math.atan2(-x, -z) - Math.atan2(sideOffset, distance)
 
@@ -388,8 +466,15 @@ function ChildPusher({
   return (
     <group
       ref={root}
-      position={[0, -ballRadius, ballRadius + 0.48]}
-      scale={helperScale}
+      position={[
+        0,
+        -INITIAL_PLAYER_RADIUS,
+        INITIAL_PLAYER_RADIUS + 0.48,
+      ]}
+      scale={Math.min(
+        0.96,
+        0.66 + INITIAL_PLAYER_RADIUS * 0.14,
+      )}
     >
       <group ref={body}>
         <mesh
@@ -1488,6 +1573,8 @@ function GameWorld({
     import.meta.env.DEV &&
     new URLSearchParams(window.location.search).get('autodrive') === 'true'
   const playerBody = useRef<RapierRigidBody>(null)
+  const playerCollider = useRef<RapierCollider>(null)
+  const previousBallRadius = useRef(INITIAL_PLAYER_RADIUS)
   const playerPosition = useRef(
     new Vector3(...spawnTranslation),
   )
@@ -1514,7 +1601,10 @@ function GameWorld({
     manualUntil: 0,
   })
   const heading = useRef(new Vector3(0, 0, -1))
-  const lookTarget = useRef(new Vector3())
+  const lookTarget = useRef(
+    new Vector3(0, INITIAL_PLAYER_RADIUS * 0.72, 0),
+  )
+  const desiredLookTarget = useRef(new Vector3())
   const rollAxis = useRef(new Vector3())
   const rollQuaternion = useRef(new Quaternion())
   const previousPosition = useRef(
@@ -1535,18 +1625,6 @@ function GameWorld({
   useEffect(() => {
     collectedSet.current = new Set(collectedIds)
   }, [collectedIds])
-
-  useEffect(() => {
-    const body = playerBody.current
-    if (!body) return
-    const position = body.translation()
-    playerPosition.current.set(position.x, position.y, position.z)
-    body.setTranslation(
-      preservePlayerTranslationWhileGrowing(position, ballRadius),
-      true,
-    )
-    body.wakeUp()
-  }, [ballRadius])
 
   useEffect(() => {
     if (!paused || !playerBody.current) return
@@ -1713,6 +1791,38 @@ function GameWorld({
   useFrame((state, delta) => {
     const body = playerBody.current
     if (!body) return
+
+    if (
+      Math.abs(previousBallRadius.current - ballRadius) > 0.0001
+    ) {
+      const collider = playerCollider.current
+      if (body.isValid() && collider?.isValid()) {
+        const growthPosition = body.translation()
+        const velocity = body.linvel()
+        const nextPosition = preservePlayerFootHeightWhileGrowing(
+          growthPosition,
+          previousBallRadius.current,
+          ballRadius,
+        )
+        collider.setRadius(getPlayerColliderRadius(ballRadius))
+        body.recomputeMassPropertiesFromColliders()
+        if (nextPosition.y !== growthPosition.y) {
+          body.setTranslation(nextPosition, false)
+          body.setLinvel(velocity, true)
+        }
+        playerPosition.current.set(
+          nextPosition.x,
+          nextPosition.y,
+          nextPosition.z,
+        )
+        previousPosition.current.set(
+          nextPosition.x,
+          nextPosition.y,
+          nextPosition.z,
+        )
+        previousBallRadius.current = ballRadius
+      }
+    }
 
     const position = body.translation()
     playerPosition.current.set(position.x, position.y, position.z)
@@ -1944,10 +2054,28 @@ function GameWorld({
       cameraPosition.current.y += Math.abs(shake) * 0.5
     }
     camera.position.lerp(cameraPosition.current, reducedMotion ? 0.18 : 0.1)
-    lookTarget.current.set(
+    desiredLookTarget.current.set(
       position.x + cameraDirection.current.x * ballRadius * 0.7,
       ballRadius * 0.72 + elevation,
       position.z + cameraDirection.current.z * ballRadius * 0.7,
+    )
+    lookTarget.current.x = MathUtils.damp(
+      lookTarget.current.x,
+      desiredLookTarget.current.x,
+      18,
+      delta,
+    )
+    lookTarget.current.y = MathUtils.damp(
+      lookTarget.current.y,
+      desiredLookTarget.current.y,
+      18,
+      delta,
+    )
+    lookTarget.current.z = MathUtils.damp(
+      lookTarget.current.z,
+      desiredLookTarget.current.z,
+      18,
+      delta,
     )
     camera.lookAt(lookTarget.current)
 
@@ -2049,59 +2177,21 @@ function GameWorld({
         onCollisionEnter={handleCollisionEnter}
       >
         <BallCollider
-          key={`player-ball-${ballRadius.toFixed(3)}`}
-          args={[ballRadius]}
+          ref={playerCollider}
+          args={[INITIAL_PLAYER_RADIUS]}
           friction={0.88}
           restitution={0.04}
         />
         <group ref={orb} name="rolling-orb">
-          <mesh castShadow receiveShadow>
-            <sphereGeometry args={[ballRadius, 32, 24]} />
-            <meshStandardMaterial
-              color="#FFF1D3"
-              roughness={0.62}
-              metalness={0.02}
-            />
-          </mesh>
-          {[0, Math.PI / 3, -Math.PI / 3].map((rotation, index) => (
-            <mesh key={`rolling-band-${index}`} rotation={[rotation, 0, index * 0.9]}>
-              <torusGeometry
-                args={[ballRadius * 0.945, ballRadius * 0.063, 10, 56]}
-              />
-              <meshStandardMaterial
-                color={['#45A7A0', '#F2C94C', '#FF7B66'][index]}
-                roughness={0.58}
-              />
-            </mesh>
-          ))}
-          {[
-            [0, 0, 0.98],
-            [0.74, 0.48, 0.44],
-            [-0.72, 0.55, 0.4],
-            [0.68, -0.58, -0.4],
-            [-0.65, -0.62, -0.42],
-          ].map((direction, index) => (
-            <mesh
-              key={`rolling-dot-${index}`}
-              position={[
-                direction[0] * ballRadius,
-                direction[1] * ballRadius,
-                direction[2] * ballRadius,
-              ]}
-              scale={ballRadius * (index === 0 ? 0.13 : 0.1)}
-            >
-              <sphereGeometry args={[1, 12, 9]} />
-              <meshStandardMaterial
-                color={['#4169D8', '#45A7A0', '#FF7B66'][index % 3]}
-                roughness={0.55}
-              />
-            </mesh>
-          ))}
-          {collectedObjects.map((item) => (
+          <RollingBallCore
+            ballRadius={ballRadius}
+            reducedMotion={reducedMotion}
+          />
+          {collectedObjects.map((item, index) => (
             <AttachedObjectMesh
               key={item.id}
               item={item}
-              index={attachedObjects.indexOf(item)}
+              index={index}
               orbRadius={ballRadius}
               slotCount={64}
             />
