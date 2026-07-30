@@ -69,6 +69,14 @@ import {
   type WorldElevator,
   type WorldPhysicsLayout,
 } from '../game/worldPhysics'
+import {
+  canMagnetAttract,
+  getPowerUpSpeedMultiplier,
+  isPowerUpTouchingBall,
+  stepMagnetPosition,
+  type ActivePowerUps,
+  type PowerUpPickup,
+} from '../game/powerUps'
 import { MaterialIcon } from './MaterialIcon'
 import {
   AttachedObjectMesh,
@@ -84,8 +92,12 @@ interface GameCanvasProps {
   paused: boolean
   reducedMotion: boolean
   controlVector: ControlVector
+  activePowerUps: ActivePowerUps
+  powerUpPickups: PowerUpPickup[]
+  radarTreasures: LearningObject[]
   onPlayerPosition: (pose: PlayerMapPose) => void
   onCollect: (item: LearningObject) => void
+  onPowerUpCollect: (pickup: PowerUpPickup) => void
   onTooLarge: (item: LearningObject) => void
   onPhysicsFeedback: (feedback: {
     type: 'collision' | 'boost' | 'slow' | 'elevator'
@@ -142,6 +154,17 @@ interface PhysicsBodyData {
   label: string
   response: ObstacleResponse
   quiet?: boolean
+}
+
+function getRuntimeItemPosition(
+  positions: Map<string, Vector3>,
+  item: Pick<LearningObject, 'id' | 'position'>,
+): Vector3 {
+  const existing = positions.get(item.id)
+  if (existing) return existing
+  const position = new Vector3(...item.position)
+  positions.set(item.id, position)
+  return position
 }
 
 function useKeyboard(disabled: boolean) {
@@ -207,11 +230,15 @@ const LearningItem = memo(function LearningItem({
   item,
   reducedMotion,
   available,
+  runtimePositions,
 }: {
   item: LearningObject
   reducedMotion: boolean
   available: boolean
+  runtimePositions?: MutableRefObject<Map<string, Vector3>>
 }) {
+  const root = useRef<Group>(null)
+  const runtimePosition = useRef(new Vector3(...item.position))
   const visual = useRef<Group>(null)
   const badge = useRef<HTMLSpanElement>(null)
   const badgeVisible = useRef<boolean | null>(null)
@@ -222,7 +249,19 @@ const LearningItem = memo(function LearningItem({
     [item.id],
   )
 
+  useEffect(() => {
+    if (!runtimePositions) return
+    const positions = runtimePositions.current
+    positions.set(item.id, runtimePosition.current)
+    return () => {
+      positions.delete(item.id)
+    }
+  }, [item.id, runtimePositions])
+
   useFrame(({ camera, clock }) => {
+    if (root.current) {
+      root.current.position.copy(runtimePosition.current)
+    }
     if (visual.current && !reducedMotion) {
       visual.current.position.y =
         visualScale * 0.58 + Math.sin(clock.elapsedTime * 1.4 + phase) * 0.045
@@ -243,7 +282,7 @@ const LearningItem = memo(function LearningItem({
   })
 
   return (
-    <group position={item.position}>
+    <group ref={root} position={item.position}>
       <group scale={visualScale}>
         {Array.from({ length: tier.level }, (_, index) => (
           <mesh
@@ -306,6 +345,267 @@ const LearningItem = memo(function LearningItem({
     </group>
   )
 })
+
+function PowerUpPickupMesh({
+  pickup,
+  reducedMotion,
+}: {
+  pickup: PowerUpPickup
+  reducedMotion: boolean
+}) {
+  const visual = useRef<Group>(null)
+  const halo = useRef<Mesh>(null)
+
+  useFrame(({ clock }, delta) => {
+    if (visual.current) {
+      visual.current.rotation.y += reducedMotion ? 0 : delta * 1.15
+      visual.current.position.y = reducedMotion
+        ? 0.7
+        : 0.7 + Math.sin(clock.elapsedTime * 2.2) * 0.08
+    }
+    if (halo.current && !reducedMotion) {
+      const pulse = 1 + Math.sin(clock.elapsedTime * 3.4) * 0.12
+      halo.current.scale.setScalar(pulse)
+    }
+  })
+
+  const color =
+    pickup.kind === 'magnet'
+      ? '#2F6FB5'
+      : pickup.kind === 'radar'
+        ? '#7752B8'
+        : '#C65A2E'
+  const label =
+    pickup.kind === 'magnet'
+      ? '자석 배터리'
+      : pickup.kind === 'radar'
+        ? '보물 레이더'
+        : '신속의 장화'
+
+  return (
+    <group position={pickup.position}>
+      <mesh
+        ref={halo}
+        rotation={[-Math.PI / 2, 0, 0]}
+        position={[0, 0.04, 0]}
+      >
+        <ringGeometry args={[0.68, 0.82, 36]} />
+        <meshBasicMaterial color={color} transparent opacity={0.72} />
+      </mesh>
+      <group ref={visual} position={[0, 0.7, 0]} scale={0.78}>
+        {pickup.kind === 'magnet' && (
+          <>
+            <mesh castShadow rotation={[0, 0, Math.PI / 2]}>
+              <cylinderGeometry args={[0.34, 0.34, 0.84, 20]} />
+              <meshStandardMaterial color="#F7FBFF" roughness={0.42} />
+            </mesh>
+            {[-0.44, 0.44].map((x) => (
+              <mesh key={x} castShadow position={[x, 0, 0]}>
+                <cylinderGeometry args={[0.37, 0.37, 0.12, 20]} />
+                <meshStandardMaterial color={color} metalness={0.22} />
+              </mesh>
+            ))}
+            <mesh position={[0, 0.01, 0.35]} scale={[0.18, 0.28, 0.05]}>
+              <boxGeometry />
+              <meshStandardMaterial color="#F6C945" emissive="#8B6A00" />
+            </mesh>
+          </>
+        )}
+        {pickup.kind === 'radar' && (
+          <>
+            <mesh castShadow position={[0, -0.16, 0]}>
+              <cylinderGeometry args={[0.33, 0.42, 0.34, 20]} />
+              <meshStandardMaterial color="#F7FBFF" roughness={0.48} />
+            </mesh>
+            <mesh rotation={[Math.PI / 2.6, 0, 0]} position={[0, 0.2, 0.06]}>
+              <torusGeometry args={[0.36, 0.08, 10, 28]} />
+              <meshStandardMaterial color={color} metalness={0.18} />
+            </mesh>
+            <mesh position={[0, 0.22, 0.08]}>
+              <sphereGeometry args={[0.11, 16, 12]} />
+              <meshStandardMaterial color="#F6C945" emissive="#8B6A00" />
+            </mesh>
+          </>
+        )}
+        {pickup.kind === 'speed' && (
+          <group rotation={[0, -0.22, 0]}>
+            <mesh castShadow position={[-0.13, 0.08, 0.04]} scale={[0.58, 0.58, 0.88]}>
+              <capsuleGeometry args={[0.34, 0.44, 8, 16]} />
+              <meshStandardMaterial color={color} roughness={0.62} />
+            </mesh>
+            <mesh castShadow position={[0.2, -0.1, 0.18]} scale={[0.7, 0.2, 1.1]}>
+              <boxGeometry />
+              <meshStandardMaterial color="#FFF8EC" roughness={0.72} />
+            </mesh>
+            <mesh position={[0.08, 0.12, 0.56]} rotation={[0.2, 0, 0]}>
+              <boxGeometry args={[0.4, 0.08, 0.08]} />
+              <meshStandardMaterial color="#F6C945" />
+            </mesh>
+          </group>
+        )}
+      </group>
+      <Html
+        center
+        position={[0, 1.65, 0]}
+        distanceFactor={9}
+        zIndexRange={[2, 0]}
+        style={{ pointerEvents: 'none' }}
+      >
+        <span
+          className={`world-power-up-badge is-${pickup.kind}`}
+          aria-hidden="true"
+        >
+          {label}
+        </span>
+      </Html>
+    </group>
+  )
+}
+
+function RadarTreasureItem({
+  item,
+  runtimePositions,
+  reducedMotion,
+}: {
+  item: LearningObject
+  runtimePositions: MutableRefObject<Map<string, Vector3>>
+  reducedMotion: boolean
+}) {
+  const root = useRef<Group>(null)
+  const gem = useRef<Mesh>(null)
+  const runtimePosition = useRef(new Vector3(...item.position))
+  const rings = useRef<(Mesh | null)[]>([])
+  const visualScale = getObjectVisualScale(item.size)
+  const colors = ['#FF5D73', '#F6C945', '#42C79B', '#4D8DFF', '#9A6BFF']
+
+  useEffect(() => {
+    const positions = runtimePositions.current
+    positions.set(item.id, runtimePosition.current)
+    return () => {
+      positions.delete(item.id)
+    }
+  }, [item.id, runtimePositions])
+
+  useFrame(({ clock }, delta) => {
+    if (root.current) root.current.position.copy(runtimePosition.current)
+    if (gem.current && !reducedMotion) {
+      gem.current.rotation.y += delta * 1.15
+      gem.current.position.y =
+        visualScale * 0.72 + Math.sin(clock.elapsedTime * 2.4) * 0.07
+    }
+    rings.current.forEach((ring, index) => {
+      if (!ring || reducedMotion) return
+      ring.rotation.z += delta * (0.32 + index * 0.08)
+    })
+  })
+
+  return (
+    <group ref={root} position={item.position}>
+      <mesh
+        position={[0, visualScale * 1.25, 0]}
+        scale={[visualScale * 0.24, visualScale * 2.6, visualScale * 0.24]}
+      >
+        <cylinderGeometry args={[1, 1, 1, 16, 1, true]} />
+        <meshBasicMaterial
+          color="#FFF5C2"
+          transparent
+          opacity={0.2}
+          depthWrite={false}
+        />
+      </mesh>
+      <mesh ref={gem} castShadow position={[0, visualScale * 0.72, 0]} scale={visualScale * 0.72}>
+        <octahedronGeometry args={[1, 1]} />
+        <meshStandardMaterial
+          color={item.color}
+          emissive={item.color}
+          emissiveIntensity={0.28}
+          metalness={0.18}
+          roughness={0.28}
+        />
+      </mesh>
+      {colors.map((color, index) => (
+        <mesh
+          key={color}
+          ref={(mesh) => {
+            rings.current[index] = mesh
+          }}
+          rotation={[
+            -Math.PI / 2 + index * 0.18,
+            index * 0.42,
+            index * 0.2,
+          ]}
+          position={[0, 0.08 + index * 0.004, 0]}
+          scale={visualScale}
+        >
+          <torusGeometry args={[0.76 + index * 0.06, 0.035, 8, 32]} />
+          <meshBasicMaterial color={color} transparent opacity={0.88} />
+        </mesh>
+      ))}
+      <Html
+        center
+        position={[0, visualScale * 1.75, 0]}
+        distanceFactor={8}
+        zIndexRange={[3, 0]}
+        style={{ pointerEvents: 'none' }}
+      >
+        <span className="world-treasure-badge" aria-hidden="true">
+          보물 +{item.points}
+        </span>
+      </Html>
+    </group>
+  )
+}
+
+function MagnetFieldEffect({
+  ballRadius,
+  active,
+  reducedMotion,
+}: {
+  ballRadius: number
+  active: boolean
+  reducedMotion: boolean
+}) {
+  const rings = useRef<(Mesh | null)[]>([])
+
+  useFrame(({ clock }) => {
+    rings.current.forEach((ring, index) => {
+      if (!ring) return
+      const phase = reducedMotion
+        ? 0.4 + index * 0.25
+        : (clock.elapsedTime * 0.72 + index * 0.5) % 1
+      const scale = ballRadius * (1.22 + phase * 1.15)
+      ring.scale.setScalar(scale)
+      const material = ring.material as MeshBasicMaterial
+      material.opacity = active
+        ? reducedMotion
+          ? 0.28
+          : (1 - phase) * 0.42
+        : 0
+    })
+  })
+
+  return (
+    <group visible={active}>
+      {[0, 1].map((index) => (
+        <mesh
+          key={index}
+          ref={(mesh) => {
+            rings.current[index] = mesh
+          }}
+          rotation={[-Math.PI / 2, 0, 0]}
+        >
+          <ringGeometry args={[0.96, 1, 48]} />
+          <meshBasicMaterial
+            color="#54B8FF"
+            transparent
+            opacity={0}
+            depthWrite={false}
+          />
+        </mesh>
+      ))}
+    </group>
+  )
+}
 
 function RollingBallCore({
   ballRadius,
@@ -634,10 +934,12 @@ function MotionEffects({
   ballRadius,
   motion,
   reducedMotion,
+  speedPowerUpActive,
 }: {
   ballRadius: number
   motion: MutableRefObject<MotionState>
   reducedMotion: boolean
+  speedPowerUpActive: boolean
 }) {
   const puffs = useRef<(Mesh | null)[]>([])
 
@@ -656,11 +958,20 @@ function MotionEffects({
         -z * behind + sideZ * spread,
       )
       const material = puff.material as MeshBasicMaterial
-      material.color.set(boost > 1 ? '#B6F3FF' : impact > 0 ? '#FFD29B' : '#FFF3D4')
+      material.color.set(
+        speedPowerUpActive
+          ? '#FFB36B'
+          : boost > 1
+            ? '#B6F3FF'
+            : impact > 0
+              ? '#FFD29B'
+              : '#FFF3D4',
+      )
       material.opacity = reducedMotion
         ? 0
         : Math.min(0.58, speed * boost * (1 - phase) * 0.36 + impact * 0.12)
-      const scale = 0.7 + phase * (boost > 1 ? 2.15 : 1.6)
+      const scale =
+        0.7 + phase * (speedPowerUpActive ? 2.55 : boost > 1 ? 2.15 : 1.6)
       puff.scale.set(scale, 0.18, scale * 0.72)
     })
   })
@@ -1521,12 +1832,18 @@ function GameWorld({
   paused,
   reducedMotion,
   controlVector,
+  activePowerUps,
+  powerUpPickups,
+  radarTreasures,
   onPlayerPosition,
   onCollect,
+  onPowerUpCollect,
   onTooLarge,
   onPhysicsFeedback,
 }: GameCanvasProps) {
   const objects = stage.objects
+  const magnetActive = activePowerUps.magnet > 0
+  const speedPowerUpActive = activePowerUps.speed > 0
   const physicsLayout = useMemo(
     () => createWorldPhysicsLayout(stage),
     [stage],
@@ -1583,6 +1900,14 @@ function GameWorld({
     import.meta.env.DEV
       ? new URLSearchParams(window.location.search).get('teleport')
       : null
+  const debugPowerUpTarget =
+    import.meta.env.DEV && debugTeleportMode === 'powerup'
+      ? powerUpPickups[0] ?? null
+      : null
+  const debugTreasureTarget =
+    import.meta.env.DEV && debugTeleportMode === 'treasure'
+      ? radarTreasures[0] ?? null
+      : null
   const spawnX = debugSurface?.x ?? 0
   const spawnZ = debugSurface?.z ?? 0
   const spawnTranslation = useMemo(
@@ -1602,6 +1927,15 @@ function GameWorld({
   const keys = useKeyboard(paused)
   const { camera, gl } = useThree()
   const collectedSet = useRef(new Set(collectedIds))
+  const collectedPowerUpSet = useRef(new Set<string>())
+  const runtimeItemPositions = useRef(
+    new Map(
+      objects.map(
+        (item) => [item.id, new Vector3(...item.position)] as const,
+      ),
+    ),
+  )
+  const runtimeTreasurePositions = useRef(new Map<string, Vector3>())
   const tooLargeCooldown = useRef(0)
   const physicsFeedbackCooldown = useRef(0)
   const collisionFeedbackCooldown = useRef(0)
@@ -1695,6 +2029,36 @@ function GameWorld({
     debugTeleportMode,
     physicsLayout.pushableProps,
   ])
+
+  useEffect(() => {
+    const body = playerBody.current
+    if (!body || !debugPowerUpTarget) return
+    const translation = getPlayerSpawnTranslation(
+      debugPowerUpTarget.position[0],
+      debugPowerUpTarget.position[2],
+    )
+    body.setTranslation(
+      { x: translation[0], y: translation[1], z: translation[2] },
+      true,
+    )
+    playerPosition.current.set(...translation)
+    previousPosition.current.set(...translation)
+  }, [debugPowerUpTarget])
+
+  useEffect(() => {
+    const body = playerBody.current
+    if (!body || !debugTreasureTarget) return
+    const translation = getPlayerSpawnTranslation(
+      debugTreasureTarget.position[0],
+      debugTreasureTarget.position[2],
+    )
+    body.setTranslation(
+      { x: translation[0], y: translation[1], z: translation[2] },
+      true,
+    )
+    playerPosition.current.set(...translation)
+    previousPosition.current.set(...translation)
+  }, [debugTreasureTarget])
 
   useEffect(() => {
     const canvas = gl.domElement
@@ -1935,7 +2299,8 @@ function GameWorld({
       )
       const speedMultiplier =
         (speedZone?.multiplier ?? 1) *
-        (surfaceZone?.multiplier ?? 1)
+        (surfaceZone?.multiplier ?? 1) *
+        getPowerUpSpeedMultiplier(activePowerUps)
       motion.current.surface = surfaceZone?.kind ?? null
       const recovering =
         performance.now() < collisionRecoveryUntil.current
@@ -2031,14 +2396,53 @@ function GameWorld({
       for (const item of objects) {
         if (collectedSet.current.has(item.id)) continue
 
-        const collectionAssist = getPushableCollectionAssist(
+        const runtimePosition = getRuntimeItemPosition(
+          runtimeItemPositions.current,
           item,
+        )
+        if (
+          magnetActive &&
+          canMagnetAttract(
+            position,
+            ballRadius,
+            runtimePosition,
+            item.size,
+            physicsLayout.obstacles,
+          )
+        ) {
+          const targetPosition = stepMagnetPosition(
+            runtimePosition,
+            {
+              x: position.x,
+              y:
+                position.y -
+                getObjectVisualScale(item.size) * 0.58,
+              z: position.z,
+            },
+            delta,
+          )
+          runtimePosition.set(
+            targetPosition.x,
+            targetPosition.y,
+            targetPosition.z,
+          )
+        }
+        const runtimeItem = {
+          ...item,
+          position: [
+            runtimePosition.x,
+            runtimePosition.y,
+            runtimePosition.z,
+          ] as [number, number, number],
+        }
+        const collectionAssist = getPushableCollectionAssist(
+          runtimeItem,
           physicsLayout.pushableProps,
         )
         const touchesItem = isObjectTouchingBall(
           position,
           ballRadius + collectionAssist,
-          item,
+          runtimeItem,
         )
 
         if (touchesItem && canCollect(ballRadius, item.size)) {
@@ -2050,6 +2454,60 @@ function GameWorld({
             onTooLarge(item)
           }
         }
+      }
+
+      for (const treasure of radarTreasures) {
+        if (collectedSet.current.has(treasure.id)) continue
+        const runtimePosition = getRuntimeItemPosition(
+          runtimeTreasurePositions.current,
+          treasure,
+        )
+        if (
+          magnetActive &&
+          canMagnetAttract(
+            position,
+            ballRadius,
+            runtimePosition,
+            treasure.size,
+            physicsLayout.obstacles,
+          )
+        ) {
+          const targetPosition = stepMagnetPosition(
+            runtimePosition,
+            {
+              x: position.x,
+              y:
+                position.y -
+                getObjectVisualScale(treasure.size) * 0.58,
+              z: position.z,
+            },
+            delta,
+          )
+          runtimePosition.set(
+            targetPosition.x,
+            targetPosition.y,
+            targetPosition.z,
+          )
+        }
+        const runtimeTreasure = {
+          ...treasure,
+          position: [
+            runtimePosition.x,
+            runtimePosition.y,
+            runtimePosition.z,
+          ] as [number, number, number],
+        }
+        if (isObjectTouchingBall(position, ballRadius, runtimeTreasure)) {
+          collectedSet.current.add(treasure.id)
+          onCollect(treasure)
+        }
+      }
+
+      for (const pickup of powerUpPickups) {
+        if (collectedPowerUpSet.current.has(pickup.id)) continue
+        if (!isPowerUpTouchingBall(position, ballRadius, pickup)) continue
+        collectedPowerUpSet.current.add(pickup.id)
+        onPowerUpCollect(pickup)
       }
     }
 
@@ -2206,12 +2664,28 @@ function GameWorld({
           item={item}
           reducedMotion={reducedMotion}
           available={canCollect(ballRadius, item.size)}
+          runtimePositions={runtimeItemPositions}
         />
       ))}
       <TooLargeItemColliders
         items={visibleObjects}
         ballRadius={ballRadius}
       />
+      {powerUpPickups.map((pickup) => (
+        <PowerUpPickupMesh
+          key={pickup.id}
+          pickup={pickup}
+          reducedMotion={reducedMotion}
+        />
+      ))}
+      {radarTreasures.map((treasure) => (
+        <RadarTreasureItem
+          key={treasure.id}
+          item={treasure}
+          runtimePositions={runtimeTreasurePositions}
+          reducedMotion={reducedMotion}
+        />
+      ))}
 
       <RigidBody
         key={stage.id}
@@ -2252,6 +2726,12 @@ function GameWorld({
         <MotionEffects
           ballRadius={ballRadius}
           motion={motion}
+          reducedMotion={reducedMotion}
+          speedPowerUpActive={speedPowerUpActive}
+        />
+        <MagnetFieldEffect
+          ballRadius={ballRadius}
+          active={magnetActive}
           reducedMotion={reducedMotion}
         />
         <ChildPusher

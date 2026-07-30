@@ -74,6 +74,7 @@ export interface GameSession {
   bestCombo: number
   currentStageIndex: number
   stageScores: Record<string, number>
+  collectedPowerUpIds: string[]
   collectedIds: string[]
   collectedLabels: string[]
   durationSeconds: number

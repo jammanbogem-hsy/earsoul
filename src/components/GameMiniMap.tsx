@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import type { GameStage } from '../types'
+import type { GameStage, LearningObject } from '../types'
 import type { PlayerMapPose } from './GameCanvas'
 import { getSizeTier } from '../game/mechanics'
 import { createWorldPhysicsLayout } from '../game/worldPhysics'
@@ -9,6 +9,7 @@ interface GameMiniMapProps {
   stage: GameStage
   collectedIds: string[]
   player: PlayerMapPose
+  radarTreasures?: LearningObject[]
 }
 
 const TIER_COLORS = ['#2FA47C', '#4169D8', '#E6A800', '#E85D4A']
@@ -17,6 +18,7 @@ export function GameMiniMap({
   stage,
   collectedIds,
   player,
+  radarTreasures = [],
 }: GameMiniMapProps) {
   const layout = useMemo(() => createWorldPhysicsLayout(stage), [stage])
   const collectedSet = useMemo(
@@ -123,6 +125,19 @@ export function GameMiniMap({
             )
           })}
         </g>
+        {radarTreasures.length > 0 && (
+          <g className="minimap-treasures">
+            {radarTreasures.map((treasure) => (
+              <g
+                key={treasure.id}
+                transform={`translate(${toMapX(treasure.position[0])} ${toMapY(treasure.position[2])})`}
+              >
+                <circle r="3.1" />
+                <path d="M 0 -2.1 L 2 0 L 0 2.1 L -2 0 Z" />
+              </g>
+            ))}
+          </g>
+        )}
         <g
           className="minimap-player"
           transform={`translate(${toMapX(player.x)} ${toMapY(player.z)}) rotate(${playerRotation})`}

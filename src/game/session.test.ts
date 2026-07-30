@@ -6,6 +6,7 @@ import {
   finishSession,
   readSession,
   recordCollection,
+  recordPowerUpCollection,
   startSession,
 } from './session'
 
@@ -75,12 +76,27 @@ describe('single session score', () => {
     expect(readSession()?.stageScores).toEqual({ 'sunny-start': 60 })
   })
 
-  it('migrates sessions saved before map scores were introduced', () => {
+  it('migrates sessions saved before map scores and power-ups were introduced', () => {
     const legacy = startSession()
-    const legacyWithoutStageScores = { ...legacy, stageScores: undefined }
-    sessionStorage.setItem(SESSION_KEY, JSON.stringify(legacyWithoutStageScores))
+    const legacySession = {
+      ...legacy,
+      stageScores: undefined,
+      collectedPowerUpIds: undefined,
+    }
+    sessionStorage.setItem(SESSION_KEY, JSON.stringify(legacySession))
 
     expect(readSession()?.stageScores).toEqual({})
+    expect(readSession()?.collectedPowerUpIds).toEqual([])
+  })
+
+  it('records a power-up once without changing the score or object count', () => {
+    const session = startSession()
+    const once = recordPowerUpCollection(session, 'sunny-magnet-1')
+    const twice = recordPowerUpCollection(once, 'sunny-magnet-1')
+
+    expect(twice.collectedPowerUpIds).toEqual(['sunny-magnet-1'])
+    expect(twice.collectedIds).toEqual([])
+    expect(twice.score).toBe(0)
   })
 
   it('finishes the current browser session', () => {

@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type CSSProperties,
@@ -10,6 +11,7 @@ import {
   type PlayerMapPose,
 } from '../components/GameCanvas'
 import { GameMiniMap } from '../components/GameMiniMap'
+import { GameEventTray } from '../components/GameEventTray'
 import {
   M3Button,
   M3IconButton,
@@ -37,7 +39,21 @@ import {
   finishSession,
   readSession,
   recordCollection,
+  recordPowerUpCollection,
 } from '../game/session'
+import {
+  activatePowerUp,
+  createEmptyPowerUps,
+  createPowerUpPickups,
+  createRadarTreasures,
+  decayPowerUps,
+  hasActivePowerUp,
+  POWER_UP_CONFIG,
+  selectVisibleRadarTreasures,
+  type ActivePowerUps,
+  type PowerUpKind,
+  type PowerUpPickup,
+} from '../game/powerUps'
 import {
   getReachableSizeTier,
   getSizeTier,
@@ -117,6 +133,24 @@ function getCurrentTimestamp() {
   return Date.now()
 }
 
+function getInitialPowerUps(): ActivePowerUps {
+  let active = createEmptyPowerUps()
+  if (!import.meta.env.DEV) return active
+  const previewEvent = new URLSearchParams(window.location.search).get('event')
+  const previewKinds: PowerUpKind[] =
+    previewEvent === 'all'
+      ? ['magnet', 'radar', 'speed']
+      : previewEvent === 'magnet' ||
+          previewEvent === 'radar' ||
+          previewEvent === 'speed'
+        ? [previewEvent]
+        : []
+  previewKinds.forEach((kind) => {
+    active = activatePowerUp(active, kind)
+  })
+  return active
+}
+
 export function GamePage() {
   const navigate = useAppNavigate()
   const [session, setSession] = useState<GameSession | null>(() => readSession())
@@ -148,7 +182,10 @@ export function GamePage() {
   const [scoreFeedback, setScoreFeedback] = useState<{
     id: number
     points: number
+    treasure: boolean
   } | null>(null)
+  const [activePowerUps, setActivePowerUps] =
+    useState<ActivePowerUps>(getInitialPowerUps)
   const toastTimer = useRef<number | undefined>(undefined)
   const comboTimer = useRef<number | undefined>(undefined)
   const scoreFeedbackTimer = useRef<number | undefined>(undefined)
@@ -162,6 +199,8 @@ export function GamePage() {
   const [coachStep, setCoachStep] = useState(coachSeen ? -1 : 0)
   const reducedMotion =
     sessionStorage.getItem('earsoul-reduced-motion') === 'true'
+  const effectTimerPaused = paused || coachStep >= 0 || stagePromptOpen
+  const activeEffectsRunning = hasActivePowerUp(activePowerUps)
 
   useEffect(() => {
     let mounted = true
@@ -240,6 +279,19 @@ export function GamePage() {
     [],
   )
 
+  useEffect(() => {
+    if (effectTimerPaused || !activeEffectsRunning) return
+    let previousTick = performance.now()
+    const timer = window.setInterval(() => {
+      const currentTick = performance.now()
+      const elapsed = currentTick - previousTick
+      previousTick = currentTick
+      setActivePowerUps((current) => decayPowerUps(current, elapsed))
+    }, 100)
+
+    return () => window.clearInterval(timer)
+  }, [activeEffectsRunning, effectTimerPaused])
+
   const showToast = useCallback(
     (
       nextToast: {
@@ -259,20 +311,29 @@ export function GamePage() {
     setPlayerPose(pose)
   }, [])
 
-  if (!session || session.status !== 'playing') {
-    return <Redirect to="/" />
-  }
-
   const previewStageIndex = import.meta.env.DEV
     ? Number(new URLSearchParams(window.location.search).get('stage')) - 1
     : Number.NaN
   const stageIndex = Math.min(
     Number.isInteger(previewStageIndex) && previewStageIndex >= 0
       ? previewStageIndex
-      : session.currentStageIndex,
+      : (session?.currentStageIndex ?? 0),
     Math.max(0, pack.stages.length - 1),
   )
   const stage = pack.stages[stageIndex] ?? fallbackLearningPack.stages[0]
+  const powerUpPickups = useMemo(
+    () => createPowerUpPickups(stage),
+    [stage],
+  )
+  const radarTreasurePool = useMemo(
+    () => createRadarTreasures(stage),
+    [stage],
+  )
+
+  if (!session || session.status !== 'playing') {
+    return <Redirect to="/" />
+  }
+
   const stageProgress = getStageProgress(
     stage.objects,
     session.collectedIds,
@@ -295,6 +356,17 @@ export function GamePage() {
   const nextTierGoal =
     stageProgress.nextTierGoal ??
     stage.tierGoals[stage.tierGoals.length - 1]
+  const availablePowerUpPickups = powerUpPickups.filter(
+    (pickup) => !session.collectedPowerUpIds.includes(pickup.id),
+  )
+  const visibleRadarTreasures =
+    activePowerUps.radar > 0
+      ? selectVisibleRadarTreasures(
+          radarTreasurePool,
+          session.collectedIds,
+          ballRadius,
+        )
+      : []
 
   const handleCollect = (item: LearningObject) => {
     const current = sessionRef.current
@@ -304,6 +376,7 @@ export function GamePage() {
     const comboStep = advanceCombo(comboStateRef.current, collectedAt)
     const { multiplier } = comboStep
     const awardedPoints = item.points * multiplier
+    const isRadarTreasure = item.modelId === 'radar-treasure'
     const next = recordCollection(current, item, {
       multiplier,
       combo: multiplier,
@@ -327,6 +400,7 @@ export function GamePage() {
     setScoreFeedback({
       id: scoreFeedbackId.current,
       points: awardedPoints,
+      treasure: isRadarTreasure,
     })
     if (scoreFeedbackTimer.current) {
       window.clearTimeout(scoreFeedbackTimer.current)
@@ -341,13 +415,39 @@ export function GamePage() {
     playChime(soundEnabled)
     showToast({
       title:
-        multiplier > 1
-          ? `x${multiplier} 콤보 · ${item.label} +${awardedPoints}`
-          : `${item.label} +${awardedPoints}`,
+        isRadarTreasure
+          ? `무지개 보물 +${awardedPoints}`
+          : multiplier > 1
+            ? `x${multiplier} 콤보 · ${item.label} +${awardedPoints}`
+            : `${item.label} +${awardedPoints}`,
       body: item.fact,
       tone: 'learned',
     })
+  }
 
+  const handlePowerUpCollect = (pickup: PowerUpPickup) => {
+    const current = sessionRef.current
+    if (!current || current.collectedPowerUpIds.includes(pickup.id)) return
+    const next = recordPowerUpCollection(current, pickup.id)
+    const config = POWER_UP_CONFIG[pickup.kind]
+
+    setActivePowerUps((active) => activatePowerUp(active, pickup.kind))
+    sessionRef.current = next
+    setSession(next)
+    playChime(soundEnabled)
+    showToast(
+      {
+        title: `${config.label} 발동`,
+        body:
+          pickup.kind === 'magnet'
+            ? '10초 동안 현재 크기로 모을 수 있는 가까운 물건을 끌어당겨요.'
+            : pickup.kind === 'radar'
+              ? '12초 동안 무지개 고득점 보물이 나타나고 미니맵에 표시돼요.'
+              : '10초 동안 구르는 최고 속도가 50% 빨라져요.',
+        tone: 'learned',
+      },
+      3000,
+    )
   }
 
   const handleTooLarge = (item: LearningObject) => {
@@ -440,6 +540,7 @@ export function GamePage() {
     const next = advanceSessionStage(current, nextStageIndex)
     const nextStage = pack.stages[nextStageIndex]
     comboStateRef.current = { count: 0, lastCollectedAt: 0 }
+    setActivePowerUps(createEmptyPowerUps())
     setComboMultiplier(1)
     setControlVector({ x: 0, z: 0 })
     setPlayerPose({ x: 0, z: 0, headingX: 0, headingZ: -1 })
@@ -483,8 +584,12 @@ export function GamePage() {
           paused={isGamePaused}
           reducedMotion={reducedMotion}
           controlVector={controlVector}
+          activePowerUps={activePowerUps}
+          powerUpPickups={availablePowerUpPickups}
+          radarTreasures={visibleRadarTreasures}
           onPlayerPosition={handlePlayerPosition}
           onCollect={handleCollect}
+          onPowerUpCollect={handlePowerUpCollect}
           onTooLarge={handleTooLarge}
           onPhysicsFeedback={handlePhysicsFeedback}
         />
@@ -573,7 +678,9 @@ export function GamePage() {
               {scoreFeedback && (
                 <span
                   key={scoreFeedback.id}
-                  className="game-score__gain"
+                  className={`game-score__gain ${
+                    scoreFeedback.treasure ? 'is-treasure' : ''
+                  }`}
                   aria-hidden="true"
                 >
                   +{scoreFeedback.points}
@@ -644,6 +751,11 @@ export function GamePage() {
         </div>
       </header>
 
+      <GameEventTray
+        activePowerUps={activePowerUps}
+        radarTreasureCount={visibleRadarTreasures.length}
+      />
+
       {stageReady && !stagePromptOpen && !paused && coachStep < 0 && (
         <M3Button
           className="stage-ready-button"
@@ -683,6 +795,7 @@ export function GamePage() {
         stage={stage}
         collectedIds={session.collectedIds}
         player={playerPose}
+        radarTreasures={visibleRadarTreasures}
       />
 
       <div

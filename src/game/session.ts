@@ -13,6 +13,7 @@ const emptySession = (): GameSession => {
     bestCombo: 0,
     currentStageIndex: 0,
     stageScores: {},
+    collectedPowerUpIds: [],
     collectedIds: [],
     collectedLabels: [],
     durationSeconds: 0,
@@ -30,6 +31,7 @@ export function readSession(): GameSession | null {
       bestCombo: session.bestCombo ?? 0,
       currentStageIndex: Math.max(0, session.currentStageIndex ?? 0),
       stageScores: session.stageScores ?? {},
+      collectedPowerUpIds: session.collectedPowerUpIds ?? [],
     }
   } catch {
     return null
@@ -70,6 +72,18 @@ export function recordCollection(
       : stageScores,
     collectedIds: [...session.collectedIds, item.id],
     collectedLabels: [...session.collectedLabels, item.label],
+  })
+}
+
+export function recordPowerUpCollection(
+  session: GameSession,
+  pickupId: string,
+): GameSession {
+  if (session.collectedPowerUpIds.includes(pickupId)) return session
+
+  return saveSession({
+    ...session,
+    collectedPowerUpIds: [...session.collectedPowerUpIds, pickupId],
   })
 }
 
