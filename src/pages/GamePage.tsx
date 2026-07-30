@@ -87,7 +87,7 @@ const coachSteps: {
   {
     icon: 'play_arrow',
     title: '바라보는 방향을 따라 굴려요',
-    body: 'W·S(ㅈ·ㄴ)는 앞뒤, A·D(ㅁ·ㅇ)는 현재 방향의 좌우예요. 마우스를 드래그해 시점을 돌리고 휠로 확대해요. 미니맵의 화살표 승강기를 밟으면 각 2층으로 올라갈 수 있어요.',
+    body: 'W·S(ㅈ·ㄴ)는 앞뒤, A·D(ㅁ·ㅇ)는 현재 방향의 좌우예요. 마우스 오른쪽 버튼(또는 왼쪽 버튼)을 누른 채 드래그해 시점을 돌리고 휠로 확대해요. 미니맵의 화살표 승강기를 밟으면 각 2층으로 올라갈 수 있어요.',
   },
 ]
 
@@ -343,6 +343,7 @@ export function GamePage() {
     type: 'collision' | 'boost' | 'slow' | 'elevator'
     label: string
     bounced?: boolean
+    surfaceKind?: 'grass' | 'water'
   }) => {
     if (feedback.type === 'boost') {
       showToast(
@@ -360,7 +361,9 @@ export function GamePage() {
       showToast(
         {
           title: `${feedback.label} · 천천히 구간`,
-          body: '잔디와 얕은 물에서는 속도가 줄어요. 방향을 잡고 천천히 통과해요.',
+          body: feedback.surfaceKind === 'water'
+            ? '물결이 발밑에서 퍼지고 물방울이 튀어요. 얕은 물에서는 천천히 방향을 잡아요.'
+            : '잔디에서는 속도가 줄어요. 방향을 잡고 천천히 통과해요.',
           tone: 'wait',
         },
         1600,
@@ -616,7 +619,7 @@ export function GamePage() {
         <p>한글 ㅈㅁㄴㅇ·방향키도 가능해요</p>
         <span className="desktop-controls__mouse">
           <MaterialIcon name="mouse" />
-          <small>드래그 시점</small>
+          <small>드래그 회전(우클릭 권장)</small>
           <MaterialIcon name="zoom_in" />
           <small>휠 줌</small>
         </span>

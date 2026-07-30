@@ -116,7 +116,7 @@ export function GameMiniMap({
                 key={item.id}
                 cx={toMapX(item.position[0])}
                 cy={toMapY(item.position[2])}
-                r={item.position[1] > 0.2 ? 0.72 : 0.48}
+                r={item.position[1] > 0.2 ? 1.35 : 1}
                 fill={TIER_COLORS[tier.level - 1]}
                 className={item.position[1] > 0.2 ? 'is-elevated' : undefined}
               />

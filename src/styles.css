@@ -989,6 +989,7 @@ md-switch:focus-visible,
 
 .game-canvas {
   cursor: grab;
+  touch-action: none;
 }
 
 .game-canvas.is-camera-dragging {
@@ -1350,7 +1351,7 @@ md-switch:focus-visible,
   position: absolute;
   z-index: 18;
   right: 18px;
-  bottom: 92px;
+  bottom: 280px;
   --md-filled-button-container-color: var(--blue);
   --md-filled-button-container-height: 44px;
   --md-filled-button-container-shape: 999px;
@@ -1420,16 +1421,18 @@ md-switch:focus-visible,
 .game-minimap {
   --minimap-ground: #e9efd9;
   position: absolute;
-  z-index: 15;
+  z-index: 24;
   right: 16px;
   bottom: 16px;
-  width: 190px;
+  width: 210px;
   pointer-events: none;
-  border: 1px solid rgba(82, 107, 132, 0.24);
+  border: 2px solid rgba(65, 105, 216, 0.5);
   border-radius: 21px;
   padding: 9px;
-  background: rgba(255, 255, 255, 0.9);
-  box-shadow: 0 10px 28px rgba(34, 62, 85, 0.18);
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow:
+    0 12px 32px rgba(34, 62, 85, 0.24),
+    0 0 0 4px rgba(255, 255, 255, 0.5);
   backdrop-filter: blur(12px);
   user-select: none;
 }
@@ -2219,6 +2222,11 @@ md-switch:focus-visible,
     width: 154px;
     border-radius: 18px;
     padding: 7px;
+  }
+
+  .stage-ready-button {
+    right: 12px;
+    bottom: 300px;
   }
 
   .game-minimap header {

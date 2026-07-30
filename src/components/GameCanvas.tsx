@@ -18,12 +18,16 @@ import {
   type MutableRefObject,
 } from 'react'
 import {
+  BufferAttribute,
   Color,
   Group,
   MathUtils,
   Mesh,
   MeshBasicMaterial,
+  Points,
+  PointsMaterial,
   Quaternion,
+  ShaderMaterial,
   Vector3,
 } from 'three'
 import type { ControlVector } from './TouchJoystick'
@@ -48,6 +52,8 @@ import {
   getActiveSpeedZone,
   getActiveSurfaceZone,
   getElevatorDeckY,
+  type SurfaceKind,
+  type SurfaceZone,
   type ObstacleResponse,
   type PushableProp,
   type WorldElevator,
@@ -75,6 +81,7 @@ interface GameCanvasProps {
     type: 'collision' | 'boost' | 'slow' | 'elevator'
     label: string
     bounced?: boolean
+    surfaceKind?: SurfaceKind
   }) => void
 }
 
@@ -100,12 +107,14 @@ interface MotionState {
   velocityZ: number
   boost: number
   impact: number
+  surface: SurfaceKind | null
 }
 
 interface CameraOrbitState {
   zoom: number
   pitch: number
   pointerId: number | null
+  pointerButton: number | null
   lastX: number
   lastY: number
   manualUntil: number
@@ -589,12 +598,259 @@ function MotionEffects({
   )
 }
 
+const WATER_VERTEX_SHADER = `
+  uniform float uTime;
+  varying vec2 vUv;
+
+  void main() {
+    vUv = uv;
+    vec3 wavePosition = position;
+    float edgeFade =
+      1.0 - smoothstep(0.18, 0.5, distance(uv, vec2(0.5)));
+    float crossingWave =
+      sin(position.x * 5.5 + uTime * 1.8) * 0.022 +
+      cos(position.y * 7.2 - uTime * 1.35) * 0.016;
+    wavePosition.z += crossingWave * edgeFade;
+    gl_Position =
+      projectionMatrix * modelViewMatrix * vec4(wavePosition, 1.0);
+  }
+`
+
+const WATER_FRAGMENT_SHADER = `
+  uniform float uTime;
+  uniform vec3 uTint;
+  varying vec2 vUv;
+
+  void main() {
+    vec2 centered = vUv - vec2(0.5);
+    float distanceFromCenter = length(centered);
+    float edge = 1.0 - smoothstep(0.44, 0.5, distanceFromCenter);
+    float travelingRipple =
+      sin(distanceFromCenter * 55.0 - uTime * 4.6) * 0.5 + 0.5;
+    float crossingRipple =
+      sin(centered.x * 36.0 + centered.y * 24.0 + uTime * 2.8) * 0.5 + 0.5;
+    float shimmer = pow(
+      max(0.0, sin((centered.x - centered.y) * 48.0 + uTime * 3.2)),
+      12.0
+    );
+    vec3 shallowColor = mix(uTint, vec3(0.78, 0.96, 1.0), 0.48);
+    vec3 waterColor = mix(
+      uTint * 0.82,
+      shallowColor,
+      travelingRipple * 0.26 + crossingRipple * 0.18
+    );
+    waterColor += shimmer * 0.22;
+    gl_FragColor = vec4(waterColor, edge * 0.76);
+  }
+`
+
+function AnimatedWaterSurface({
+  zone,
+  reducedMotion,
+}: {
+  zone: SurfaceZone
+  reducedMotion: boolean
+}) {
+  const material = useRef<ShaderMaterial>(null)
+  const uniforms = useMemo(
+    () => ({
+      uTime: { value: 0 },
+      uTint: { value: new Color(zone.color) },
+    }),
+    [zone.color],
+  )
+
+  useFrame(({ clock }) => {
+    if (!material.current) return
+    material.current.uniforms.uTime.value = reducedMotion
+      ? 0.75
+      : clock.elapsedTime
+  })
+
+  return (
+    <group
+      position={[zone.x, 0.032, zone.z]}
+      rotation={[0, zone.rotationY, 0]}
+    >
+      <mesh
+        rotation={[-Math.PI / 2, 0, 0]}
+        scale={[zone.halfWidth, zone.halfDepth, 1]}
+        receiveShadow
+      >
+        <circleGeometry args={[1, 96]} />
+        <shaderMaterial
+          ref={material}
+          uniforms={uniforms}
+          vertexShader={WATER_VERTEX_SHADER}
+          fragmentShader={WATER_FRAGMENT_SHADER}
+          transparent
+          depthWrite={false}
+        />
+      </mesh>
+      {[0.48, 0.86].map((radius, index) => (
+        <mesh
+          key={`${zone.id}-water-ring-${radius}`}
+          rotation={[-Math.PI / 2, 0, 0]}
+          position={[0, 0.01 + index * 0.003, 0]}
+          scale={[zone.halfWidth, zone.halfDepth, 1]}
+        >
+          <ringGeometry args={[radius - 0.012, radius, 72]} />
+          <meshBasicMaterial
+            color="#D9FAFF"
+            transparent
+            opacity={0.22 - index * 0.035}
+            depthWrite={false}
+          />
+        </mesh>
+      ))}
+    </group>
+  )
+}
+
+function WaterContactEffects({
+  playerPosition,
+  ballRadius,
+  motion,
+  reducedMotion,
+}: {
+  playerPosition: MutableRefObject<Vector3>
+  ballRadius: number
+  motion: MutableRefObject<MotionState>
+  reducedMotion: boolean
+}) {
+  const group = useRef<Group>(null)
+  const ripples = useRef<(Mesh | null)[]>([])
+  const droplets = useRef<Points>(null)
+  const strength = useRef(0)
+  const wasInWater = useRef(false)
+  const entryBurst = useRef(0)
+  const dropletPositions = useMemo(() => new Float32Array(8 * 3), [])
+
+  useFrame(({ clock }, delta) => {
+    const root = group.current
+    if (!root) return
+
+    const isInWater = motion.current.surface === 'water'
+    if (isInWater && !wasInWater.current) entryBurst.current = 1
+    wasInWater.current = isInWater
+    entryBurst.current = Math.max(0, entryBurst.current - delta * 1.7)
+
+    const targetStrength =
+      isInWater
+        ? Math.min(1, 0.52 + motion.current.speed * 0.72)
+        : 0
+    strength.current = MathUtils.damp(
+      strength.current,
+      targetStrength,
+      targetStrength > 0 ? 7.5 : 4.5,
+      delta,
+    )
+    root.visible = strength.current > 0.012
+    if (!root.visible) return
+
+    root.position.set(
+      playerPosition.current.x,
+      0.055,
+      playerPosition.current.z,
+    )
+    const elapsed = reducedMotion ? 0.35 : clock.elapsedTime
+
+    ripples.current.forEach((ripple, index) => {
+      if (!ripple) return
+      const phase = (elapsed * (0.7 + index * 0.08) + index * 0.34) % 1
+      const scale =
+        ballRadius *
+        (1.15 + phase * 1.55 + entryBurst.current * (0.45 + index * 0.2))
+      ripple.scale.set(scale, scale, scale)
+      const material = ripple.material as MeshBasicMaterial
+      material.opacity =
+        strength.current *
+        (1 - phase) *
+        (reducedMotion ? 0.28 : 0.68 + entryBurst.current * 0.2)
+    })
+
+    const dropletCloud = droplets.current
+    if (dropletCloud) {
+      const positionAttribute = dropletCloud.geometry.getAttribute(
+        'position',
+      ) as BufferAttribute
+      for (let index = 0; index < 8; index += 1) {
+        const phase = (elapsed * 1.45 + index * 0.17) % 1
+        const angle = index * 2.399 + elapsed * 0.42
+        const spread =
+          ballRadius *
+          (0.72 + phase * 1.1 + entryBurst.current * 0.36)
+        positionAttribute.setXYZ(
+          index,
+          Math.cos(angle) * spread,
+          reducedMotion
+            ? 0.04
+            : Math.sin(phase * Math.PI) *
+                ballRadius *
+                (0.35 +
+                  motion.current.speed * 0.38 +
+                  entryBurst.current * 0.32),
+          Math.sin(angle) * spread,
+        )
+      }
+      positionAttribute.needsUpdate = true
+      const material = dropletCloud.material as PointsMaterial
+      material.size =
+        ballRadius * (0.2 + entryBurst.current * 0.06) * strength.current
+      material.opacity =
+        reducedMotion
+          ? 0
+          : strength.current * (0.6 + entryBurst.current * 0.25)
+    }
+  })
+
+  return (
+    <group ref={group} visible={false}>
+      {[0, 1].map((index) => (
+        <mesh
+          key={`water-contact-ripple-${index}`}
+          ref={(mesh) => {
+            ripples.current[index] = mesh
+          }}
+          rotation={[-Math.PI / 2, 0, 0]}
+        >
+          <ringGeometry args={[0.78, 1, 48]} />
+          <meshBasicMaterial
+            color="#E6FCFF"
+            transparent
+            opacity={0}
+            depthWrite={false}
+          />
+        </mesh>
+      ))}
+      <points ref={droplets}>
+        <bufferGeometry>
+          <bufferAttribute
+            attach="attributes-position"
+            args={[dropletPositions, 3]}
+          />
+        </bufferGeometry>
+        <pointsMaterial
+          color="#BCEEF8"
+          size={0.08}
+          sizeAttenuation
+          transparent
+          opacity={0}
+          depthWrite={false}
+        />
+      </points>
+    </group>
+  )
+}
+
 function RapierWorldColliders({
   mapSize,
   layout,
+  reducedMotion,
 }: {
   mapSize: number
   layout: WorldPhysicsLayout
+  reducedMotion: boolean
 }) {
   const halfMap = mapSize / 2
   const boundaryData: PhysicsBodyData = {
@@ -829,40 +1085,47 @@ function RapierWorldColliders({
         )
       })}
 
-      {layout.surfaceZones.map((zone) => (
-        <group
-          key={zone.id}
-          position={[zone.x, 0.026, zone.z]}
-          rotation={[0, zone.rotationY, 0]}
-        >
-          <mesh
-            rotation={[-Math.PI / 2, 0, 0]}
-            scale={[zone.halfWidth, zone.halfDepth, 1]}
-            receiveShadow
+      {layout.surfaceZones.map((zone) =>
+        zone.kind === 'water' ? (
+          <AnimatedWaterSurface
+            key={zone.id}
+            zone={zone}
+            reducedMotion={reducedMotion}
+          />
+        ) : (
+          <group
+            key={zone.id}
+            position={[zone.x, 0.026, zone.z]}
+            rotation={[0, zone.rotationY, 0]}
           >
-            <circleGeometry args={[1, 64]} />
-            <meshStandardMaterial
-              color={zone.color}
-              roughness={zone.kind === 'water' ? 0.28 : 0.96}
-              metalness={zone.kind === 'water' ? 0.08 : 0}
-              transparent
-              opacity={zone.kind === 'water' ? 0.68 : 0.9}
-            />
-          </mesh>
-          <mesh
-            rotation={[-Math.PI / 2, 0, 0]}
-            position={[0, 0.006, 0]}
-            scale={[zone.halfWidth, zone.halfDepth, 1]}
-          >
-            <ringGeometry args={[0.88, 1, 64]} />
-            <meshBasicMaterial
-              color={zone.kind === 'water' ? '#D7F6FF' : '#DDF4C8'}
-              transparent
-              opacity={0.58}
-            />
-          </mesh>
-        </group>
-      ))}
+            <mesh
+              rotation={[-Math.PI / 2, 0, 0]}
+              scale={[zone.halfWidth, zone.halfDepth, 1]}
+              receiveShadow
+            >
+              <circleGeometry args={[1, 64]} />
+              <meshStandardMaterial
+                color={zone.color}
+                roughness={0.96}
+                transparent
+                opacity={0.9}
+              />
+            </mesh>
+            <mesh
+              rotation={[-Math.PI / 2, 0, 0]}
+              position={[0, 0.006, 0]}
+              scale={[zone.halfWidth, zone.halfDepth, 1]}
+            >
+              <ringGeometry args={[0.88, 1, 64]} />
+              <meshBasicMaterial
+                color="#DDF4C8"
+                transparent
+                opacity={0.58}
+              />
+            </mesh>
+          </group>
+        ),
+      )}
     </>
   )
 }
@@ -1178,8 +1441,24 @@ function GameWorld({
     () => createWorldPhysicsLayout(stage),
     [stage],
   )
+  const debugSurface = useMemo(() => {
+    if (
+      !import.meta.env.DEV ||
+      new URLSearchParams(window.location.search).get('spawn') !== 'water'
+    ) {
+      return null
+    }
+    return (
+      physicsLayout.surfaceZones.find((zone) => zone.kind === 'water') ?? null
+    )
+  }, [physicsLayout])
+  const spawnX = debugSurface?.x ?? 0
+  const spawnZ = debugSurface?.z ?? 0
+  const debugAutoDrive =
+    import.meta.env.DEV &&
+    new URLSearchParams(window.location.search).get('autodrive') === 'true'
   const playerBody = useRef<RapierRigidBody>(null)
-  const playerPosition = useRef(new Vector3(0, ballRadius, 0))
+  const playerPosition = useRef(new Vector3(spawnX, ballRadius, spawnZ))
   const orb = useRef<Group>(null)
   const keys = useKeyboard(paused)
   const { camera, gl } = useThree()
@@ -1197,6 +1476,7 @@ function GameWorld({
     zoom: 1,
     pitch: 0,
     pointerId: null,
+    pointerButton: null,
     lastX: 0,
     lastY: 0,
     manualUntil: 0,
@@ -1205,7 +1485,7 @@ function GameWorld({
   const lookTarget = useRef(new Vector3())
   const rollAxis = useRef(new Vector3())
   const rollQuaternion = useRef(new Quaternion())
-  const previousPosition = useRef(new Vector3(0, ballRadius, 0))
+  const previousPosition = useRef(new Vector3(spawnX, ballRadius, spawnZ))
   const lastMapUpdate = useRef(0)
   const motion = useRef<MotionState>({
     x: 0,
@@ -1215,6 +1495,7 @@ function GameWorld({
     velocityZ: 0,
     boost: 1,
     impact: 0,
+    surface: null,
   })
 
   useEffect(() => {
@@ -1249,15 +1530,29 @@ function GameWorld({
 
     const handlePointerDown = (event: PointerEvent) => {
       if (event.button !== 0 && event.button !== 2) return
+      event.preventDefault()
       orbit.pointerId = event.pointerId
+      orbit.pointerButton = event.button
       orbit.lastX = event.clientX
       orbit.lastY = event.clientY
       orbit.manualUntil = Number.POSITIVE_INFINITY
       canvas.setPointerCapture(event.pointerId)
       canvas.classList.add('is-camera-dragging')
     }
+    const stopOrbit = () => {
+      orbit.pointerId = null
+      orbit.pointerButton = null
+      orbit.manualUntil = performance.now() + 5200
+      canvas.classList.remove('is-camera-dragging')
+    }
     const handlePointerMove = (event: PointerEvent) => {
       if (orbit.pointerId !== event.pointerId) return
+      const expectedButtonMask = orbit.pointerButton === 2 ? 2 : 1
+      if (event.pointerType === 'mouse' && !(event.buttons & expectedButtonMask)) {
+        stopOrbit()
+        return
+      }
+      event.preventDefault()
       const deltaX = event.clientX - orbit.lastX
       const deltaY = event.clientY - orbit.lastY
       orbit.lastX = event.clientX
@@ -1275,18 +1570,19 @@ function GameWorld({
       )
       orbit.pitch = MathUtils.clamp(
         orbit.pitch - deltaY * 0.012,
-        -1.35,
-        4.2,
+        -1.1,
+        3.2,
       )
     }
     const finishPointer = (event: PointerEvent) => {
       if (orbit.pointerId !== event.pointerId) return
-      orbit.pointerId = null
-      orbit.manualUntil = performance.now() + 5200
+      stopOrbit()
       if (canvas.hasPointerCapture(event.pointerId)) {
         canvas.releasePointerCapture(event.pointerId)
       }
-      canvas.classList.remove('is-camera-dragging')
+    }
+    const handleLostPointerCapture = (event: PointerEvent) => {
+      if (orbit.pointerId === event.pointerId) stopOrbit()
     }
     const handleWheel = (event: WheelEvent) => {
       event.preventDefault()
@@ -1300,17 +1596,27 @@ function GameWorld({
     const preventContextMenu = (event: MouseEvent) => event.preventDefault()
 
     canvas.addEventListener('pointerdown', handlePointerDown)
-    canvas.addEventListener('pointermove', handlePointerMove)
-    canvas.addEventListener('pointerup', finishPointer)
-    canvas.addEventListener('pointercancel', finishPointer)
+    canvas.addEventListener('lostpointercapture', handleLostPointerCapture)
+    window.addEventListener('pointermove', handlePointerMove, {
+      capture: true,
+      passive: false,
+    })
+    window.addEventListener('pointerup', finishPointer, true)
+    window.addEventListener('pointercancel', finishPointer, true)
+    window.addEventListener('blur', stopOrbit)
     canvas.addEventListener('wheel', handleWheel, { passive: false })
     canvas.addEventListener('contextmenu', preventContextMenu)
 
     return () => {
       canvas.removeEventListener('pointerdown', handlePointerDown)
-      canvas.removeEventListener('pointermove', handlePointerMove)
-      canvas.removeEventListener('pointerup', finishPointer)
-      canvas.removeEventListener('pointercancel', finishPointer)
+      canvas.removeEventListener(
+        'lostpointercapture',
+        handleLostPointerCapture,
+      )
+      window.removeEventListener('pointermove', handlePointerMove, true)
+      window.removeEventListener('pointerup', finishPointer, true)
+      window.removeEventListener('pointercancel', finishPointer, true)
+      window.removeEventListener('blur', stopOrbit)
       canvas.removeEventListener('wheel', handleWheel)
       canvas.removeEventListener('contextmenu', preventContextMenu)
       canvas.classList.remove('is-camera-dragging')
@@ -1373,7 +1679,8 @@ function GameWorld({
       const forwardInput =
         (keys.current.forward ? 1 : 0) -
         (keys.current.backward ? 1 : 0) -
-        controlVector.z
+        controlVector.z +
+        (debugAutoDrive ? 0.15 : 0)
       const driveStep = stepRelativeDrive(
         {
           x: cameraDirection.current.x,
@@ -1425,6 +1732,7 @@ function GameWorld({
       const speedMultiplier =
         (speedZone?.multiplier ?? 1) *
         (surfaceZone?.multiplier ?? 1)
+      motion.current.surface = surfaceZone?.kind ?? null
       const recovering =
         performance.now() < collisionRecoveryUntil.current
 
@@ -1492,12 +1800,10 @@ function GameWorld({
         onPhysicsFeedback({
           type: 'slow',
           label: surfaceZone?.label ?? '천천히 구간',
+          surfaceKind: surfaceZone?.kind,
         })
       }
-      activeSurfaceZoneId.current =
-        nextSurfaceZoneId && rollingStep.speedRatio > 0.12
-          ? nextSurfaceZoneId
-          : null
+      activeSurfaceZoneId.current = nextSurfaceZoneId
 
       const traveled = Math.hypot(
         position.x - previousPosition.current.x,
@@ -1646,6 +1952,7 @@ function GameWorld({
       <RapierWorldColliders
         mapSize={stage.mapSize}
         layout={physicsLayout}
+        reducedMotion={reducedMotion}
       />
       <DynamicPracticeProps
         stageId={stage.id}
@@ -1685,7 +1992,7 @@ function GameWorld({
         ref={playerBody}
         name="rolling-player"
         colliders={false}
-        position={[0, ballRadius + 0.02, 0]}
+        position={[spawnX, ballRadius + 0.02, spawnZ]}
         gravityScale={1}
         enabledTranslations={[true, true, true]}
         enabledRotations={[false, false, false]}
@@ -1766,6 +2073,12 @@ function GameWorld({
           reducedMotion={reducedMotion}
         />
       </RigidBody>
+      <WaterContactEffects
+        playerPosition={playerPosition}
+        ballRadius={ballRadius}
+        motion={motion}
+        reducedMotion={reducedMotion}
+      />
     </>
   )
 }
