@@ -10,7 +10,10 @@ import {
   getSizeTier,
   isCollectionPositionClear,
 } from '../game/mechanics'
-import { createWorldPhysicsLayout } from '../game/worldPhysics'
+import {
+  createWorldPhysicsLayout,
+  getTerrainRampSurfacePosition,
+} from '../game/worldPhysics'
 
 const objectTemplates: LearningObject[] = [
   {
@@ -346,7 +349,14 @@ const objectTemplates: LearningObject[] = [
 ]
 
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5))
-const OBJECTS_PER_STAGE = 128
+const OBJECTS_PER_STAGE = 256
+const HILL_SLOT_RATIOS = [
+  [-0.58, -0.56],
+  [0.32, -0.48],
+  [-0.24, -0.1],
+  [0.56, 0.04],
+] as const
+const TIER_MIX_PATTERN = [0, 2, 1, 3] as const
 
 interface StageBlueprint {
   id: string
@@ -403,7 +413,7 @@ const stageBlueprints: StageBlueprint[] = [
     subtitle: '잔디와 완만한 언덕을 누비는 첫 번째 맵',
     description: '넓은 광장, 잔디밭과 얕은 물길 사이에서 러닝 보물을 모아요.',
     theme: 'sunny-plaza',
-    mapSize: 112,
+    mapSize: 144,
     objectiveCount: 44,
     scoreGoal: 1600,
     tierGoals: createTierGoals([80, 400, 1200, 1600]),
@@ -418,7 +428,7 @@ const stageBlueprints: StageBlueprint[] = [
     subtitle: '언덕과 물길 사이를 고르는 두 번째 맵',
     description: '나무, 숲 언덕과 개울 사이의 여러 오솔길에서 러닝 장비를 찾아요.',
     theme: 'forest-trail',
-    mapSize: 128,
+    mapSize: 168,
     objectiveCount: 44,
     scoreGoal: 2000,
     tierGoals: createTierGoals([110, 520, 1450, 2000]),
@@ -438,7 +448,7 @@ const stageBlueprints: StageBlueprint[] = [
     subtitle: '강둑과 오르막을 누비는 마지막 맵',
     description: '별빛 강변, 완만한 오르막과 컬러 브리지를 오가며 큰 보물을 모아요.',
     theme: 'starlight-river',
-    mapSize: 144,
+    mapSize: 192,
     objectiveCount: 44,
     scoreGoal: 2400,
     tierGoals: createTierGoals([140, 650, 1750, 2400]),
@@ -464,6 +474,13 @@ function createStageObjects(
   )
   const maxRadius = blueprint.mapSize / 2 - 5
   const physicsLayout = createWorldPhysicsLayout(blueprint)
+  const elevatedSlots = physicsLayout.terrainRamps.flatMap((ramp) =>
+    HILL_SLOT_RATIOS.map(([localXRatio, localZRatio]) =>
+      getTerrainRampSurfacePosition(ramp, localXRatio, localZRatio).map(
+        (coordinate) => Number(coordinate.toFixed(2)),
+      ) as [number, number, number],
+    ),
+  )
   const placementObstacles = [
     ...physicsLayout.obstacles,
     ...physicsLayout.terrainRamps.map((ramp) => ({
@@ -476,15 +493,23 @@ function createStageObjects(
   return Array.from({ length: OBJECTS_PER_STAGE }, (_, index) => {
     const starter = index < 8
     const mixedIndex = Math.max(0, index - 8)
-    const mixedTierIndex = (mixedIndex + stageIndex) % templatesByTier.length
+    const tierPatternIndex = TIER_MIX_PATTERN[mixedIndex % TIER_MIX_PATTERN.length]
+    const tierRotation = stageIndex + Math.floor(mixedIndex / 32)
+    const mixedTierIndex =
+      (tierPatternIndex + tierRotation) % templatesByTier.length
     const mixedTierTemplates = templatesByTier[mixedTierIndex]
+    const templateCycle = Math.floor(mixedIndex / templatesByTier.length)
     const template = starter
       ? templates[index]
       : mixedTierTemplates[
-          Math.floor(mixedIndex / templatesByTier.length) %
+          (templateCycle * 5 +
+            Math.floor(templateCycle / mixedTierTemplates.length) +
+            stageIndex * 3) %
             mixedTierTemplates.length
         ]
-    const progress = Math.max(0, (index - 7) / (OBJECTS_PER_STAGE - 8))
+    const groundIndex = Math.max(0, mixedIndex - elevatedSlots.length)
+    const groundCount = OBJECTS_PER_STAGE - 8 - elevatedSlots.length
+    const progress = groundIndex / Math.max(1, groundCount - 1)
     const radius = starter
       ? 2.4 + index * 0.58
       : 7 + Math.sqrt(progress) * (maxRadius - 7)
@@ -494,23 +519,26 @@ function createStageObjects(
       Math.sin(index * 1.7 + stageIndex) * 0.11
     const sizeVariation = ((index % 3) - 1) * 0.012
     const size = Math.max(0.2, template.size + sizeVariation)
-    const position = Array.from({ length: 32 }, (_, attempt) => {
-      const angle = baseAngle + attempt * 0.37
-      return [
-        Number((Math.cos(angle) * radius).toFixed(2)),
+    const elevatedPosition = starter ? undefined : elevatedSlots[mixedIndex]
+    const position =
+      elevatedPosition ??
+      Array.from({ length: 48 }, (_, attempt) => {
+        const angle = baseAngle + attempt * 0.37
+        return [
+          Number((Math.cos(angle) * radius).toFixed(2)),
+          0,
+          Number((Math.sin(angle) * radius).toFixed(2)),
+        ] as [number, number, number]
+      }).find((candidate) =>
+        isCollectionPositionClear(
+          { position: candidate, size },
+          placementObstacles,
+        ),
+      ) ?? [
+        Number((Math.cos(baseAngle) * radius).toFixed(2)),
         0,
-        Number((Math.sin(angle) * radius).toFixed(2)),
-      ] as [number, number, number]
-    }).find((candidate) =>
-      isCollectionPositionClear(
-        { position: candidate, size },
-        placementObstacles,
-      ),
-    ) ?? [
-      Number((Math.cos(baseAngle) * radius).toFixed(2)),
-      0,
-      Number((Math.sin(baseAngle) * radius).toFixed(2)),
-    ]
+        Number((Math.sin(baseAngle) * radius).toFixed(2)),
+      ]
 
     return {
       ...template,
@@ -543,7 +571,7 @@ const stages: GameStage[] = stageBlueprints.map((blueprint, index) => ({
 }))
 
 export const fallbackLearningPack: LearningPack = {
-  version: 5,
+  version: 6,
   title: '러닝크루 월드 투어',
   stages,
   objects: stages.flatMap((stage) => stage.objects),

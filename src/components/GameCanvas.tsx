@@ -202,7 +202,7 @@ function LearningItem({
   })
 
   return (
-    <group position={[item.position[0], 0, item.position[2]]}>
+    <group position={item.position}>
       <group scale={visualScale}>
         {Array.from({ length: tier.level }, (_, index) => (
           <mesh
@@ -879,7 +879,11 @@ function TooLargeItemColliders({
               key={`large-item-${item.id}`}
               type="fixed"
               colliders={false}
-              position={[item.position[0], radius, item.position[2]]}
+              position={[
+                item.position[0],
+                item.position[1] + radius,
+                item.position[2],
+              ]}
               userData={{ physics }}
             >
               <BallCollider

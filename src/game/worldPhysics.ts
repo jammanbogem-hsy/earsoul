@@ -63,6 +63,27 @@ export interface TerrainRamp {
   rotationY: number
 }
 
+export function getTerrainRampSurfacePosition(
+  ramp: TerrainRamp,
+  localXRatio: number,
+  localZRatio: number,
+): [number, number, number] {
+  const localX = ramp.halfWidth * localXRatio
+  const localZ = ramp.halfDepth * localZRatio
+  const cosineX = Math.cos(ramp.rotationX)
+  const sineX = Math.sin(ramp.rotationX)
+  const cosineY = Math.cos(ramp.rotationY)
+  const sineY = Math.sin(ramp.rotationY)
+  const pitchedY = ramp.halfHeight * cosineX - localZ * sineX
+  const pitchedZ = ramp.halfHeight * sineX + localZ * cosineX
+
+  return [
+    ramp.x + localX * cosineY + pitchedZ * sineY,
+    ramp.y + pitchedY + 0.025,
+    ramp.z - localX * sineY + pitchedZ * cosineY,
+  ]
+}
+
 export interface WorldPhysicsLayout {
   obstacles: WorldObstacle[]
   rideableObstacles: RideableObstacle[]

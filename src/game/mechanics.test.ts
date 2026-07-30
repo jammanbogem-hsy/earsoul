@@ -74,10 +74,10 @@ describe('rolling collection progression', () => {
 
   it('offers three increasingly wide maps with many optional routes', () => {
     expect(fallbackLearningPack.stages).toHaveLength(3)
-    expect(fallbackLearningPack.objects).toHaveLength(384)
+    expect(fallbackLearningPack.objects).toHaveLength(768)
 
     fallbackLearningPack.stages.forEach((stage) => {
-      expect(stage.objects).toHaveLength(128)
+      expect(stage.objects).toHaveLength(256)
       expect(stage.objects.length - stage.objectiveCount).toBeGreaterThanOrEqual(
         20,
       )
@@ -94,7 +94,16 @@ describe('rolling collection progression', () => {
           stage.objects.filter((item) => getSizeTier(item.size).level === level)
             .length,
       )
-      expect(Math.min(...tierCounts)).toBeGreaterThanOrEqual(28)
+      expect(Math.min(...tierCounts)).toBeGreaterThanOrEqual(52)
+      const templateVarietyByTier = [1, 2, 3, 4].map(
+        (level) =>
+          new Set(
+            stage.objects
+              .filter((item) => getSizeTier(item.size).level === level)
+              .map((item) => item.modelId),
+          ).size,
+      )
+      expect(Math.min(...templateVarietyByTier)).toBeGreaterThanOrEqual(5)
       expect(getStageScore(stage.objects, stage.objects.map((item) => item.id)))
         .toBeGreaterThan(stage.scoreGoal)
 
@@ -112,8 +121,40 @@ describe('rolling collection progression', () => {
     })
 
     expect(fallbackLearningPack.stages.map((stage) => stage.mapSize)).toEqual([
-      112, 128, 144,
+      144, 168, 192,
     ])
+  })
+
+  it('places mixed-size rewards across every climbable hill', () => {
+    fallbackLearningPack.stages.forEach((stage) => {
+      const layout = createWorldPhysicsLayout(stage)
+      const elevatedObjects = stage.objects.filter(
+        (item) => item.position[1] > 0.2,
+      )
+
+      expect(elevatedObjects).toHaveLength(layout.terrainRamps.length * 4)
+      expect(
+        new Set(elevatedObjects.map((item) => getSizeTier(item.size).level)),
+      ).toEqual(new Set([1, 2, 3, 4]))
+
+      layout.terrainRamps.forEach((ramp) => {
+        const cosine = Math.cos(ramp.rotationY)
+        const sine = Math.sin(ramp.rotationY)
+        const objectsOnRamp = elevatedObjects.filter((item) => {
+          const offsetX = item.position[0] - ramp.x
+          const offsetZ = item.position[2] - ramp.z
+          const localX = offsetX * cosine - offsetZ * sine
+          const localZ = offsetX * sine + offsetZ * cosine
+
+          return (
+            Math.abs(localX) <= ramp.halfWidth * 0.8 &&
+            Math.abs(localZ) <= ramp.halfDepth * 0.8
+          )
+        })
+
+        expect(objectsOnRamp.length).toBeGreaterThanOrEqual(4)
+      })
+    })
   })
 
   it('starts each map with reachable choices near the spawn point', () => {
@@ -147,7 +188,7 @@ describe('rolling collection progression', () => {
     expect(complete.ready).toBe(true)
     expect(complete.progress).toBe(1)
     expect(complete.completedTierLevel).toBe(4)
-    expect(complete.bonusCount).toBe(84)
+    expect(complete.bonusCount).toBe(212)
   })
 
   it('accepts the combo-awarded map score while retaining tier requirements', () => {
