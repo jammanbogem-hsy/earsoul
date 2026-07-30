@@ -4,6 +4,7 @@ import {
   createWorldPhysicsLayout,
   getActiveSpeedZone,
   getActiveSurfaceZone,
+  getElevatorDeckY,
   resolveWorldPhysics,
   type WorldPhysicsLayout,
 } from './worldPhysics'
@@ -23,6 +24,10 @@ const stopLayout: WorldPhysicsLayout = {
   speedZones: [],
   surfaceZones: [],
   terrainRamps: [],
+  elevatedPlatforms: [],
+  elevators: [],
+  pushableProps: [],
+  pushRewardSlots: [],
 }
 
 describe('world physics', () => {
@@ -32,7 +37,21 @@ describe('world physics', () => {
       expect(layout.obstacles.length).toBeGreaterThan(30)
       expect(layout.speedZones.length).toBeGreaterThan(0)
       expect(layout.surfaceZones).toHaveLength(2)
-      expect(layout.terrainRamps).toHaveLength(4)
+      expect(layout.terrainRamps).toHaveLength(5)
+      expect(layout.elevatedPlatforms).toHaveLength(2)
+      expect(layout.elevators).toHaveLength(1)
+      expect(layout.pushableProps.length).toBeGreaterThanOrEqual(18)
+      expect(layout.pushRewardSlots).toHaveLength(3)
+      expect(
+        layout.elevatedPlatforms.every(
+          (platform) => platform.y + platform.halfHeight > 3,
+        ),
+      ).toBe(true)
+      expect(
+        layout.elevators.every(
+          (elevator) => elevator.topY > elevator.bottomY + 2,
+        ),
+      ).toBe(true)
       expect(
         layout.surfaceZones.every((zone) => zone.multiplier < 1),
       ).toBe(true)
@@ -49,6 +68,21 @@ describe('world physics', () => {
         true,
       )
     })
+  })
+
+  it('moves the elevator smoothly from the ground to the second floor', () => {
+    const elevator = createWorldPhysicsLayout(
+      fallbackLearningPack.stages[0],
+    ).elevators[0]
+
+    expect(getElevatorDeckY(elevator, 0)).toBe(elevator.bottomY)
+    expect(getElevatorDeckY(elevator, 1)).toBe(elevator.topY)
+    expect(getElevatorDeckY(elevator, 0.5)).toBeCloseTo(
+      (elevator.bottomY + elevator.topY) / 2,
+    )
+    expect(getElevatorDeckY(elevator, 0.75)).toBeGreaterThan(
+      getElevatorDeckY(elevator, 0.25),
+    )
   })
 
   it('stops the ball at a solid tree instead of passing through it', () => {
@@ -109,6 +143,10 @@ describe('world physics', () => {
       ],
       surfaceZones: [],
       terrainRamps: [],
+      elevatedPlatforms: [],
+      elevators: [],
+      pushableProps: [],
+      pushRewardSlots: [],
     }
 
     expect(getActiveSpeedZone(layout, 2, 0)?.multiplier).toBe(1.3)

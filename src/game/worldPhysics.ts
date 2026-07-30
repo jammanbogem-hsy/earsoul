@@ -63,6 +63,59 @@ export interface TerrainRamp {
   rotationY: number
 }
 
+export interface ElevatedPlatform {
+  id: string
+  label: string
+  color: string
+  x: number
+  y: number
+  z: number
+  halfWidth: number
+  halfHeight: number
+  halfDepth: number
+  rotationY: number
+}
+
+export interface WorldElevator {
+  id: string
+  label: string
+  color: string
+  x: number
+  z: number
+  bottomY: number
+  topY: number
+  halfWidth: number
+  halfHeight: number
+  halfDepth: number
+  buttonRadius: number
+  travelDuration: number
+}
+
+export interface PushableProp {
+  id: string
+  label: string
+  kind: 'block' | 'cone' | 'pin'
+  color: string
+  x: number
+  y: number
+  z: number
+  rotationY: number
+}
+
+export function getElevatorDeckY(
+  elevator: WorldElevator,
+  progress: number,
+): number {
+  const clampedProgress = Math.max(0, Math.min(1, progress))
+  const easedProgress =
+    clampedProgress * clampedProgress * (3 - 2 * clampedProgress)
+
+  return (
+    elevator.bottomY +
+    (elevator.topY - elevator.bottomY) * easedProgress
+  )
+}
+
 export function getTerrainRampSurfacePosition(
   ramp: TerrainRamp,
   localXRatio: number,
@@ -84,12 +137,33 @@ export function getTerrainRampSurfacePosition(
   ]
 }
 
+export function getElevatedPlatformSurfacePosition(
+  platform: ElevatedPlatform,
+  localXRatio: number,
+  localZRatio: number,
+): [number, number, number] {
+  const localX = platform.halfWidth * localXRatio
+  const localZ = platform.halfDepth * localZRatio
+  const cosine = Math.cos(platform.rotationY)
+  const sine = Math.sin(platform.rotationY)
+
+  return [
+    platform.x + localX * cosine + localZ * sine,
+    platform.y + platform.halfHeight + 0.025,
+    platform.z - localX * sine + localZ * cosine,
+  ]
+}
+
 export interface WorldPhysicsLayout {
   obstacles: WorldObstacle[]
   rideableObstacles: RideableObstacle[]
   speedZones: SpeedZone[]
   surfaceZones: SurfaceZone[]
   terrainRamps: TerrainRamp[]
+  elevatedPlatforms: ElevatedPlatform[]
+  elevators: WorldElevator[]
+  pushableProps: PushableProp[]
+  pushRewardSlots: [number, number, number][]
 }
 
 export interface WorldPhysicsStep {
@@ -457,26 +531,245 @@ function createTerrainRamps(
       -0.58,
       mapSize,
     ),
+    createUpperDeckRamp(mapSize, theme),
+  ]
+}
+
+const UPPER_DECK_SURFACE_Y = 3.65
+
+function getUpperDeckColors(theme: StageTheme) {
+  if (theme === 'starlight-river') {
+    return {
+      ramp: '#657C9C',
+      platform: '#7189A8',
+      elevator: '#8C7BD3',
+    }
+  }
+  if (theme === 'forest-trail') {
+    return {
+      ramp: '#7E9D62',
+      platform: '#89AA6D',
+      elevator: '#4F8B69',
+    }
+  }
+  return {
+    ramp: '#D4A96A',
+    platform: '#E0BE82',
+    elevator: '#4D91C8',
+  }
+}
+
+function createElevatedPlatforms(
+  mapSize: number,
+  theme: StageTheme,
+): ElevatedPlatform[] {
+  const colors = getUpperDeckColors(theme)
+  const halfHeight = 0.28
+  const towerPlatform: ElevatedPlatform = {
+    id: 'ramp-upper-deck',
+    label: '경사로 2층 전망대',
+    color: colors.platform,
+    x: mapSize * 0.1,
+    y: UPPER_DECK_SURFACE_Y - halfHeight,
+    z: -mapSize * 0.19,
+    halfWidth: 5.5,
+    halfHeight,
+    halfDepth: 5.5,
+    rotationY: 0,
+  }
+  const elevatorPlatform: ElevatedPlatform = {
+    id: 'elevator-upper-deck',
+    label: '엘리베이터 2층 보물마당',
+    color: colors.elevator,
+    x: -mapSize * 0.14,
+    y: UPPER_DECK_SURFACE_Y - halfHeight,
+    z: mapSize * 0.2,
+    halfWidth: 5.2,
+    halfHeight,
+    halfDepth: 5.2,
+    rotationY: 0,
+  }
+
+  return [towerPlatform, elevatorPlatform]
+}
+
+function createUpperDeckRamp(
+  mapSize: number,
+  theme: StageTheme,
+): TerrainRamp {
+  const platform = createElevatedPlatforms(mapSize, theme)[0]
+  const halfDepth = Math.min(10, mapSize * 0.0625)
+  const halfWidth = 2.7
+  const halfHeight = 0.18
+  const baseSurfaceY = 0.04
+  const rotationMagnitude = Math.asin(
+    (UPPER_DECK_SURFACE_Y - baseSurfaceY) / (halfDepth * 2),
+  )
+  const rotationX = -rotationMagnitude
+  const centerSurfaceY = (UPPER_DECK_SURFACE_Y + baseSurfaceY) / 2
+
+  return {
+    id: 'upper-deck-ramp',
+    label: '2층 연결 경사로',
+    color: getUpperDeckColors(theme).ramp,
+    x: platform.x,
+    y: centerSurfaceY - halfHeight * Math.cos(rotationX),
+    z: platform.z + platform.halfDepth + halfDepth,
+    halfWidth,
+    halfHeight,
+    halfDepth,
+    rotationX,
+    rotationY: Math.PI,
+  }
+}
+
+function createElevators(
+  mapSize: number,
+  theme: StageTheme,
+): WorldElevator[] {
+  const landing = createElevatedPlatforms(mapSize, theme)[1]
+  const halfHeight = 0.18
+
+  return [
+    {
+      id: 'treasure-elevator',
+      label: '보물 승강 발판',
+      color: getUpperDeckColors(theme).elevator,
+      x: landing.x + landing.halfWidth + 2.05,
+      z: landing.z,
+      bottomY: halfHeight,
+      topY: UPPER_DECK_SURFACE_Y - halfHeight,
+      halfWidth: 2.05,
+      halfHeight,
+      halfDepth: 2.15,
+      buttonRadius: 0.92,
+      travelDuration: 2.8,
+    },
+  ]
+}
+
+function createPushableProps(
+  mapSize: number,
+  theme: StageTheme,
+): PushableProp[] {
+  const practiceProps = [
+    { id: 'block-a', kind: 'block', x: 5.2, y: 0.36, z: -4.6, color: '#FF7B66' },
+    { id: 'block-b', kind: 'block', x: 6.1, y: 0.36, z: -4.2, color: '#4169D8' },
+    { id: 'block-c', kind: 'block', x: 7, y: 0.36, z: -4.8, color: '#F2C94C' },
+    { id: 'cone-a', kind: 'cone', x: -5.3, y: 0.38, z: -4.8, color: '#FF8A3D' },
+    { id: 'cone-b', kind: 'cone', x: -6.2, y: 0.38, z: -4.3, color: '#45A7A0' },
+    { id: 'cone-c', kind: 'cone', x: -7.1, y: 0.38, z: -4.9, color: '#A78BFA' },
+    { id: 'pin-a', kind: 'pin', x: 3.9, y: 0.36, z: 5.8, color: '#38BDF8' },
+    { id: 'pin-b', kind: 'pin', x: 4.7, y: 0.36, z: 6.2, color: '#FB7185' },
+    { id: 'pin-c', kind: 'pin', x: 5.5, y: 0.36, z: 5.7, color: '#22C55E' },
+  ] as const
+  const labeledPracticeProps: PushableProp[] = practiceProps.map((prop, index) => ({
+    ...prop,
+    label:
+      prop.kind === 'cone'
+        ? '말랑 연습 콘'
+        : prop.kind === 'pin'
+          ? '컬러 트레이닝 핀'
+          : '폼 연습 블록',
+    rotationY: index * 0.41,
+  }))
+  const centerX = mapSize * 0.18
+  const centerZ = mapSize * 0.08
+  const puzzleColors =
+    theme === 'starlight-river'
+      ? ['#60A5FA', '#A78BFA', '#FBBF24']
+      : theme === 'forest-trail'
+        ? ['#F97316', '#A3E635', '#38BDF8']
+        : ['#FF8A3D', '#45A7A0', '#4169D8']
+  const treasureCones = Array.from({ length: 9 }, (_, index) => {
+    const angle = (index / 9) * Math.PI * 2
+    return {
+      id: `treasure-cone-${index}`,
+      label: '보물 지킴 콘',
+      kind: 'cone' as const,
+      color: puzzleColors[index % puzzleColors.length],
+      x: centerX + Math.cos(angle) * 1.32,
+      y: 0.38,
+      z: centerZ + Math.sin(angle) * 1.32,
+      rotationY: angle,
+    }
+  })
+
+  return [...labeledPracticeProps, ...treasureCones]
+}
+
+function createPushRewardSlots(
+  mapSize: number,
+): [number, number, number][] {
+  const centerX = mapSize * 0.18
+  const centerZ = mapSize * 0.08
+
+  return [
+    [centerX, 0, centerZ],
+    [centerX - 0.42, 0, centerZ + 0.28],
+    [centerX + 0.42, 0, centerZ + 0.28],
   ]
 }
 
 export function createWorldPhysicsLayout(
   stage: Pick<GameStage, 'mapSize' | 'theme'>,
 ): WorldPhysicsLayout {
+  const terrainRamps = createTerrainRamps(stage.mapSize, stage.theme)
+  const elevatedPlatforms = createElevatedPlatforms(
+    stage.mapSize,
+    stage.theme,
+  )
+  const elevators = createElevators(stage.mapSize, stage.theme)
+  const pushableProps = createPushableProps(stage.mapSize, stage.theme)
+  const pushRewardSlots = createPushRewardSlots(stage.mapSize)
+  const structureClearances = [
+    ...terrainRamps.map((ramp) => ({
+      x: ramp.x,
+      z: ramp.z,
+      radius: Math.hypot(ramp.halfWidth, ramp.halfDepth) + 0.7,
+    })),
+    ...elevatedPlatforms.map((platform) => ({
+      x: platform.x,
+      z: platform.z,
+      radius: Math.hypot(platform.halfWidth, platform.halfDepth) + 0.7,
+    })),
+    ...elevators.map((elevator) => ({
+      x: elevator.x,
+      z: elevator.z,
+      radius: Math.hypot(elevator.halfWidth, elevator.halfDepth) + 0.8,
+    })),
+    {
+      x: pushRewardSlots[0][0],
+      z: pushRewardSlots[0][2],
+      radius: 2.7,
+    },
+  ]
+  const obstacles = [
+    ...createTreeRing(stage.mapSize, stage.theme),
+    ...createBenches(stage.mapSize),
+    ...createGearRacks(stage.mapSize),
+    ...createKiosks(stage.mapSize),
+    ...(stage.theme === 'forest-trail'
+      ? createForestTrees(stage.mapSize)
+      : []),
+  ].filter((obstacle) =>
+    structureClearances.every(
+      (clearance) =>
+        Math.hypot(obstacle.x - clearance.x, obstacle.z - clearance.z) >
+        obstacle.radius + clearance.radius,
+    ),
+  )
+
   return {
-    obstacles: [
-      ...createTreeRing(stage.mapSize, stage.theme),
-      ...createBenches(stage.mapSize),
-      ...createGearRacks(stage.mapSize),
-      ...createKiosks(stage.mapSize),
-      ...(stage.theme === 'forest-trail'
-        ? createForestTrees(stage.mapSize)
-        : []),
-    ],
+    obstacles,
     rideableObstacles: createRideableObstacles(stage.mapSize),
     speedZones: createSpeedZones(stage.mapSize, stage.theme),
     surfaceZones: createSurfaceZones(stage.mapSize, stage.theme),
-    terrainRamps: createTerrainRamps(stage.mapSize, stage.theme),
+    terrainRamps,
+    elevatedPlatforms,
+    elevators,
+    pushableProps,
+    pushRewardSlots,
   }
 }
 

@@ -32,6 +32,7 @@ import {
   canCollect,
   getObjectVisualScale,
   getSizeTier,
+  isObjectTouchingBall,
 } from '../game/mechanics'
 import {
   getDriveControl,
@@ -46,7 +47,10 @@ import {
   createWorldPhysicsLayout,
   getActiveSpeedZone,
   getActiveSurfaceZone,
+  getElevatorDeckY,
   type ObstacleResponse,
+  type PushableProp,
+  type WorldElevator,
   type WorldPhysicsLayout,
 } from '../game/worldPhysics'
 import { MaterialIcon } from './MaterialIcon'
@@ -67,7 +71,7 @@ interface GameCanvasProps {
   onCollect: (item: LearningObject) => void
   onTooLarge: (item: LearningObject) => void
   onPhysicsFeedback: (feedback: {
-    type: 'collision' | 'boost' | 'slow'
+    type: 'collision' | 'boost' | 'slow' | 'elevator'
     label: string
     bounced?: boolean
   }) => void
@@ -96,6 +100,7 @@ interface PhysicsBodyData {
     | 'boundary'
     | 'obstacle'
     | 'rideable'
+    | 'elevator'
     | 'dynamic-prop'
     | 'large-item'
   label: string
@@ -732,6 +737,81 @@ function RapierWorldColliders({
         )
       })}
 
+      {layout.elevatedPlatforms.map((platform) => {
+        const physics: PhysicsBodyData = {
+          kind: 'rideable',
+          label: platform.label,
+          response: 'bounce',
+          quiet: true,
+        }
+        const supportHeight = Math.max(0.2, platform.y - platform.halfHeight)
+
+        return (
+          <RigidBody
+            key={platform.id}
+            type="fixed"
+            colliders={false}
+            position={[platform.x, platform.y, platform.z]}
+            rotation={[0, platform.rotationY, 0]}
+            userData={{ physics }}
+          >
+            <CuboidCollider
+              args={[
+                platform.halfWidth,
+                platform.halfHeight,
+                platform.halfDepth,
+              ]}
+              friction={0.98}
+              restitution={0}
+            />
+            <mesh castShadow receiveShadow>
+              <boxGeometry
+                args={[
+                  platform.halfWidth * 2,
+                  platform.halfHeight * 2,
+                  platform.halfDepth * 2,
+                ]}
+              />
+              <meshStandardMaterial color={platform.color} roughness={0.88} />
+            </mesh>
+            {[
+              [-0.78, -0.78],
+              [0.78, -0.78],
+              [-0.78, 0.78],
+              [0.78, 0.78],
+            ].map(([xRatio, zRatio], index) => (
+              <mesh
+                key={`${platform.id}-support-${index}`}
+                castShadow
+                position={[
+                  platform.halfWidth * xRatio,
+                  -platform.y / 2,
+                  platform.halfDepth * zRatio,
+                ]}
+              >
+                <boxGeometry args={[0.34, supportHeight, 0.34]} />
+                <meshStandardMaterial
+                  color="#425066"
+                  roughness={0.9}
+                />
+              </mesh>
+            ))}
+            <Html
+              center
+              position={[0, platform.halfHeight + 0.72, 0]}
+              distanceFactor={11}
+              zIndexRange={[1, 0]}
+              style={{ pointerEvents: 'none' }}
+            >
+              <span className="world-interaction-label">
+                <MaterialIcon name="arrow_upward" />
+                {platform.label}
+              </span>
+            </Html>
+          </RigidBody>
+        )
+      })}
+
       {layout.surfaceZones.map((zone) => (
         <group
           key={zone.id}
@@ -770,30 +850,19 @@ function RapierWorldColliders({
   )
 }
 
-const DYNAMIC_PRACTICE_PROPS = [
-  { id: 'block-a', kind: 'block', position: [5.2, 0.36, -4.6], color: '#FF7B66' },
-  { id: 'block-b', kind: 'block', position: [6.1, 0.36, -4.2], color: '#4169D8' },
-  { id: 'block-c', kind: 'block', position: [7, 0.36, -4.8], color: '#F2C94C' },
-  { id: 'cone-a', kind: 'cone', position: [-5.3, 0.38, -4.8], color: '#FF8A3D' },
-  { id: 'cone-b', kind: 'cone', position: [-6.2, 0.38, -4.3], color: '#45A7A0' },
-  { id: 'cone-c', kind: 'cone', position: [-7.1, 0.38, -4.9], color: '#A78BFA' },
-  { id: 'pin-a', kind: 'pin', position: [3.9, 0.36, 5.8], color: '#38BDF8' },
-  { id: 'pin-b', kind: 'pin', position: [4.7, 0.36, 6.2], color: '#FB7185' },
-  { id: 'pin-c', kind: 'pin', position: [5.5, 0.36, 5.7], color: '#22C55E' },
-] as const
-
-function DynamicPracticeProps({ stageId }: { stageId: string }) {
+function DynamicPracticeProps({
+  stageId,
+  props,
+}: {
+  stageId: string
+  props: PushableProp[]
+}) {
   return (
     <>
-      {DYNAMIC_PRACTICE_PROPS.map((prop, index) => {
+      {props.map((prop, index) => {
         const physics: PhysicsBodyData = {
           kind: 'dynamic-prop',
-          label:
-            prop.kind === 'cone'
-              ? '말랑 연습 콘'
-              : prop.kind === 'pin'
-                ? '컬러 트레이닝 핀'
-                : '폼 연습 블록',
+          label: prop.label,
           response: 'bounce',
         }
 
@@ -801,8 +870,12 @@ function DynamicPracticeProps({ stageId }: { stageId: string }) {
           <RigidBody
             key={`${stageId}-${prop.id}`}
             colliders={false}
-            position={prop.position}
-            rotation={[0, index * 0.41, index % 2 ? 0.12 : -0.08]}
+            position={[prop.x, prop.y, prop.z]}
+            rotation={[
+              0,
+              prop.rotationY,
+              index % 2 ? 0.08 : -0.06,
+            ]}
             mass={prop.kind === 'block' ? 0.62 : 0.4}
             linearDamping={0.38}
             angularDamping={0.54}
@@ -851,6 +924,178 @@ function DynamicPracticeProps({ stageId }: { stageId: string }) {
         )
       })}
     </>
+  )
+}
+
+function KinematicElevator({
+  elevator,
+  playerPosition,
+  ballRadius,
+  paused,
+  onActivate,
+}: {
+  elevator: WorldElevator
+  playerPosition: MutableRefObject<Vector3>
+  ballRadius: number
+  paused: boolean
+  onActivate: (label: string) => void
+}) {
+  const body = useRef<RapierRigidBody>(null)
+  const button = useRef<Mesh>(null)
+  const label = useRef<HTMLSpanElement>(null)
+  const holdDuration = useRef(0)
+  const progress = useRef(0)
+  const activated = useRef(false)
+
+  useFrame((_, delta) => {
+    const rigidBody = body.current
+    if (!rigidBody) return
+
+    const currentY = getElevatorDeckY(elevator, progress.current)
+    const deckTop = currentY + elevator.halfHeight
+    const playerFootY = playerPosition.current.y - ballRadius
+    const onButton =
+      Math.hypot(
+        playerPosition.current.x - elevator.x,
+        playerPosition.current.z - elevator.z,
+      ) <=
+        elevator.buttonRadius + ballRadius * 0.38 &&
+      Math.abs(playerFootY - deckTop) < 0.58
+
+    if (!paused && !activated.current) {
+      holdDuration.current = onButton
+        ? Math.min(0.45, holdDuration.current + delta)
+        : Math.max(0, holdDuration.current - delta * 2.6)
+      if (holdDuration.current >= 0.32) {
+        activated.current = true
+        onActivate(elevator.label)
+      }
+    }
+
+    if (!paused && activated.current && progress.current < 1) {
+      progress.current = Math.min(
+        1,
+        progress.current + delta / elevator.travelDuration,
+      )
+    }
+
+    const nextY = getElevatorDeckY(elevator, progress.current)
+    rigidBody.setNextKinematicTranslation({
+      x: elevator.x,
+      y: nextY,
+      z: elevator.z,
+    })
+
+    if (button.current) {
+      button.current.position.y =
+        elevator.halfHeight + (onButton ? 0.045 : 0.085)
+      button.current.scale.y = onButton ? 0.62 : 1
+    }
+    if (label.current) {
+      label.current.textContent =
+        progress.current >= 1
+          ? '2층 도착'
+          : activated.current
+            ? '2층으로 올라가는 중'
+            : onButton
+              ? '발판 누르는 중'
+              : '발판 위에 올라가세요'
+    }
+  })
+
+  const physics: PhysicsBodyData = {
+    kind: 'elevator',
+    label: elevator.label,
+    response: 'bounce',
+    quiet: true,
+  }
+  const guideHeight = elevator.topY + elevator.halfHeight
+
+  return (
+    <group>
+      {[-1, 1].map((side) => (
+        <mesh
+          key={`${elevator.id}-guide-${side}`}
+          castShadow
+          position={[
+            elevator.x + side * (elevator.halfWidth + 0.22),
+            guideHeight / 2,
+            elevator.z + elevator.halfDepth * 0.72,
+          ]}
+        >
+          <boxGeometry args={[0.22, guideHeight, 0.22]} />
+          <meshStandardMaterial color="#425066" roughness={0.72} />
+        </mesh>
+      ))}
+      <mesh
+        position={[elevator.x, 0.018, elevator.z]}
+        rotation={[-Math.PI / 2, 0, 0]}
+      >
+        <ringGeometry
+          args={[elevator.buttonRadius * 1.15, elevator.buttonRadius * 1.42, 40]}
+        />
+        <meshBasicMaterial color="#D9ECFF" transparent opacity={0.72} />
+      </mesh>
+      <RigidBody
+        ref={body}
+        type="kinematicPosition"
+        colliders={false}
+        position={[elevator.x, elevator.bottomY, elevator.z]}
+        userData={{ physics }}
+      >
+        <CuboidCollider
+          args={[
+            elevator.halfWidth,
+            elevator.halfHeight,
+            elevator.halfDepth,
+          ]}
+          friction={1}
+          restitution={0}
+        />
+        <mesh castShadow receiveShadow>
+          <boxGeometry
+            args={[
+              elevator.halfWidth * 2,
+              elevator.halfHeight * 2,
+              elevator.halfDepth * 2,
+            ]}
+          />
+          <meshStandardMaterial color={elevator.color} roughness={0.7} />
+        </mesh>
+        <mesh
+          ref={button}
+          castShadow
+          position={[0, elevator.halfHeight + 0.085, 0]}
+        >
+          <cylinderGeometry
+            args={[
+              elevator.buttonRadius * 0.58,
+              elevator.buttonRadius * 0.65,
+              0.12,
+              32,
+            ]}
+          />
+          <meshStandardMaterial
+            color="#F8C84A"
+            emissive="#F8C84A"
+            emissiveIntensity={0.18}
+            roughness={0.54}
+          />
+        </mesh>
+        <Html
+          center
+          position={[0, elevator.halfHeight + 0.92, 0]}
+          distanceFactor={9}
+          zIndexRange={[2, 0]}
+          style={{ pointerEvents: 'none' }}
+        >
+          <span className="world-interaction-label is-elevator">
+            <MaterialIcon name="arrow_upward" />
+            <span ref={label}>발판 위에 올라가세요</span>
+          </span>
+        </Html>
+      </RigidBody>
+    </group>
   )
 }
 
@@ -916,6 +1161,7 @@ function GameWorld({
     [stage],
   )
   const playerBody = useRef<RapierRigidBody>(null)
+  const playerPosition = useRef(new Vector3(0, ballRadius, 0))
   const orb = useRef<Group>(null)
   const keys = useKeyboard(paused)
   const { camera } = useThree()
@@ -951,6 +1197,7 @@ function GameWorld({
     const body = playerBody.current
     if (!body) return
     const position = body.translation()
+    playerPosition.current.set(position.x, position.y, position.z)
     body.setTranslation(
       {
         x: position.x,
@@ -977,16 +1224,18 @@ function GameWorld({
     if (!body || !physics || physics.kind === 'floor') return
 
     const velocity = body.linvel()
+    const isRideable =
+      physics.kind === 'rideable' || physics.kind === 'elevator'
     if (
       physics.response === 'stop' &&
-      physics.kind !== 'rideable'
+      !isRideable
     ) {
       body.setLinvel({ x: 0, y: velocity.y, z: 0 }, true)
     }
 
     motion.current.impact = physics.quiet ? 0.42 : 1
     const now = performance.now()
-    if (physics.kind !== 'rideable') {
+    if (!isRideable) {
       const recoveryDuration =
         physics.kind === 'dynamic-prop'
           ? 90
@@ -1012,6 +1261,7 @@ function GameWorld({
     if (!body) return
 
     const position = body.translation()
+    playerPosition.current.set(position.x, position.y, position.z)
     const velocity = body.linvel()
     if (!paused) {
       const lateralInput =
@@ -1166,11 +1416,11 @@ function GameWorld({
       for (const item of objects) {
         if (collectedSet.current.has(item.id)) continue
 
-        const distance = Math.hypot(
-          item.position[0] - position.x,
-          item.position[2] - position.z,
+        const touchesItem = isObjectTouchingBall(
+          position,
+          ballRadius,
+          item,
         )
-        const touchesItem = distance < ballRadius + item.size * 0.64
 
         if (touchesItem && canCollect(ballRadius, item.size)) {
           collectedSet.current.add(item.id)
@@ -1259,7 +1509,25 @@ function GameWorld({
         mapSize={stage.mapSize}
         layout={physicsLayout}
       />
-      <DynamicPracticeProps stageId={stage.id} />
+      <DynamicPracticeProps
+        stageId={stage.id}
+        props={physicsLayout.pushableProps}
+      />
+      {physicsLayout.elevators.map((elevator) => (
+        <KinematicElevator
+          key={`${stage.id}-${elevator.id}`}
+          elevator={elevator}
+          playerPosition={playerPosition}
+          ballRadius={ballRadius}
+          paused={paused}
+          onActivate={(label) =>
+            onPhysicsFeedback({
+              type: 'elevator',
+              label,
+            })
+          }
+        />
+      ))}
 
       {visibleObjects.map((item) => (
         <LearningItem

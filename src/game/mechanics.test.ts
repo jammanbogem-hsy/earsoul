@@ -12,6 +12,7 @@ import {
   getStageScore,
   getStageProgress,
   isCollectionPositionClear,
+  isObjectTouchingBall,
   isStageUnlocked,
 } from './mechanics'
 
@@ -70,6 +71,36 @@ describe('rolling collection progression', () => {
     expect(getObjectVisualScale(0.62)).toBe(0.68)
     expect(getObjectVisualScale(0.96)).toBe(1.1)
     expect(getObjectVisualScale(1.42)).toBe(1.65)
+  })
+
+  it('requires the ball to reach the same floor as elevated rewards', () => {
+    const elevatedItem = fallbackLearningPack.stages[0].objects.find(
+      (item) => item.position[1] > 3,
+    )
+
+    expect(elevatedItem).toBeDefined()
+    expect(
+      isObjectTouchingBall(
+        {
+          x: elevatedItem?.position[0] ?? 0,
+          y: 0.5,
+          z: elevatedItem?.position[2] ?? 0,
+        },
+        0.5,
+        elevatedItem ?? fallbackLearningPack.stages[0].objects[0],
+      ),
+    ).toBe(false)
+    expect(
+      isObjectTouchingBall(
+        {
+          x: elevatedItem?.position[0] ?? 0,
+          y: (elevatedItem?.position[1] ?? 0) + 0.5,
+          z: elevatedItem?.position[2] ?? 0,
+        },
+        0.5,
+        elevatedItem ?? fallbackLearningPack.stages[0].objects[0],
+      ),
+    ).toBe(true)
   })
 
   it('offers three increasingly wide maps with many optional routes', () => {
@@ -132,7 +163,10 @@ describe('rolling collection progression', () => {
         (item) => item.position[1] > 0.2,
       )
 
-      expect(elevatedObjects).toHaveLength(layout.terrainRamps.length * 4)
+      expect(elevatedObjects).toHaveLength(
+        layout.terrainRamps.length * 4 +
+          layout.elevatedPlatforms.length * 8,
+      )
       expect(
         new Set(elevatedObjects.map((item) => getSizeTier(item.size).level)),
       ).toEqual(new Set([1, 2, 3, 4]))
@@ -153,6 +187,29 @@ describe('rolling collection progression', () => {
         })
 
         expect(objectsOnRamp.length).toBeGreaterThanOrEqual(4)
+      })
+
+      layout.elevatedPlatforms.forEach((platform) => {
+        const objectsOnPlatform = elevatedObjects.filter(
+          (item) =>
+            Math.abs(item.position[0] - platform.x) <= platform.halfWidth &&
+            Math.abs(item.position[2] - platform.z) <= platform.halfDepth &&
+            item.position[1] > platform.y,
+        )
+
+        expect(objectsOnPlatform).toHaveLength(8)
+      })
+
+      layout.pushRewardSlots.forEach((slot) => {
+        expect(
+          stage.objects.some(
+            (item) =>
+              Math.hypot(
+                item.position[0] - slot[0],
+                item.position[2] - slot[2],
+              ) < 0.1,
+          ),
+        ).toBe(true)
       })
     })
   })

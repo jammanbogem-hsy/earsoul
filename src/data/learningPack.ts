@@ -12,6 +12,7 @@ import {
 } from '../game/mechanics'
 import {
   createWorldPhysicsLayout,
+  getElevatedPlatformSurfacePosition,
   getTerrainRampSurfacePosition,
 } from '../game/worldPhysics'
 
@@ -356,7 +357,22 @@ const HILL_SLOT_RATIOS = [
   [-0.24, -0.1],
   [0.56, 0.04],
 ] as const
+const PLATFORM_SLOT_RATIOS = [
+  [-0.62, -0.62],
+  [-0.08, -0.65],
+  [0.52, -0.58],
+  [-0.58, -0.04],
+  [0, 0],
+  [0.58, 0.04],
+  [-0.42, 0.58],
+  [0.42, 0.58],
+] as const
 const TIER_MIX_PATTERN = [0, 2, 1, 3] as const
+
+interface SpecialObjectSlot {
+  position: [number, number, number]
+  tierIndex?: number
+}
 
 interface StageBlueprint {
   id: string
@@ -410,8 +426,8 @@ const stageBlueprints: StageBlueprint[] = [
   {
     id: 'sunny-start',
     title: '햇살 스타트 광장',
-    subtitle: '잔디와 완만한 언덕을 누비는 첫 번째 맵',
-    description: '넓은 광장, 잔디밭과 얕은 물길 사이에서 러닝 보물을 모아요.',
+    subtitle: '잔디와 2층 전망대를 누비는 첫 번째 맵',
+    description: '넓은 광장, 경사로와 보물 엘리베이터를 오가며 러닝 보물을 모아요.',
     theme: 'sunny-plaza',
     mapSize: 144,
     objectiveCount: 44,
@@ -425,8 +441,8 @@ const stageBlueprints: StageBlueprint[] = [
   {
     id: 'wind-forest',
     title: '바람숲 트레일',
-    subtitle: '언덕과 물길 사이를 고르는 두 번째 맵',
-    description: '나무, 숲 언덕과 개울 사이의 여러 오솔길에서 러닝 장비를 찾아요.',
+    subtitle: '숲길과 높은 보물마당을 고르는 두 번째 맵',
+    description: '나무, 개울, 2층 숲 전망대 사이의 여러 동선에서 러닝 장비를 찾아요.',
     theme: 'forest-trail',
     mapSize: 168,
     objectiveCount: 44,
@@ -445,8 +461,8 @@ const stageBlueprints: StageBlueprint[] = [
   {
     id: 'starlight-river',
     title: '별빛 리버파크',
-    subtitle: '강둑과 오르막을 누비는 마지막 맵',
-    description: '별빛 강변, 완만한 오르막과 컬러 브리지를 오가며 큰 보물을 모아요.',
+    subtitle: '강둑과 수직 동선을 누비는 마지막 맵',
+    description: '별빛 강변, 높은 전망대와 승강 발판을 오가며 큰 보물을 모아요.',
     theme: 'starlight-river',
     mapSize: 192,
     objectiveCount: 44,
@@ -474,13 +490,40 @@ function createStageObjects(
   )
   const maxRadius = blueprint.mapSize / 2 - 5
   const physicsLayout = createWorldPhysicsLayout(blueprint)
-  const elevatedSlots = physicsLayout.terrainRamps.flatMap((ramp) =>
-    HILL_SLOT_RATIOS.map(([localXRatio, localZRatio]) =>
-      getTerrainRampSurfacePosition(ramp, localXRatio, localZRatio).map(
-        (coordinate) => Number(coordinate.toFixed(2)),
-      ) as [number, number, number],
-    ),
-  )
+  const pushRewardSlots: SpecialObjectSlot[] =
+    physicsLayout.pushRewardSlots.map((position, index) => ({
+      position,
+      tierIndex: index < 2 ? 0 : 1,
+    }))
+  const rampSlots: SpecialObjectSlot[] =
+    physicsLayout.terrainRamps.flatMap((ramp) =>
+      HILL_SLOT_RATIOS.map(([localXRatio, localZRatio]) => ({
+        position: getTerrainRampSurfacePosition(
+          ramp,
+          localXRatio,
+          localZRatio,
+        ).map(
+          (coordinate) => Number(coordinate.toFixed(2)),
+        ) as [number, number, number],
+      })),
+    )
+  const platformSlots: SpecialObjectSlot[] =
+    physicsLayout.elevatedPlatforms.flatMap((platform) =>
+      PLATFORM_SLOT_RATIOS.map(([localXRatio, localZRatio]) => ({
+        position: getElevatedPlatformSurfacePosition(
+          platform,
+          localXRatio,
+          localZRatio,
+        ).map(
+          (coordinate) => Number(coordinate.toFixed(2)),
+        ) as [number, number, number],
+      })),
+    )
+  const specialSlots = [
+    ...pushRewardSlots,
+    ...rampSlots,
+    ...platformSlots,
+  ]
   const placementObstacles = [
     ...physicsLayout.obstacles,
     ...physicsLayout.terrainRamps.map((ramp) => ({
@@ -488,14 +531,31 @@ function createStageObjects(
       z: ramp.z,
       radius: Math.hypot(ramp.halfWidth, ramp.halfDepth),
     })),
+    ...physicsLayout.elevatedPlatforms.map((platform) => ({
+      x: platform.x,
+      z: platform.z,
+      radius: Math.hypot(platform.halfWidth, platform.halfDepth),
+    })),
+    ...physicsLayout.elevators.map((elevator) => ({
+      x: elevator.x,
+      z: elevator.z,
+      radius: Math.hypot(elevator.halfWidth, elevator.halfDepth),
+    })),
+    ...physicsLayout.pushableProps.map((prop) => ({
+      x: prop.x,
+      z: prop.z,
+      radius: prop.kind === 'block' ? 0.42 : 0.34,
+    })),
   ]
 
   return Array.from({ length: OBJECTS_PER_STAGE }, (_, index) => {
     const starter = index < 8
     const mixedIndex = Math.max(0, index - 8)
+    const specialSlot = starter ? undefined : specialSlots[mixedIndex]
     const tierPatternIndex = TIER_MIX_PATTERN[mixedIndex % TIER_MIX_PATTERN.length]
     const tierRotation = stageIndex + Math.floor(mixedIndex / 32)
     const mixedTierIndex =
+      specialSlot?.tierIndex ??
       (tierPatternIndex + tierRotation) % templatesByTier.length
     const mixedTierTemplates = templatesByTier[mixedTierIndex]
     const templateCycle = Math.floor(mixedIndex / templatesByTier.length)
@@ -507,8 +567,8 @@ function createStageObjects(
             stageIndex * 3) %
             mixedTierTemplates.length
         ]
-    const groundIndex = Math.max(0, mixedIndex - elevatedSlots.length)
-    const groundCount = OBJECTS_PER_STAGE - 8 - elevatedSlots.length
+    const groundIndex = Math.max(0, mixedIndex - specialSlots.length)
+    const groundCount = OBJECTS_PER_STAGE - 8 - specialSlots.length
     const progress = groundIndex / Math.max(1, groundCount - 1)
     const radius = starter
       ? 2.4 + index * 0.58
@@ -519,9 +579,8 @@ function createStageObjects(
       Math.sin(index * 1.7 + stageIndex) * 0.11
     const sizeVariation = ((index % 3) - 1) * 0.012
     const size = Math.max(0.2, template.size + sizeVariation)
-    const elevatedPosition = starter ? undefined : elevatedSlots[mixedIndex]
     const position =
-      elevatedPosition ??
+      specialSlot?.position ??
       Array.from({ length: 48 }, (_, attempt) => {
         const angle = baseAngle + attempt * 0.37
         return [
@@ -571,7 +630,7 @@ const stages: GameStage[] = stageBlueprints.map((blueprint, index) => ({
 }))
 
 export const fallbackLearningPack: LearningPack = {
-  version: 6,
+  version: 7,
   title: '러닝크루 월드 투어',
   stages,
   objects: stages.flatMap((stage) => stage.objects),

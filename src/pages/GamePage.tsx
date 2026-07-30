@@ -83,7 +83,7 @@ const coachSteps: {
   {
     icon: 'play_arrow',
     title: '바라보는 방향을 따라 굴려요',
-    body: 'W·S(ㅈ·ㄴ)는 앞뒤, A·D(ㅁ·ㅇ)는 지금 보는 방향의 좌우예요. 빛나는 길에서는 빨라지고 나무와 의자는 피해야 해요.',
+    body: 'W·S(ㅈ·ㄴ)는 앞뒤, A·D(ㅁ·ㅇ)는 현재 방향의 좌우예요. 콘을 밀고 경사로를 오르거나 노란 승강 발판을 눌러 2층도 탐험해요.',
   },
 ]
 
@@ -294,7 +294,7 @@ export function GamePage() {
   }
 
   const handlePhysicsFeedback = (feedback: {
-    type: 'collision' | 'boost' | 'slow'
+    type: 'collision' | 'boost' | 'slow' | 'elevator'
     label: string
     bounced?: boolean
   }) => {
@@ -318,6 +318,18 @@ export function GamePage() {
           tone: 'wait',
         },
         1600,
+      )
+      return
+    }
+
+    if (feedback.type === 'elevator') {
+      showToast(
+        {
+          title: `${feedback.label} 작동`,
+          body: '발판이 2층 보물마당까지 올라가요. 위에 도착하면 천천히 굴러 내려요.',
+          tone: 'learned',
+        },
+        2400,
       )
       return
     }

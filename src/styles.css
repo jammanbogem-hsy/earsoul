@@ -1555,6 +1555,34 @@ md-switch:focus-visible,
   border-color: var(--tier-color);
 }
 
+.world-interaction-label {
+  display: inline-flex;
+  min-height: 30px;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid rgba(39, 53, 72, 0.18);
+  border-radius: 999px;
+  padding: 5px 9px;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 5px 13px rgba(36, 50, 74, 0.16);
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.world-interaction-label .material-symbol {
+  width: 15px;
+  height: 15px;
+  color: var(--blue-dark);
+}
+
+.world-interaction-label.is-elevator {
+  border-color: rgba(230, 168, 0, 0.55);
+  background: rgba(255, 248, 211, 0.94);
+}
+
 @keyframes game-score-bump {
   45% {
     color: var(--green);

@@ -47,6 +47,22 @@ export function getObjectVisualScale(objectSize: number): number {
   return OBJECT_VISUAL_SCALES[getSizeTier(objectSize).level - 1]
 }
 
+export function isObjectTouchingBall(
+  ballPosition: { x: number; y: number; z: number },
+  ballRadius: number,
+  item: Pick<LearningObject, 'position' | 'size'>,
+): boolean {
+  const objectCenterY =
+    item.position[1] + getObjectVisualScale(item.size) * 0.58
+  const distance = Math.hypot(
+    item.position[0] - ballPosition.x,
+    objectCenterY - ballPosition.y,
+    item.position[2] - ballPosition.z,
+  )
+
+  return distance < ballRadius + item.size * 0.64
+}
+
 type StageGoalConfig = Pick<
   GameStage,
   'objectiveCount' | 'scoreGoal' | 'tierGoals'
