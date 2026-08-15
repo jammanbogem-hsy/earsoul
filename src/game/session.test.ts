@@ -82,11 +82,30 @@ describe('single session score', () => {
       ...legacy,
       stageScores: undefined,
       collectedPowerUpIds: undefined,
+      attachmentNormals: undefined,
     }
     sessionStorage.setItem(SESSION_KEY, JSON.stringify(legacySession))
 
     expect(readSession()?.stageScores).toEqual({})
     expect(readSession()?.collectedPowerUpIds).toEqual([])
+    expect(readSession()?.attachmentNormals).toEqual({})
+  })
+
+  it('remembers the ball contact normal for a collected object', () => {
+    const session = startSession()
+    const attachmentNormal: [number, number, number] = [0.6, 0, 0.8]
+    const collected = recordCollection(
+      session,
+      { id: 'contact-item', label: '접촉 아이템', points: 12 },
+      { attachmentNormal },
+    )
+
+    expect(collected.attachmentNormals['contact-item']).toEqual(
+      attachmentNormal,
+    )
+    expect(readSession()?.attachmentNormals['contact-item']).toEqual(
+      attachmentNormal,
+    )
   })
 
   it('records a power-up once without changing the score or object count', () => {
@@ -116,10 +135,10 @@ describe('single session score', () => {
 
   it('grows at deliberate milestones and caps the learning ball', () => {
     expect(calculateBallRadius(0)).toBe(0.42)
-    expect(calculateBallRadius(6)).toBe(0.52)
-    expect(calculateBallRadius(18)).toBe(0.88)
-    expect(calculateBallRadius(36)).toBe(1.26)
-    expect(calculateBallRadius(48)).toBe(1.62)
-    expect(calculateBallRadius(500)).toBe(2.05)
+    expect(calculateBallRadius(6)).toBe(0.54)
+    expect(calculateBallRadius(18)).toBe(0.9)
+    expect(calculateBallRadius(36)).toBe(1.28)
+    expect(calculateBallRadius(48)).toBe(1.64)
+    expect(calculateBallRadius(500)).toBe(2.08)
   })
 })

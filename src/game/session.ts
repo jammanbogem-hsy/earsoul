@@ -1,4 +1,4 @@
-import type { GameSession } from '../types'
+import type { AttachmentNormal, GameSession } from '../types'
 
 export const SESSION_KEY = 'earsoul-learning-session-v3'
 
@@ -16,6 +16,7 @@ const emptySession = (): GameSession => {
     collectedPowerUpIds: [],
     collectedIds: [],
     collectedLabels: [],
+    attachmentNormals: {},
     durationSeconds: 0,
     status: 'playing',
   }
@@ -32,6 +33,7 @@ export function readSession(): GameSession | null {
       currentStageIndex: Math.max(0, session.currentStageIndex ?? 0),
       stageScores: session.stageScores ?? {},
       collectedPowerUpIds: session.collectedPowerUpIds ?? [],
+      attachmentNormals: session.attachmentNormals ?? {},
     }
   } catch {
     return null
@@ -51,7 +53,11 @@ export function startSession(): GameSession {
 export function recordCollection(
   session: GameSession,
   item: { id: string; stageId?: string; label: string; points: number },
-  options: { multiplier?: number; combo?: number } = {},
+  options: {
+    multiplier?: number
+    combo?: number
+    attachmentNormal?: AttachmentNormal
+  } = {},
 ): GameSession {
   if (session.collectedIds.includes(item.id)) return session
 
@@ -72,6 +78,12 @@ export function recordCollection(
       : stageScores,
     collectedIds: [...session.collectedIds, item.id],
     collectedLabels: [...session.collectedLabels, item.label],
+    attachmentNormals: options.attachmentNormal
+      ? {
+          ...(session.attachmentNormals ?? {}),
+          [item.id]: options.attachmentNormal,
+        }
+      : session.attachmentNormals ?? {},
   })
 }
 
@@ -119,12 +131,15 @@ export function clearSession(): void {
 
 const BALL_GROWTH_MILESTONES = [
   { collectedCount: 0, radius: 0.42 },
-  { collectedCount: 6, radius: 0.52 },
-  { collectedCount: 18, radius: 0.88 },
-  { collectedCount: 36, radius: 1.26 },
-  { collectedCount: 48, radius: 1.62 },
-  { collectedCount: 64, radius: 1.9 },
-  { collectedCount: 80, radius: 2.05 },
+  { collectedCount: 5, radius: 0.504 },
+  { collectedCount: 6, radius: 0.54 },
+  { collectedCount: 17, radius: 0.862 },
+  { collectedCount: 18, radius: 0.9 },
+  { collectedCount: 35, radius: 1.24 },
+  { collectedCount: 36, radius: 1.28 },
+  { collectedCount: 48, radius: 1.64 },
+  { collectedCount: 64, radius: 1.92 },
+  { collectedCount: 80, radius: 2.08 },
 ] as const
 
 function createStageGrowthMilestones(tierCounts: readonly number[]) {
@@ -138,20 +153,20 @@ function createStageGrowthMilestones(tierCounts: readonly number[]) {
   return [
     { collectedCount: 0, radius: 0.42 },
     { collectedCount: tierOne - 1, radius: 0.504 },
-    { collectedCount: tierOne, radius: 0.52 },
+    { collectedCount: tierOne, radius: 0.54 },
     { collectedCount: tierTwo - 1, radius: 0.862 },
-    { collectedCount: tierTwo, radius: 0.88 },
+    { collectedCount: tierTwo, radius: 0.9 },
     { collectedCount: tierThree - 1, radius: 1.24 },
-    { collectedCount: tierThree, radius: 1.26 },
+    { collectedCount: tierThree, radius: 1.28 },
     {
       collectedCount: Math.round(tierThree + finalGrowthSpan * 0.43),
-      radius: 1.62,
+      radius: 1.64,
     },
     {
       collectedCount: Math.round(tierThree + finalGrowthSpan * 0.72),
-      radius: 1.9,
+      radius: 1.92,
     },
-    { collectedCount: tierFour, radius: 2.05 },
+    { collectedCount: tierFour, radius: 2.08 },
   ]
 }
 

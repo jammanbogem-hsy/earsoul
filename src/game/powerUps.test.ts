@@ -8,7 +8,11 @@ import {
   createRadarTreasures,
   decayPowerUps,
   getPowerUpSpeedMultiplier,
+  getPowerUpVisualScale,
   POWER_UP_CONFIG,
+  POWER_UP_RESPAWN_DELAY_MS,
+  POWER_UPS_PER_KIND,
+  respawnPowerUpPickup,
   selectVisibleRadarTreasures,
   stepMagnetPosition,
 } from './powerUps'
@@ -16,23 +20,84 @@ import {
 describe('power-up events', () => {
   const stage = fallbackLearningPack.stages[0]
 
-  it('places two pickups for each event inside the map', () => {
+  it('renders every special item thirty percent larger', () => {
+    expect(getPowerUpVisualScale('radar')).toBeCloseTo(1.3)
+    expect(getPowerUpVisualScale('magnet')).toBeCloseTo(0.78 * 1.3)
+    expect(getPowerUpVisualScale('speed')).toBeCloseTo(0.78 * 1.3)
+  })
+
+  it('keeps three pickups for each event inside the map', () => {
     const pickups = createPowerUpPickups(stage)
 
-    expect(pickups).toHaveLength(6)
+    expect(pickups).toHaveLength(9)
     expect(pickups.map((pickup) => pickup.kind).sort()).toEqual([
       'magnet',
       'magnet',
+      'magnet',
       'radar',
       'radar',
+      'radar',
+      'speed',
       'speed',
       'speed',
     ])
-    expect(new Set(pickups.map((pickup) => pickup.id)).size).toBe(6)
+    expect(new Set(pickups.map((pickup) => pickup.id)).size).toBe(9)
     pickups.forEach((pickup) => {
       expect(Math.abs(pickup.position[0])).toBeLessThan(stage.mapSize / 2)
       expect(Math.abs(pickup.position[2])).toBeLessThan(stage.mapSize / 2)
     })
+
+    pickups.forEach((pickup, index) => {
+      pickups.slice(index + 1).forEach((other) => {
+        const minimumDistance =
+          pickup.kind === other.kind ? 12 : 6
+        expect(
+          Math.hypot(
+            pickup.position[0] - other.position[0],
+            pickup.position[2] - other.position[2],
+          ),
+        ).toBeGreaterThanOrEqual(minimumDistance)
+      })
+    })
+    expect(createPowerUpPickups(stage)).toEqual(pickups)
+  })
+
+  it('respawns a collected slot elsewhere and restores its kind to three', () => {
+    const initial = createPowerUpPickups(stage)
+    const collected = initial.find((pickup) => pickup.kind === 'radar')!
+    const now = 12_345
+    const playerPosition = {
+      x: collected.position[0],
+      z: collected.position[2],
+    }
+    const respawned = respawnPowerUpPickup(
+      stage,
+      initial,
+      collected.id,
+      playerPosition,
+      now,
+    )
+    const replacement = respawned.find(
+      (pickup) =>
+        pickup.kind === collected.kind && pickup.slot === collected.slot,
+    )!
+
+    expect(respawned).toHaveLength(POWER_UPS_PER_KIND * 3)
+    expect(respawned.filter((pickup) => pickup.kind === 'radar')).toHaveLength(
+      POWER_UPS_PER_KIND,
+    )
+    expect(respawned.some((pickup) => pickup.id === collected.id)).toBe(false)
+    expect(replacement.generation).toBe(collected.generation + 1)
+    expect(replacement.collectibleAt).toBe(
+      now + POWER_UP_RESPAWN_DELAY_MS,
+    )
+    expect(replacement.position).not.toEqual(collected.position)
+    expect(
+      Math.hypot(
+        replacement.position[0] - playerPosition.x,
+        replacement.position[2] - playerPosition.z,
+      ),
+    ).toBeGreaterThanOrEqual(Math.max(14, stage.mapSize * 0.1))
   })
 
   it('activates for the configured time and caps repeated pickups', () => {
@@ -42,6 +107,16 @@ describe('power-up events', () => {
     expect(once.magnet).toBe(POWER_UP_CONFIG.magnet.durationMs)
     expect(twice.magnet).toBe(POWER_UP_CONFIG.magnet.maximumMs)
     expect(decayPowerUps(twice, 16_000).magnet).toBe(0)
+  })
+
+  it('keeps the treasure radar active for thirty seconds', () => {
+    const once = activatePowerUp(createEmptyPowerUps(), 'radar')
+    const twice = activatePowerUp(once, 'radar')
+
+    expect(POWER_UP_CONFIG.radar.durationMs).toBe(30_000)
+    expect(once.radar).toBe(30_000)
+    expect(twice.radar).toBe(45_000)
+    expect(decayPowerUps(once, 29_000).radar).toBe(1_000)
   })
 
   it('raises only the active rolling speed by fifty percent', () => {

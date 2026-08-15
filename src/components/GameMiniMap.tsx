@@ -7,6 +7,7 @@ import { MaterialIcon } from './MaterialIcon'
 
 interface GameMiniMapProps {
   stage: GameStage
+  objects: LearningObject[]
   collectedIds: string[]
   player: PlayerMapPose
   radarTreasures?: LearningObject[]
@@ -16,6 +17,7 @@ const TIER_COLORS = ['#2FA47C', '#4169D8', '#E6A800', '#E85D4A']
 
 export function GameMiniMap({
   stage,
+  objects,
   collectedIds,
   player,
   radarTreasures = [],
@@ -110,7 +112,7 @@ export function GameMiniMap({
           ))}
         </g>
         <g className="minimap-items">
-          {stage.objects.map((item) => {
+          {objects.map((item) => {
             if (collectedSet.has(item.id)) return null
             const tier = getSizeTier(item.size)
             return (

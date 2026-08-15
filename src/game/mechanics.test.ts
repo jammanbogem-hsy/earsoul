@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { fallbackLearningPack } from '../data/learningPack'
+import {
+  fallbackLearningPack,
+  OBJECTS_PER_STAGE,
+} from '../data/learningPack'
 import { calculateBallRadius } from './session'
+import { STAGE_OBJECT_TIER_TOTALS } from './objectDistribution'
 import { createWorldPhysicsLayout } from './worldPhysics'
 import {
   canCollect,
@@ -47,6 +51,17 @@ describe('rolling collection progression', () => {
     expect(getSizeTier(0.96).level).toBe(3)
     expect(getSizeTier(1.42).level).toBe(4)
     expect(getReachableSizeTier(0.5).level).toBe(1)
+  })
+
+  it('keeps the imported running sunglasses in level two', () => {
+    const sunglasses = fallbackLearningPack.objects.filter(
+      (item) => item.modelId === 'sunglasses',
+    )
+
+    expect(sunglasses.length).toBeGreaterThan(0)
+    expect(sunglasses.every((item) => getSizeTier(item.size).level === 2)).toBe(
+      true,
+    )
   })
 
   it('paces all four size levels inside each map', () => {
@@ -149,10 +164,12 @@ describe('rolling collection progression', () => {
 
   it('offers three increasingly wide maps with many optional routes', () => {
     expect(fallbackLearningPack.stages).toHaveLength(3)
-    expect(fallbackLearningPack.objects).toHaveLength(768)
+    expect(fallbackLearningPack.objects).toHaveLength(
+      fallbackLearningPack.stages.length * OBJECTS_PER_STAGE,
+    )
 
     fallbackLearningPack.stages.forEach((stage) => {
-      expect(stage.objects).toHaveLength(256)
+      expect(stage.objects).toHaveLength(OBJECTS_PER_STAGE)
       expect(stage.objects.length - stage.objectiveCount).toBeGreaterThanOrEqual(
         20,
       )
@@ -169,7 +186,7 @@ describe('rolling collection progression', () => {
           stage.objects.filter((item) => getSizeTier(item.size).level === level)
             .length,
       )
-      expect(Math.min(...tierCounts)).toBeGreaterThanOrEqual(52)
+      expect(tierCounts).toEqual(STAGE_OBJECT_TIER_TOTALS)
       const templateVarietyByTier = [1, 2, 3, 4].map(
         (level) =>
           new Set(
@@ -204,7 +221,7 @@ describe('rolling collection progression', () => {
     fallbackLearningPack.stages.forEach((stage) => {
       const layout = createWorldPhysicsLayout(stage)
       const elevatedObjects = stage.objects.filter(
-        (item) => item.position[1] > 0.2,
+        (item) => item.position[1] > 0.03,
       )
 
       expect(elevatedObjects).toHaveLength(
@@ -270,7 +287,7 @@ describe('rolling collection progression', () => {
     })
   })
 
-  it('uses the map score goal instead of count alone', () => {
+  it('uses the object count as the primary map goal while score accumulates', () => {
     const stage = fallbackLearningPack.stages[0]
     const countOnlyIds = [...stage.objects]
       .sort((a, b) => a.points - b.points)
@@ -285,44 +302,48 @@ describe('rolling collection progression', () => {
 
     expect(countOnly.collectedCount).toBe(stage.objectiveCount)
     expect(countOnly.stageScore).toBeLessThan(stage.scoreGoal)
-    expect(countOnly.ready).toBe(false)
+    expect(countOnly.ready).toBe(true)
+    expect(countOnly.goal).toBe(stage.objectiveCount)
+    expect(countOnly.progress).toBe(1)
     expect(complete.ready).toBe(true)
     expect(complete.progress).toBe(1)
     expect(complete.completedTierLevel).toBe(4)
-    expect(complete.bonusCount).toBe(176)
+    expect(complete.bonusCount).toBe(
+      OBJECTS_PER_STAGE - stage.objectiveCount,
+    )
   })
 
-  it('completes at the score goal after entering the final size tier', () => {
+  it('does not complete from score alone before the object target', () => {
     const stage = fallbackLearningPack.stages[0]
     const finalTierEntryCount =
       stage.tierGoals[stage.tierGoals.length - 2].requiredCount
     const finalTierIds = stage.objects
       .slice(0, finalTierEntryCount)
       .map((item) => item.id)
-    const complete = getStageProgress(
+    const scoreOnly = getStageProgress(
       stage.objects,
       finalTierIds,
       stage,
       stage.scoreGoal,
     )
 
-    expect(complete.stageScore).toBe(stage.scoreGoal)
-    expect(complete.ready).toBe(true)
-    expect(complete.reachedTierLevel).toBe(4)
-    expect(complete.collectedCount).toBeLessThan(stage.objectiveCount)
-    expect(complete.progress).toBe(1)
-
-    const earlyCombo = getStageProgress(
-      stage.objects,
-      stage.objects
-        .slice(0, finalTierEntryCount - 1)
-        .map((item) => item.id),
-      stage,
-      stage.scoreGoal,
+    expect(scoreOnly.stageScore).toBe(stage.scoreGoal)
+    expect(scoreOnly.ready).toBe(false)
+    expect(scoreOnly.reachedTierLevel).toBe(4)
+    expect(scoreOnly.collectedCount).toBeLessThan(stage.objectiveCount)
+    expect(scoreOnly.progress).toBe(
+      scoreOnly.collectedCount / stage.objectiveCount,
     )
-    expect(earlyCombo.ready).toBe(false)
-    expect(earlyCombo.reachedTierLevel).toBe(3)
-    expect(earlyCombo.progress).toBeLessThan(1)
+
+    const countComplete = getStageProgress(
+      stage.objects,
+      stage.objects.slice(0, stage.objectiveCount).map((item) => item.id),
+      stage,
+      0,
+    )
+    expect(countComplete.ready).toBe(true)
+    expect(countComplete.stageScore).toBe(0)
+    expect(countComplete.progress).toBe(1)
   })
 
   it('keeps the legacy count progress call compatible', () => {
@@ -332,26 +353,27 @@ describe('rolling collection progression', () => {
     expect(getStageProgress(stage.objects, ids, 2).ready).toBe(true)
   })
 
-  it('unlocks the last map only after the previous score and tier goal', () => {
+  it('unlocks the last map from the previous object target, not score', () => {
     const previous = fallbackLearningPack.stages[1]
     const last = fallbackLearningPack.stages[2]
-    const countOnlyIds = [...previous.objects]
-      .sort((a, b) => a.points - b.points)
+    const almostCompleteIds = previous.objects
+      .slice(0, previous.objectiveCount - 1)
+      .map((item) => item.id)
+    const completeIds = previous.objects
       .slice(0, previous.objectiveCount)
       .map((item) => item.id)
-    const completeIds = previous.objects.map((item) => item.id)
 
     expect(
-      isStageUnlocked(last, fallbackLearningPack.stages, countOnlyIds),
+      isStageUnlocked(last, fallbackLearningPack.stages, almostCompleteIds),
     ).toBe(false)
     expect(
       isStageUnlocked(
         last,
         fallbackLearningPack.stages,
-        countOnlyIds,
+        almostCompleteIds,
         { [previous.id]: previous.scoreGoal },
       ),
-    ).toBe(true)
+    ).toBe(false)
     expect(
       isStageUnlocked(last, fallbackLearningPack.stages, completeIds),
     ).toBe(true)

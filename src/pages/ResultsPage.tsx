@@ -57,16 +57,16 @@ export function ResultsPage() {
 
         <dl className="results-stats">
           <div>
+            <dt>수집 아이템</dt>
+            <dd>{session.collectedIds.length}개</dd>
+          </div>
+          <div>
             <dt>최종 점수</dt>
             <dd>{session.score.toLocaleString()}점</dd>
           </div>
           <div>
             <dt>최고 콤보</dt>
             <dd>×{session.bestCombo}</dd>
-          </div>
-          <div>
-            <dt>수집 아이템</dt>
-            <dd>{session.collectedIds.length}개</dd>
           </div>
           <div>
             <dt>도달한 맵</dt>

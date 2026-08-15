@@ -14,8 +14,39 @@ export interface RollingMotionStep extends RollingMotionState {
 const damp = (current: number, target: number, smoothing: number, delta: number) =>
   target + (current - target) * Math.exp(-smoothing * delta)
 
+const MIN_GROWTH_RADIUS = 0.42
+const MAX_GROWTH_RADIUS = 2.08
+const MIN_ROLLING_TOP_SPEED = 4.85
+const MAX_ROLLING_TOP_SPEED = 5.65
+export const MAX_COMPOSITE_ROLLING_SPEED = 7.8
+
+function getGrowthProgress(ballRadius: number): number {
+  return Math.min(
+    1,
+    Math.max(
+      0,
+      (ballRadius - MIN_GROWTH_RADIUS) /
+        (MAX_GROWTH_RADIUS - MIN_GROWTH_RADIUS),
+    ),
+  )
+}
+
 export function getRollingTopSpeed(ballRadius: number): number {
-  return Math.max(3.2, 5.4 - ballRadius * 0.65)
+  const growthProgress = getGrowthProgress(ballRadius)
+  return (
+    MIN_ROLLING_TOP_SPEED +
+    (MAX_ROLLING_TOP_SPEED - MIN_ROLLING_TOP_SPEED) * growthProgress
+  )
+}
+
+export function getCappedRollingSpeedMultiplier(
+  ballRadius: number,
+  requestedMultiplier: number,
+): number {
+  return Math.min(
+    Math.max(0, requestedMultiplier),
+    MAX_COMPOSITE_ROLLING_SPEED / getRollingTopSpeed(ballRadius),
+  )
 }
 
 export function stepRollingMotion(
@@ -33,7 +64,9 @@ export function stepRollingMotion(
   const topSpeed = getRollingTopSpeed(ballRadius)
   const inputStrength = Math.min(1, inputLength)
   const targetSpeed = hasInput ? topSpeed * inputStrength : 0
-  const smoothing = hasInput ? 9.5 : 6.5
+  const smoothing = hasInput
+    ? 10 - getGrowthProgress(ballRadius) * 1.2
+    : 6.5
   let velocityX = damp(
     current.velocityX,
     normalizedX * targetSpeed,

@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { getRollingTopSpeed, stepRollingMotion } from './rollingMotion'
+import {
+  getCappedRollingSpeedMultiplier,
+  getRollingTopSpeed,
+  MAX_COMPOSITE_ROLLING_SPEED,
+  stepRollingMotion,
+} from './rollingMotion'
 
 describe('rolling motion', () => {
   it('accelerates smoothly instead of teleporting to top speed', () => {
@@ -41,8 +46,23 @@ describe('rolling motion', () => {
     expect(longFrame.distance).toBeLessThan(0.2)
   })
 
-  it('slows larger learning stars while keeping them controllable', () => {
-    expect(getRollingTopSpeed(2)).toBeLessThan(getRollingTopSpeed(0.5))
-    expect(getRollingTopSpeed(20)).toBe(3.2)
+  it('gently increases speed as the ball grows and caps both ends', () => {
+    expect(getRollingTopSpeed(0.1)).toBe(4.85)
+    expect(getRollingTopSpeed(0.42)).toBe(4.85)
+    expect(getRollingTopSpeed(0.9)).toBeGreaterThan(
+      getRollingTopSpeed(0.42),
+    )
+    expect(getRollingTopSpeed(2.08)).toBe(5.65)
+    expect(getRollingTopSpeed(20)).toBe(5.65)
+  })
+
+  it('caps combined roads and power-up boosts at a controllable speed', () => {
+    const radius = 2.08
+    const multiplier = getCappedRollingSpeedMultiplier(radius, 2.2)
+
+    expect(getRollingTopSpeed(radius) * multiplier).toBeCloseTo(
+      MAX_COMPOSITE_ROLLING_SPEED,
+    )
+    expect(getCappedRollingSpeedMultiplier(radius, 1.1)).toBe(1.1)
   })
 })

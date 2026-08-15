@@ -33,13 +33,17 @@ import {
 } from '../game/combo'
 import { getCollectedObjectsInOrder } from '../game/collectionOrder'
 import {
+  getCollectionAnnouncementBody,
+  getCollectionAnnouncementTitle,
+  getItemDisplayLabel,
+} from '../game/itemPresentation'
+import {
   advanceSessionStage,
   calculateBallRadius,
   clearSession,
   finishSession,
   readSession,
   recordCollection,
-  recordPowerUpCollection,
 } from '../game/session'
 import {
   activatePowerUp,
@@ -49,6 +53,7 @@ import {
   decayPowerUps,
   hasActivePowerUp,
   POWER_UP_CONFIG,
+  respawnPowerUpPickup,
   selectVisibleRadarTreasures,
   type ActivePowerUps,
   type PowerUpKind,
@@ -59,7 +64,18 @@ import {
   getSizeTier,
   getStageProgress,
 } from '../game/mechanics'
-import type { GameSession, LearningObject, LearningPack } from '../types'
+import { selectActiveStageObjects } from '../game/objectDistribution'
+import {
+  createPolarBearDroppedObjects,
+  createRunnerDroppedObjects,
+} from '../game/polarBearEncounter'
+import type { SurfaceKind } from '../game/worldPhysics'
+import type {
+  AttachmentNormal,
+  GameSession,
+  LearningObject,
+  LearningPack,
+} from '../types'
 import { Redirect, useAppNavigate } from '../navigation'
 
 let chimeContext: AudioContext | null = null
@@ -125,7 +141,7 @@ const coachSteps: {
   {
     icon: 'play_arrow',
     title: '바라보는 방향을 따라 굴려요',
-    body: 'W·S(ㅈ·ㄴ)는 앞뒤, A·D(ㅁ·ㅇ)는 현재 방향의 좌우예요. 마우스 오른쪽 버튼(또는 왼쪽 버튼)을 누른 채 드래그해 시점을 돌리고 휠로 확대해요. 미니맵의 화살표 승강기를 밟으면 각 2층으로 올라갈 수 있어요.',
+    body: 'W·S(ㅈ·ㄴ)는 앞뒤, A·D(ㅁ·ㅇ)는 현재 방향의 좌우예요. 마우스를 누른 채 빠르게 드래그해 시점을 돌리고, 휠이나 태블릿의 두 손가락으로 화면을 확대·축소해요. 미니맵의 화살표 승강기를 밟으면 각 2층으로 올라갈 수 있어요.',
   },
 ]
 
@@ -195,6 +211,9 @@ export function GamePage() {
   })
   const scoreFeedbackId = useRef(0)
   const promptedStageIds = useRef(new Set<string>())
+  const polarBearHitCount = useRef(0)
+  const runnerHitCount = useRef(0)
+  const hazardImmunityUntil = useRef(0)
   const coachSeen = sessionStorage.getItem('earsoul-coach-v4-seen') === 'true'
   const [coachStep, setCoachStep] = useState(coachSeen ? -1 : 0)
   const reducedMotion =
@@ -321,10 +340,20 @@ export function GamePage() {
     Math.max(0, pack.stages.length - 1),
   )
   const stage = pack.stages[stageIndex] ?? fallbackLearningPack.stages[0]
-  const powerUpPickups = useMemo(
+  const initialPowerUpPickups = useMemo(
     () => createPowerUpPickups(stage),
     [stage],
   )
+  const [respawnedPowerUpsByStage, setRespawnedPowerUpsByStage] = useState<
+    Record<string, PowerUpPickup[]>
+  >({})
+  const [droppedObjectsByStage, setDroppedObjectsByStage] = useState<
+    Record<string, LearningObject[]>
+  >({})
+  const powerUpPickups =
+    respawnedPowerUpsByStage[stage.id] ?? initialPowerUpPickups
+  const droppedObjects = droppedObjectsByStage[stage.id] ?? []
+
   const radarTreasurePool = useMemo(
     () => createRadarTreasures(stage),
     [stage],
@@ -340,11 +369,22 @@ export function GamePage() {
     stage,
     session.stageScores?.[stage.id],
   )
-  const stageCollectedCount = stageProgress.collectedCount
-  const attachedObjects = getCollectedObjectsInOrder(
+  const previewTierFour =
+    import.meta.env.DEV &&
+    new URLSearchParams(window.location.search).get('preview') === 'tier4'
+  const stageCollectedCount = previewTierFour
+    ? stage.objectiveCount
+    : stageProgress.collectedCount
+  const droppedObjectIds = new Set(droppedObjects.map((item) => item.id))
+  const collectedAttachedObjects = getCollectedObjectsInOrder(
     stage.objects,
     session.collectedIds,
-  )
+  ).filter((item) => !droppedObjectIds.has(item.id))
+  const attachedObjects = previewTierFour
+    ? stage.objects
+        .filter((item) => getSizeTier(item.size).level === 4)
+        .slice(0, 28)
+    : collectedAttachedObjects
   const stageReady = stageProgress.ready
   const bonusCount = stageProgress.bonusCount
   const ballRadius = calculateBallRadius(
@@ -353,12 +393,14 @@ export function GamePage() {
   )
   const progress = stageProgress.progress
   const reachableTier = getReachableSizeTier(ballRadius)
+  const activeStageObjects = selectActiveStageObjects(
+    stage.objects,
+    reachableTier.level,
+  )
   const nextTierGoal =
     stageProgress.nextTierGoal ??
     stage.tierGoals[stage.tierGoals.length - 1]
-  const availablePowerUpPickups = powerUpPickups.filter(
-    (pickup) => !session.collectedPowerUpIds.includes(pickup.id),
-  )
+  const availablePowerUpPickups = powerUpPickups
   const visibleRadarTreasures =
     activePowerUps.radar > 0
       ? selectVisibleRadarTreasures(
@@ -368,7 +410,10 @@ export function GamePage() {
         )
       : []
 
-  const handleCollect = (item: LearningObject) => {
+  const handleCollect = (
+    item: LearningObject,
+    attachmentNormal: AttachmentNormal,
+  ) => {
     const current = sessionRef.current
     if (!current || current.collectedIds.includes(item.id)) return
 
@@ -377,9 +422,13 @@ export function GamePage() {
     const { multiplier } = comboStep
     const awardedPoints = item.points * multiplier
     const isRadarTreasure = item.modelId === 'radar-treasure'
-    const next = recordCollection(current, item, {
+    const displayLabel = getItemDisplayLabel(item)
+    const presentedItem =
+      displayLabel === item.label ? item : { ...item, label: displayLabel }
+    const next = recordCollection(current, presentedItem, {
       multiplier,
       combo: multiplier,
+      attachmentNormal,
     })
 
     comboStateRef.current = {
@@ -417,23 +466,39 @@ export function GamePage() {
       title:
         isRadarTreasure
           ? `무지개 보물 +${awardedPoints}`
-          : multiplier > 1
-            ? `x${multiplier} 콤보 · ${item.label} +${awardedPoints}`
-            : `${item.label} +${awardedPoints}`,
-      body: item.fact,
+          : getCollectionAnnouncementTitle(
+              presentedItem,
+              awardedPoints,
+              multiplier,
+            ),
+      body: getCollectionAnnouncementBody(presentedItem),
       tone: 'learned',
     })
   }
 
   const handlePowerUpCollect = (pickup: PowerUpPickup) => {
     const current = sessionRef.current
-    if (!current || current.collectedPowerUpIds.includes(pickup.id)) return
-    const next = recordPowerUpCollection(current, pickup.id)
+    if (
+      !current ||
+      !powerUpPickups.some(
+        (activePickup) => activePickup.id === pickup.id,
+      )
+    ) {
+      return
+    }
     const config = POWER_UP_CONFIG[pickup.kind]
+    const nextPickups = respawnPowerUpPickup(
+      stage,
+      powerUpPickups,
+      pickup.id,
+      playerPose,
+    )
 
     setActivePowerUps((active) => activatePowerUp(active, pickup.kind))
-    sessionRef.current = next
-    setSession(next)
+    setRespawnedPowerUpsByStage((currentPickups) => ({
+      ...currentPickups,
+      [stage.id]: nextPickups,
+    }))
     playChime(soundEnabled)
     showToast(
       {
@@ -442,19 +507,127 @@ export function GamePage() {
           pickup.kind === 'magnet'
             ? '10초 동안 현재 크기로 모을 수 있는 가까운 물건을 끌어당겨요.'
             : pickup.kind === 'radar'
-              ? '12초 동안 무지개 고득점 보물이 나타나고 미니맵에 표시돼요.'
-              : '10초 동안 구르는 최고 속도가 50% 빨라져요.',
+              ? '30초 동안 무지개 고득점 보물이 나타나고 미니맵에 표시돼요.'
+              : '10초 동안 구르는 최고 속도가 최대 50% 빨라져요.',
         tone: 'learned',
       },
       3000,
     )
   }
 
-  const handleTooLarge = (item: LearningObject) => {
-    const itemTier = getSizeTier(item.size)
+  const handlePolarBearHit = (position: {
+    x: number
+    z: number
+  }): boolean => {
+    const now = Date.now()
+    if (now < hazardImmunityUntil.current) return false
+    hazardImmunityUntil.current = now + 2_500
+
+    polarBearHitCount.current += 1
+    const newlyDropped = createPolarBearDroppedObjects(
+      stage,
+      attachedObjects,
+      droppedObjects,
+      { x: playerPose.x, z: playerPose.z },
+      polarBearHitCount.current,
+      undefined,
+      position,
+    )
+    if (newlyDropped.length === 0) {
+      showToast(
+        {
+          title: '무서운 북극곰과 충돌!',
+          body: '아직 공에 붙은 물건이 없어 떨어진 것은 없어요.',
+          tone: 'wait',
+        },
+        2600,
+      )
+      return true
+    }
+
+    setDroppedObjectsByStage((current) => ({
+      ...current,
+      [stage.id]: [...(current[stage.id] ?? []), ...newlyDropped],
+    }))
     showToast(
       {
-        title: `아직은 인사만 · ${item.label}`,
+        title: '무서운 북극곰과 충돌!',
+        body: `수집물 ${newlyDropped.length}개를 떨어뜨렸어요. 주변의 주황색 물건을 다시 모아보세요.`,
+        tone: 'wait',
+      },
+      3000,
+    )
+    return true
+  }
+
+  const handleRunnerHit = (
+    position: { x: number; z: number },
+    runnerId: string,
+  ): boolean => {
+    const now = Date.now()
+    if (now < hazardImmunityUntil.current) return false
+    hazardImmunityUntil.current = now + 2_500
+
+    runnerHitCount.current += 1
+    const newlyDropped = createRunnerDroppedObjects(
+      stage,
+      attachedObjects,
+      droppedObjects,
+      { x: playerPose.x, z: playerPose.z },
+      runnerHitCount.current,
+      runnerId,
+      position,
+    )
+    if (newlyDropped.length === 0) {
+      showToast(
+        {
+          title: '러닝크루와 충돌!',
+          body: '아직 공에 붙은 물건이 없어 떨어진 것은 없어요.',
+          tone: 'wait',
+        },
+        2400,
+      )
+      return true
+    }
+
+    setDroppedObjectsByStage((current) => ({
+      ...current,
+      [stage.id]: [...(current[stage.id] ?? []), ...newlyDropped],
+    }))
+    showToast(
+      {
+        title: '러닝크루와 충돌!',
+        body: `수집물 ${newlyDropped.length}개를 떨어뜨렸어요. 주변의 주황색 물건을 다시 모아보세요.`,
+        tone: 'wait',
+      },
+      2800,
+    )
+    return true
+  }
+
+  const handleRecoverDropped = (item: LearningObject) => {
+    setDroppedObjectsByStage((current) => ({
+      ...current,
+      [stage.id]: (current[stage.id] ?? []).filter(
+        (dropped) => dropped.id !== item.id,
+      ),
+    }))
+    showToast(
+      {
+        title: `${getItemDisplayLabel(item)} 되찾기`,
+        body: `떨어진 물건을 다시 러닝볼에 붙였어요.`,
+        tone: 'learned',
+      },
+      1800,
+    )
+  }
+
+  const handleTooLarge = (item: LearningObject) => {
+    const itemTier = getSizeTier(item.size)
+    const displayLabel = getItemDisplayLabel(item)
+    showToast(
+      {
+        title: `아직은 인사만 · ${displayLabel}`,
         body: `${itemTier.level}단계 ${itemTier.label}이에요. 러닝볼을 조금 더 키우면 붙일 수 있어요.`,
         tone: 'wait',
       },
@@ -466,7 +639,7 @@ export function GamePage() {
     type: 'collision' | 'boost' | 'slow' | 'elevator'
     label: string
     bounced?: boolean
-    surfaceKind?: 'grass' | 'water'
+    surfaceKind?: SurfaceKind
   }) => {
     if (feedback.type === 'boost') {
       showToast(
@@ -486,7 +659,9 @@ export function GamePage() {
           title: `${feedback.label} · 천천히 구간`,
           body: feedback.surfaceKind === 'water'
             ? '물결이 발밑에서 퍼지고 물방울이 튀어요. 얕은 물에서는 천천히 방향을 잡아요.'
-            : '잔디에서는 속도가 줄어요. 방향을 잡고 천천히 통과해요.',
+            : feedback.surfaceKind === 'mud'
+              ? '진흙에 바퀴가 푹 빠져 속도가 크게 줄어요. 힘을 주어 천천히 빠져나와요.'
+              : '잔디에서는 속도가 줄어요. 방향을 잡고 천천히 통과해요.',
           tone: 'wait',
         },
         1600,
@@ -578,7 +753,10 @@ export function GamePage() {
         <GameCanvas
           key={stage.id}
           stage={stage}
+          stageObjects={activeStageObjects}
           attachedObjects={attachedObjects}
+          droppedObjects={droppedObjects}
+          attachmentNormals={session.attachmentNormals}
           collectedIds={session.collectedIds}
           ballRadius={ballRadius}
           paused={isGamePaused}
@@ -590,6 +768,9 @@ export function GamePage() {
           onPlayerPosition={handlePlayerPosition}
           onCollect={handleCollect}
           onPowerUpCollect={handlePowerUpCollect}
+          onRecoverDropped={handleRecoverDropped}
+          onRunnerHit={handleRunnerHit}
+          onPolarBearHit={handlePolarBearHit}
           onTooLarge={handleTooLarge}
           onPhysicsFeedback={handlePhysicsFeedback}
         />
@@ -600,7 +781,7 @@ export function GamePage() {
           className="game-size-status"
           data-tier={reachableTier.level}
           style={{ '--tier-color': reachableTier.color } as CSSProperties}
-          aria-label={`${pack.stages.length}개 중 ${stageIndex + 1}번째 맵 ${stage.title}, ${reachableTier.level}단계 크기, 맵 점수 ${stageProgress.stageScore}점, 목표 ${stage.scoreGoal}점`}
+          aria-label={`${pack.stages.length}개 중 ${stageIndex + 1}번째 맵 ${stage.title}, ${reachableTier.level}단계 크기, ${stageCollectedCount}개 수집, 목표 ${stage.objectiveCount}개`}
         >
           <span
             className="game-size-status__level"
@@ -613,20 +794,23 @@ export function GamePage() {
             <span>
               맵 {stageIndex + 1}/{pack.stages.length} ·{' '}
               {stageReady
-                ? '점수 목표 완료'
-                : `다음 목표 ${nextTierGoal.level}단계`}
+                ? '수집 목표 완료'
+                : `다음 크기까지 ${Math.max(
+                    0,
+                    nextTierGoal.requiredCount - stageCollectedCount,
+                  )}개`}
             </span>
             <strong>{stage.title}</strong>
             <M3LinearProgress
               className="game-size-progress"
-              aria-label="현재 맵 성장과 점수 목표"
-              aria-valuetext={`${stage.objectiveCount}개 중 ${stageCollectedCount}개, ${stage.scoreGoal}점 중 ${stageProgress.stageScore}점을 모았어요`}
+              aria-label="현재 맵 오브젝트 수집 목표"
+              aria-valuetext={`${stage.objectiveCount}개 중 ${stageCollectedCount}개를 모았어요`}
               value={progress}
             />
           </div>
           <span className="game-size-status__count" aria-hidden="true">
-            <strong>{stageProgress.stageScore.toLocaleString()}</strong>
-            <small>/{stage.scoreGoal.toLocaleString()}점</small>
+            <strong>{stageCollectedCount}</strong>
+            <small>/{stage.objectiveCount}개</small>
           </span>
           <ol className="game-tier-legend" aria-label="현재 맵의 네 크기 단계">
             {stage.tierGoals.map((tierGoal) => {
@@ -646,7 +830,7 @@ export function GamePage() {
                     .filter(Boolean)
                     .join(' ')}
                   aria-current={isCurrent ? 'step' : undefined}
-                  aria-label={`${tierGoal.level}단계, ${tierGoal.requiredCount}개와 ${tierGoal.requiredScore}점 ${
+                  aria-label={`${tierGoal.level}단계, ${tierGoal.requiredCount}개 수집 ${
                     tierStatus?.ready ? '달성' : '목표'
                   }`}
                 >
@@ -664,7 +848,7 @@ export function GamePage() {
           <div
             className="game-score-stack"
             role="group"
-            aria-label={`누적 점수 ${session.score.toLocaleString()}점, 현재 맵 수집 ${stageCollectedCount}개, 최대 성장 목표 ${stage.objectiveCount}개`}
+            aria-label={`수집하며 누적한 점수 ${session.score.toLocaleString()}점`}
           >
             <div
               className={`game-score ${
@@ -673,7 +857,7 @@ export function GamePage() {
               aria-label={`누적 점수 ${session.score.toLocaleString()}점`}
             >
               <MaterialIcon name="star" />
-              <span>누적 점수</span>
+              <span>점수</span>
               <strong>{session.score.toLocaleString()}</strong>
               {scoreFeedback && (
                 <span
@@ -686,29 +870,6 @@ export function GamePage() {
                   +{scoreFeedback.points}
                 </span>
               )}
-            </div>
-            <div
-              className={`game-collection ${
-                scoreFeedback ? 'is-increasing' : ''
-              } ${
-                stageCollectedCount >= stage.objectiveCount
-                  ? 'is-complete'
-                  : ''
-              }`}
-              aria-label={`현재 맵 수집 ${stageCollectedCount}개, 최대 성장 목표 ${stage.objectiveCount}개`}
-            >
-              <MaterialIcon
-                name={
-                  stageCollectedCount >= stage.objectiveCount
-                    ? 'check'
-                    : 'adjust'
-                }
-              />
-              <span>맵 수집</span>
-              <strong>
-                {stageCollectedCount}
-                <small>/{stage.objectiveCount}개</small>
-              </strong>
             </div>
             <div
               className={`game-combo ${
@@ -766,7 +927,7 @@ export function GamePage() {
           }}
         >
           {stageIndex < pack.stages.length - 1
-            ? '점수 목표 달성 · 다음 맵'
+            ? '수집 목표 달성 · 다음 맵'
             : '기록 완성하기'}
         </M3Button>
       )}
@@ -783,7 +944,7 @@ export function GamePage() {
           <MaterialIcon name="mouse" />
           <small>드래그 회전(우클릭 권장)</small>
           <MaterialIcon name="zoom_in" />
-          <small>휠 줌</small>
+          <small>휠·핀치 줌</small>
         </span>
       </div>
 
@@ -793,6 +954,7 @@ export function GamePage() {
 
       <GameMiniMap
         stage={stage}
+        objects={activeStageObjects}
         collectedIds={session.collectedIds}
         player={playerPose}
         radarTreasures={visibleRadarTreasures}
@@ -821,8 +983,8 @@ export function GamePage() {
             {toast
               ? toast.title
               : stageReady
-                ? `${stage.title} 점수 목표를 달성했어요`
-                : `${reachableTier.level}단계 크기 · ${stageProgress.stageScore.toLocaleString()}/${stage.scoreGoal.toLocaleString()}점`}
+                ? `${stage.title} 수집 목표를 달성했어요`
+                : `${stageCollectedCount}/${stage.objectiveCount}개 수집 · ${reachableTier.level}단계 크기`}
           </strong>
           <p>
             {toast
@@ -831,13 +993,10 @@ export function GamePage() {
                 ? bonusCount > 0
                   ? `보너스 ${bonusCount}개 · 더 모으거나 다음 맵으로 갈 수 있어요.`
                   : '다음 맵으로 갈 수 있어요. 더 모으는 것은 선택이에요.'
-                : `${nextTierGoal.label} · ${Math.max(
+                : `${nextTierGoal.label}까지 ${Math.max(
                     0,
                     nextTierGoal.requiredCount - stageCollectedCount,
-                  )}개와 ${Math.max(
-                    0,
-                    nextTierGoal.requiredScore - stageProgress.stageScore,
-                  ).toLocaleString()}점만 더 모아요.`}
+                  )}개만 더 모아요. 점수는 자연스럽게 누적돼요.`}
           </p>
         </div>
       </div>
@@ -896,22 +1055,21 @@ export function GamePage() {
               />
             </span>
             <p className="section-kicker">
-              맵 {stageIndex + 1}/{pack.stages.length} 점수 목표 달성
+              맵 {stageIndex + 1}/{pack.stages.length} 수집 목표 달성
             </p>
             <h2 id="stage-complete-title">{stage.title} 완주!</h2>
             <p>
-              크기 4단계와 목표 {stage.scoreGoal.toLocaleString()}점을 모두
-              달성했어요.
+              목표 오브젝트 {stage.objectiveCount}개를 모두 수집했어요.
               {bonusCount > 0 && ` 보너스 아이템도 ${bonusCount}개 더 찾았어요.`}
             </p>
             <div className="stage-complete-card__stats">
               <span>
-                <MaterialIcon name="star" />
-                맵 {stageProgress.stageScore.toLocaleString()}점
+                <MaterialIcon name="adjust" />
+                {stageCollectedCount}개 수집
               </span>
               <span>
-                <MaterialIcon name="progress_activity" />
-                {stageCollectedCount}개 · 최고 x{session.bestCombo}
+                <MaterialIcon name="star" />
+                {stageProgress.stageScore.toLocaleString()}점 · 최고 x{session.bestCombo}
               </span>
             </div>
             <M3Button

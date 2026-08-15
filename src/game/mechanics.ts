@@ -137,19 +137,13 @@ export function getStageProgress(
       1,
       collectedCount / Math.max(1, tierGoal.requiredCount),
     )
-    const scoreProgress = Math.min(
-      1,
-      stageScore / Math.max(1, tierGoal.requiredScore),
-    )
 
     return {
       ...tierGoal,
       collectedCount,
       score: stageScore,
-      ready:
-        collectedCount >= tierGoal.requiredCount &&
-        stageScore >= tierGoal.requiredScore,
-      progress: Math.min(countProgress, scoreProgress),
+      ready: collectedCount >= tierGoal.requiredCount,
+      progress: countProgress,
     }
   })
   const completedTierLevel =
@@ -157,13 +151,6 @@ export function getStageProgress(
   const nextTierGoal = tierProgress.find((tier) => !tier.ready) ?? null
   const finalTierGoal = tierGoals[tierGoals.length - 1]
   const completionCount = finalTierGoal?.requiredCount ?? goal
-  const finalTierEntryGoal =
-    tierGoals[Math.max(0, tierGoals.length - 2)] ?? finalTierGoal
-  const finalTierEntryProgress = Math.min(
-    1,
-    collectedCount /
-      Math.max(1, finalTierEntryGoal?.requiredCount ?? completionCount),
-  )
   const reachedTierLevel = isLegacyGoal
     ? 0
     : getReachableSizeTier(
@@ -172,14 +159,11 @@ export function getStageProgress(
           tierGoals.map((tier) => tier.requiredCount),
         ),
       ).level
-  const ready = isLegacyGoal
-    ? collectedCount >= goal
-    : stageScore >= scoreGoal &&
-      reachedTierLevel >= (finalTierGoal?.level ?? 1)
+  const ready = collectedCount >= goal
 
   return {
     collectedCount,
-    goal: isLegacyGoal ? goal : scoreGoal,
+    goal,
     objectiveCount: goal,
     stageScore,
     scoreGoal,
@@ -190,14 +174,7 @@ export function getStageProgress(
     nextTierGoal,
     bonusCount: Math.max(0, collectedCount - completionCount),
     ready,
-    progress: isLegacyGoal
-      ? Math.min(1, collectedCount / goal)
-      : ready
-        ? 1
-        : Math.min(
-            finalTierEntryProgress,
-            Math.min(1, stageScore / scoreGoal),
-          ),
+    progress: Math.min(1, collectedCount / goal),
   }
 }
 
@@ -224,7 +201,6 @@ export function isStageUnlocked(
 
   return (
     progress.ready &&
-    progress.stageScore >= requirement.requiredScore &&
     progress.reachedTierLevel >= requirement.requiredTierLevel
   )
 }

@@ -1,4 +1,4 @@
-import { Html } from '@react-three/drei'
+import { Clone, Html, useGLTF } from '@react-three/drei'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import {
   BallCollider,
@@ -14,9 +14,9 @@ import {
   memo,
   Suspense,
   useEffect,
-  useLayoutEffect,
   useMemo,
   useRef,
+  useState,
   type CSSProperties,
   type MutableRefObject,
 } from 'react'
@@ -34,7 +34,19 @@ import {
   Vector3,
 } from 'three'
 import type { ControlVector } from './TouchJoystick'
-import type { GameStage, LearningObject } from '../types'
+import type {
+  AttachmentNormal,
+  GameStage,
+  LearningObject,
+} from '../types'
+import {
+  getArchitectureCameraDistanceOffset,
+  getArchitectureCameraFramingLift,
+  getArchitectureCameraMinimumDistance,
+  getArchitectureScaleClass,
+  getTierFourCameraDistanceOffset,
+  getWorldObjectVisualScale,
+} from '../game/collectibleScale'
 import {
   canCollect,
   getObjectVisualScale,
@@ -46,10 +58,17 @@ import {
   stepRelativeDrive,
   type DriveControl,
 } from '../game/input'
+import { getItemDisplayLabel } from '../game/itemPresentation'
+import { getLevelUpBadgeHeightMultiplier } from '../game/levelUpAssets'
 import {
+  getCappedRollingSpeedMultiplier,
   getRollingTopSpeed,
   stepRollingMotion,
 } from '../game/rollingMotion'
+import {
+  createHazardKnockback,
+  type HazardKind,
+} from '../game/hazardImpact'
 import {
   getPlayerColliderRadius,
   getPlayerSpawnTranslation,
@@ -70,23 +89,62 @@ import {
   type WorldPhysicsLayout,
 } from '../game/worldPhysics'
 import {
+  CAMERA_DRAG_PITCH_SENSITIVITY,
+  CAMERA_DRAG_YAW_SENSITIVITY,
+  getPinchZoomTarget,
+  getWheelZoomTarget,
+} from '../game/cameraControl'
+import {
   canMagnetAttract,
   getPowerUpSpeedMultiplier,
+  getPowerUpVisualScale,
   isPowerUpTouchingBall,
+  MAGNET_PULL_RADIUS,
+  POWER_UP_RESPAWN_DELAY_MS,
   stepMagnetPosition,
   type ActivePowerUps,
   type PowerUpPickup,
 } from '../game/powerUps'
+import {
+  getRecommendedRenderQuality,
+  readDeviceRenderProfile,
+  selectNearbyObjects,
+  type RenderQuality,
+} from '../game/renderQuality'
 import { MaterialIcon } from './MaterialIcon'
 import {
   AttachedObjectMesh,
   GardenSetDressing,
   LearningObjectMesh,
+  NaturalObstacleModels,
 } from './game/GameSceneAssets'
+import { RollingCrewCharacter } from './game/RollingCrewCharacter'
+import { RoamingRunnerObstacles } from './game/RoamingRunnerObstacles'
+import coneRedV1Url from '../assets/game/cone_red_v1.glb?url'
+import coneRedV2Url from '../assets/game/cone_red_v2.glb?url'
+import coneRedV3Url from '../assets/game/cone_red_v3.glb?url'
+import shippingBoxUrl from '../assets/game/shipping box 3d model.glb?url'
+import blueTrashCanUrl from '../assets/game/blue trash can 3d model.glb?url'
+import treasureRadarUrl from '../assets/game/보물레이더.glb?url'
+import speedBootUrl from '../assets/game/신속의장화.glb?url'
+import magnetBatteryUrl from '../assets/game/자석 배터리.glb?url'
+import rollingBallUrl from '../assets/game/공 업뎃.glb?url'
+
+const POWER_UP_RAINBOW = [
+  '#FF5B5B',
+  '#FF9F43',
+  '#FFE45E',
+  '#45D483',
+  '#4DA3FF',
+  '#A66BFF',
+] as const
 
 interface GameCanvasProps {
   stage: GameStage
+  stageObjects: LearningObject[]
   attachedObjects: LearningObject[]
+  droppedObjects: LearningObject[]
+  attachmentNormals: Record<string, AttachmentNormal>
   collectedIds: string[]
   ballRadius: number
   paused: boolean
@@ -96,8 +154,17 @@ interface GameCanvasProps {
   powerUpPickups: PowerUpPickup[]
   radarTreasures: LearningObject[]
   onPlayerPosition: (pose: PlayerMapPose) => void
-  onCollect: (item: LearningObject) => void
+  onCollect: (
+    item: LearningObject,
+    attachmentNormal: AttachmentNormal,
+  ) => void
   onPowerUpCollect: (pickup: PowerUpPickup) => void
+  onRecoverDropped: (item: LearningObject) => void
+  onRunnerHit: (
+    position: { x: number; z: number },
+    runnerId: string,
+  ) => boolean
+  onPolarBearHit: (position: { x: number; z: number }) => boolean
   onTooLarge: (item: LearningObject) => void
   onPhysicsFeedback: (feedback: {
     type: 'collision' | 'boost' | 'slow' | 'elevator'
@@ -105,6 +172,37 @@ interface GameCanvasProps {
     bounced?: boolean
     surfaceKind?: SurfaceKind
   }) => void
+}
+
+function getLocalAttachmentNormal(
+  ballPosition: { x: number; y: number; z: number },
+  item: Pick<LearningObject, 'position' | 'size'>,
+  orbRotation: Quaternion | undefined,
+  fallbackDirection: Pick<MotionState, 'x' | 'z'>,
+): AttachmentNormal {
+  const normal = new Vector3(
+    item.position[0] - ballPosition.x,
+    item.position[1] +
+      getObjectVisualScale(item.size) * 0.58 -
+      ballPosition.y,
+    item.position[2] - ballPosition.z,
+  )
+
+  if (normal.lengthSq() < 0.000001) {
+    normal.set(fallbackDirection.x, 0, fallbackDirection.z)
+  }
+  if (normal.lengthSq() < 0.000001) normal.set(0, 1, 0)
+  normal.normalize()
+
+  if (orbRotation) {
+    normal.applyQuaternion(orbRotation.clone().invert()).normalize()
+  }
+
+  return [
+    Number(normal.x.toFixed(6)),
+    Number(normal.y.toFixed(6)),
+    Number(normal.z.toFixed(6)),
+  ]
 }
 
 export interface PlayerMapPose {
@@ -120,6 +218,20 @@ const SUBJECT_COLORS = {
   과학: '#19815F',
   생활: '#E6A800',
 }
+const PUSHABLE_CONE_URLS = [
+  coneRedV1Url,
+  coneRedV2Url,
+  coneRedV3Url,
+] as const
+
+function getStableConeModelUrl(propId: string): string {
+  let hash = 2166136261
+  for (const character of propId) {
+    hash ^= character.codePointAt(0) ?? 0
+    hash = Math.imul(hash, 16777619)
+  }
+  return PUSHABLE_CONE_URLS[(hash >>> 0) % PUSHABLE_CONE_URLS.length]
+}
 
 interface MotionState {
   x: number
@@ -134,11 +246,14 @@ interface MotionState {
 
 interface CameraOrbitState {
   zoom: number
+  targetZoom: number
   pitch: number
   pointerId: number | null
   pointerButton: number | null
   lastX: number
   lastY: number
+  activeTouches: Map<number, { x: number; y: number }>
+  pinchDistance: number | null
   manualUntil: number
 }
 
@@ -151,6 +266,8 @@ interface PhysicsBodyData {
     | 'elevator'
     | 'dynamic-prop'
     | 'large-item'
+    | 'moving-obstacle'
+    | 'player'
   label: string
   response: ObstacleResponse
   quiet?: boolean
@@ -231,11 +348,13 @@ const LearningItem = memo(function LearningItem({
   reducedMotion,
   available,
   runtimePositions,
+  recoverable = false,
 }: {
   item: LearningObject
   reducedMotion: boolean
   available: boolean
   runtimePositions?: MutableRefObject<Map<string, Vector3>>
+  recoverable?: boolean
 }) {
   const root = useRef<Group>(null)
   const runtimePosition = useRef(new Vector3(...item.position))
@@ -243,7 +362,13 @@ const LearningItem = memo(function LearningItem({
   const badge = useRef<HTMLSpanElement>(null)
   const badgeVisible = useRef<boolean | null>(null)
   const tier = getSizeTier(item.size)
-  const visualScale = getObjectVisualScale(item.size)
+  const visualScale = getWorldObjectVisualScale(item)
+  const architectureScaleClass = getArchitectureScaleClass(item)
+  const badgeHeightMultiplier = architectureScaleClass
+    ? architectureScaleClass === 'stadium'
+      ? 0.86
+      : 1.15
+    : getLevelUpBadgeHeightMultiplier(item)
   const phase = useMemo(
     () => item.id.split('').reduce((total, char) => total + char.charCodeAt(0), 0),
     [item.id],
@@ -295,9 +420,15 @@ const LearningItem = memo(function LearningItem({
               args={[0.68 + index * 0.16, 0.75 + index * 0.16, 28]}
             />
             <meshBasicMaterial
-              color={available ? tier.color : SUBJECT_COLORS[item.subject]}
+              color={
+                recoverable
+                  ? '#FF6B3D'
+                  : available
+                    ? tier.color
+                    : SUBJECT_COLORS[item.subject]
+              }
               transparent
-              opacity={available ? 0.52 : 0.2}
+              opacity={recoverable ? 0.76 : available ? 0.52 : 0.2}
             />
           </mesh>
         ))}
@@ -324,7 +455,7 @@ const LearningItem = memo(function LearningItem({
       </group>
       <Html
         center
-        position={[0, visualScale * 1.6, 0]}
+        position={[0, visualScale * badgeHeightMultiplier, 0]}
         distanceFactor={8}
         zIndexRange={[1, 0]}
         style={{ pointerEvents: 'none' }}
@@ -336,7 +467,7 @@ const LearningItem = memo(function LearningItem({
           style={{ '--tier-color': tier.color } as CSSProperties}
         >
           <b>{tier.level}</b>
-          {tier.label}
+          {getItemDisplayLabel(item)}
           <i>
             <MaterialIcon name={available ? 'check' : 'arrow_upward'} />
           </i>
@@ -346,6 +477,44 @@ const LearningItem = memo(function LearningItem({
   )
 })
 
+function TreasureRadarModel() {
+  const { scene } = useGLTF(treasureRadarUrl)
+
+  return (
+    <Clone
+      object={scene}
+      position={[0, -0.32, 0]}
+      castShadow
+      receiveShadow
+    />
+  )
+}
+
+useGLTF.preload(treasureRadarUrl)
+
+function SpeedBootModel() {
+  const { scene } = useGLTF(speedBootUrl)
+
+  return (
+    <Clone
+      object={scene}
+      rotation={[0, -0.22, 0]}
+      castShadow
+      receiveShadow
+    />
+  )
+}
+
+useGLTF.preload(speedBootUrl)
+
+function MagnetBatteryModel() {
+  const { scene } = useGLTF(magnetBatteryUrl)
+
+  return <Clone object={scene} castShadow receiveShadow />
+}
+
+useGLTF.preload(magnetBatteryUrl)
+
 function PowerUpPickupMesh({
   pickup,
   reducedMotion,
@@ -354,27 +523,45 @@ function PowerUpPickupMesh({
   reducedMotion: boolean
 }) {
   const visual = useRef<Group>(null)
-  const halo = useRef<Mesh>(null)
+  const halo = useRef<Group>(null)
+  const baseVisualScale = getPowerUpVisualScale(pickup.kind)
 
   useFrame(({ clock }, delta) => {
+    const materializeProgress =
+      pickup.collectibleAt <= 0
+        ? 1
+        : MathUtils.clamp(
+            1 -
+              (pickup.collectibleAt - Date.now()) /
+                POWER_UP_RESPAWN_DELAY_MS,
+            0,
+            1,
+          )
+    const easedProgress =
+      reducedMotion
+        ? 1
+        : 1 - Math.pow(1 - materializeProgress, 3)
+
     if (visual.current) {
       visual.current.rotation.y += reducedMotion ? 0 : delta * 1.15
       visual.current.position.y = reducedMotion
         ? 0.7
         : 0.7 + Math.sin(clock.elapsedTime * 2.2) * 0.08
+      visual.current.scale.setScalar(
+        baseVisualScale * (0.25 + easedProgress * 0.75),
+      )
     }
-    if (halo.current && !reducedMotion) {
-      const pulse = 1 + Math.sin(clock.elapsedTime * 3.4) * 0.12
-      halo.current.scale.setScalar(pulse)
+    if (halo.current) {
+      const pulse = reducedMotion
+        ? 1
+        : 1 + Math.sin(clock.elapsedTime * 3.4) * 0.12
+      halo.current.scale.setScalar(
+        pulse * (0.45 + easedProgress * 0.55),
+      )
+      if (!reducedMotion) halo.current.rotation.y += delta * 0.72
     }
   })
 
-  const color =
-    pickup.kind === 'magnet'
-      ? '#2F6FB5'
-      : pickup.kind === 'radar'
-        ? '#7752B8'
-        : '#C65A2E'
   const label =
     pickup.kind === 'magnet'
       ? '자석 배터리'
@@ -384,69 +571,52 @@ function PowerUpPickupMesh({
 
   return (
     <group position={pickup.position}>
-      <mesh
+      <group
         ref={halo}
-        rotation={[-Math.PI / 2, 0, 0]}
         position={[0, 0.04, 0]}
       >
-        <ringGeometry args={[0.68, 0.82, 36]} />
-        <meshBasicMaterial color={color} transparent opacity={0.72} />
-      </mesh>
-      <group ref={visual} position={[0, 0.7, 0]} scale={0.78}>
-        {pickup.kind === 'magnet' && (
-          <>
-            <mesh castShadow rotation={[0, 0, Math.PI / 2]}>
-              <cylinderGeometry args={[0.34, 0.34, 0.84, 20]} />
-              <meshStandardMaterial color="#F7FBFF" roughness={0.42} />
-            </mesh>
-            {[-0.44, 0.44].map((x) => (
-              <mesh key={x} castShadow position={[x, 0, 0]}>
-                <cylinderGeometry args={[0.37, 0.37, 0.12, 20]} />
-                <meshStandardMaterial color={color} metalness={0.22} />
-              </mesh>
-            ))}
-            <mesh position={[0, 0.01, 0.35]} scale={[0.18, 0.28, 0.05]}>
-              <boxGeometry />
-              <meshStandardMaterial color="#F6C945" emissive="#8B6A00" />
-            </mesh>
-          </>
-        )}
-        {pickup.kind === 'radar' && (
-          <>
-            <mesh castShadow position={[0, -0.16, 0]}>
-              <cylinderGeometry args={[0.33, 0.42, 0.34, 20]} />
-              <meshStandardMaterial color="#F7FBFF" roughness={0.48} />
-            </mesh>
-            <mesh rotation={[Math.PI / 2.6, 0, 0]} position={[0, 0.2, 0.06]}>
-              <torusGeometry args={[0.36, 0.08, 10, 28]} />
-              <meshStandardMaterial color={color} metalness={0.18} />
-            </mesh>
-            <mesh position={[0, 0.22, 0.08]}>
-              <sphereGeometry args={[0.11, 16, 12]} />
-              <meshStandardMaterial color="#F6C945" emissive="#8B6A00" />
-            </mesh>
-          </>
-        )}
-        {pickup.kind === 'speed' && (
-          <group rotation={[0, -0.22, 0]}>
-            <mesh castShadow position={[-0.13, 0.08, 0.04]} scale={[0.58, 0.58, 0.88]}>
-              <capsuleGeometry args={[0.34, 0.44, 8, 16]} />
-              <meshStandardMaterial color={color} roughness={0.62} />
-            </mesh>
-            <mesh castShadow position={[0.2, -0.1, 0.18]} scale={[0.7, 0.2, 1.1]}>
-              <boxGeometry />
-              <meshStandardMaterial color="#FFF8EC" roughness={0.72} />
-            </mesh>
-            <mesh position={[0.08, 0.12, 0.56]} rotation={[0.2, 0, 0]}>
-              <boxGeometry args={[0.4, 0.08, 0.08]} />
-              <meshStandardMaterial color="#F6C945" />
-            </mesh>
-          </group>
-        )}
+        {POWER_UP_RAINBOW.map((rainbowColor, index) => (
+          <mesh key={rainbowColor} rotation={[-Math.PI / 2, 0, 0]}>
+            <ringGeometry
+              args={[
+                0.72,
+                0.9,
+                12,
+                1,
+                (index / POWER_UP_RAINBOW.length) * Math.PI * 2,
+                Math.PI / 3 + 0.045,
+              ]}
+            />
+            <meshBasicMaterial
+              color={rainbowColor}
+              transparent
+              opacity={0.92}
+              toneMapped={false}
+            />
+          </mesh>
+        ))}
+        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.006, 0]}>
+          <ringGeometry args={[0.9, 0.96, 48]} />
+          <meshBasicMaterial
+            color="#FFFFFF"
+            transparent
+            opacity={0.34}
+            toneMapped={false}
+          />
+        </mesh>
+      </group>
+      <group
+        ref={visual}
+        position={[0, 0.7, 0]}
+        scale={baseVisualScale}
+      >
+        {pickup.kind === 'magnet' && <MagnetBatteryModel />}
+        {pickup.kind === 'radar' && <TreasureRadarModel />}
+        {pickup.kind === 'speed' && <SpeedBootModel />}
       </group>
       <Html
         center
-        position={[0, 1.65, 0]}
+        position={[0, 1.88, 0]}
         distanceFactor={9}
         zIndexRange={[2, 0]}
         style={{ pointerEvents: 'none' }}
@@ -615,320 +785,31 @@ function RollingBallCore({
   reducedMotion: boolean
 }) {
   const core = useRef<Group>(null)
+  const { scene } = useGLTF(rollingBallUrl)
 
   useFrame((_, delta) => {
     if (!core.current) return
     const radius = reducedMotion
       ? ballRadius
-      : MathUtils.damp(core.current.scale.x, ballRadius, 16, delta)
+      : MathUtils.damp(core.current.scale.x, ballRadius, 9, delta)
     core.current.scale.setScalar(radius)
   })
 
   return (
     <group ref={core} scale={INITIAL_PLAYER_RADIUS}>
-      <mesh castShadow receiveShadow>
-        <sphereGeometry args={[1, 32, 24]} />
-        <meshStandardMaterial
-          color="#FFF1D3"
-          roughness={0.62}
-          metalness={0.02}
+      <group scale={2.003914}>
+        <Clone
+          object={scene}
+          position={[0, -0.49707, 0]}
+          castShadow
+          receiveShadow
         />
-      </mesh>
-      {[0, Math.PI / 3, -Math.PI / 3].map((rotation, index) => (
-        <mesh
-          key={`rolling-band-${index}`}
-          rotation={[rotation, 0, index * 0.9]}
-        >
-          <torusGeometry args={[0.945, 0.063, 10, 56]} />
-          <meshStandardMaterial
-            color={['#45A7A0', '#F2C94C', '#FF7B66'][index]}
-            roughness={0.58}
-          />
-        </mesh>
-      ))}
-      {[
-        [0, 0, 0.98],
-        [0.74, 0.48, 0.44],
-        [-0.72, 0.55, 0.4],
-        [0.68, -0.58, -0.4],
-        [-0.65, -0.62, -0.42],
-      ].map((direction, index) => (
-        <mesh
-          key={`rolling-dot-${index}`}
-          position={[direction[0], direction[1], direction[2]]}
-          scale={index === 0 ? 0.13 : 0.1}
-        >
-          <sphereGeometry args={[1, 12, 9]} />
-          <meshStandardMaterial
-            color={['#4169D8', '#45A7A0', '#FF7B66'][index % 3]}
-            roughness={0.55}
-          />
-        </mesh>
-      ))}
-    </group>
-  )
-}
-
-function ChildPusher({
-  ballRadius,
-  motion,
-  reducedMotion,
-}: {
-  ballRadius: number
-  motion: MutableRefObject<MotionState>
-  reducedMotion: boolean
-}) {
-  const root = useRef<Group>(null)
-  const body = useRef<Group>(null)
-  const torso = useRef<Group>(null)
-  const leftThigh = useRef<Group>(null)
-  const rightThigh = useRef<Group>(null)
-  const leftShin = useRef<Group>(null)
-  const rightShin = useRef<Group>(null)
-  const leftUpperArm = useRef<Group>(null)
-  const rightUpperArm = useRef<Group>(null)
-  const leftForearm = useRef<Group>(null)
-  const rightForearm = useRef<Group>(null)
-  const helperScale = Math.min(0.96, 0.66 + ballRadius * 0.14)
-
-  useLayoutEffect(() => {
-    if (root.current) root.current.position.y = -ballRadius
-  }, [ballRadius])
-
-  useFrame(({ clock }, delta) => {
-    if (!root.current) return
-
-    const { x, z, speed } = motion.current
-    const speedLevel = Math.min(1, speed)
-    const distance = ballRadius + 0.5
-    const sideOffset = 0.25
-    const targetX = -x * distance + z * sideOffset
-    const targetZ = -z * distance - x * sideOffset
-    root.current.position.x = MathUtils.damp(
-      root.current.position.x,
-      targetX,
-      12,
-      delta,
-    )
-    root.current.position.z = MathUtils.damp(
-      root.current.position.z,
-      targetZ,
-      12,
-      delta,
-    )
-    root.current.position.y = -ballRadius
-    const scale = MathUtils.damp(
-      root.current.scale.x,
-      helperScale,
-      16,
-      delta,
-    )
-    root.current.scale.setScalar(scale)
-    root.current.rotation.y =
-      Math.atan2(-x, -z) - Math.atan2(sideOffset, distance)
-
-    const stride = reducedMotion
-      ? 0
-      : Math.sin(clock.elapsedTime * 9.2) * speedLevel
-    const bob = reducedMotion ? 0 : Math.abs(stride) * 0.035
-    if (body.current) body.current.position.y = bob
-    if (torso.current) {
-      torso.current.rotation.x = MathUtils.damp(
-        torso.current.rotation.x,
-        -(0.035 + speedLevel * 0.1),
-        8,
-        delta,
-      )
-    }
-    if (leftThigh.current) leftThigh.current.rotation.x = stride * 0.5
-    if (rightThigh.current) rightThigh.current.rotation.x = -stride * 0.5
-    if (leftShin.current) {
-      leftShin.current.rotation.x = Math.max(0, -stride) * 0.62
-    }
-    if (rightShin.current) {
-      rightShin.current.rotation.x = Math.max(0, stride) * 0.62
-    }
-    if (leftUpperArm.current) {
-      leftUpperArm.current.rotation.x = 1.05 + stride * 0.06
-      leftUpperArm.current.rotation.z = -0.08 + stride * 0.04
-    }
-    if (rightUpperArm.current) {
-      rightUpperArm.current.rotation.x = 1.05 - stride * 0.06
-      rightUpperArm.current.rotation.z = 0.08 - stride * 0.04
-    }
-    if (leftForearm.current) {
-      leftForearm.current.rotation.x = 0.28 + Math.abs(stride) * 0.06
-    }
-    if (rightForearm.current) {
-      rightForearm.current.rotation.x = 0.28 + Math.abs(stride) * 0.06
-    }
-  })
-
-  return (
-    <group
-      ref={root}
-      position={[
-        0,
-        -INITIAL_PLAYER_RADIUS,
-        INITIAL_PLAYER_RADIUS + 0.48,
-      ]}
-      scale={Math.min(
-        0.96,
-        0.66 + INITIAL_PLAYER_RADIUS * 0.14,
-      )}
-    >
-      <group ref={body}>
-        <mesh
-          position={[0, 0.012, 0.02]}
-          rotation={[-Math.PI / 2, 0, 0]}
-          scale={[0.5, 0.32, 1]}
-        >
-          <circleGeometry args={[0.52, 20]} />
-          <meshBasicMaterial
-            color="#273548"
-            transparent
-            opacity={0.14}
-            depthWrite={false}
-          />
-        </mesh>
-
-        <group ref={torso} position={[0, 0.7, 0]}>
-          <mesh castShadow position={[0, 0.34, 0]} scale={[1, 1, 0.78]}>
-            <capsuleGeometry args={[0.27, 0.36, 6, 14]} />
-            <meshStandardMaterial color="#45A7A0" roughness={0.76} />
-          </mesh>
-          <mesh castShadow position={[0, 0.22, 0.24]} scale={[0.82, 1, 0.72]}>
-            <capsuleGeometry args={[0.22, 0.24, 5, 12]} />
-            <meshStandardMaterial color="#F2C94C" roughness={0.82} />
-          </mesh>
-          <mesh castShadow position={[0, 0.65, 0]}>
-            <cylinderGeometry args={[0.09, 0.1, 0.14, 12]} />
-            <meshStandardMaterial color="#F2B38A" roughness={0.72} />
-          </mesh>
-          <mesh castShadow position={[0, 0.89, 0]}>
-            <sphereGeometry args={[0.28, 20, 16]} />
-            <meshStandardMaterial color="#F2B38A" roughness={0.7} />
-          </mesh>
-          <mesh
-            castShadow
-            position={[0, 1.02, 0.035]}
-            scale={[1.04, 0.58, 1.02]}
-          >
-            <sphereGeometry args={[0.285, 18, 12]} />
-            <meshStandardMaterial color="#3C2E39" roughness={0.9} />
-          </mesh>
-          {[-0.09, 0.09].map((eyeX) => (
-            <mesh
-              key={`pusher-eye-${eyeX}`}
-              position={[eyeX, 0.92, -0.255]}
-            >
-              <sphereGeometry args={[0.025, 8, 6]} />
-              <meshStandardMaterial color="#273548" roughness={0.65} />
-            </mesh>
-          ))}
-          <mesh position={[0, 0.84, -0.278]} scale={[0.07, 0.022, 0.018]}>
-            <boxGeometry />
-            <meshStandardMaterial color="#C96868" roughness={0.78} />
-          </mesh>
-          <mesh castShadow position={[0, 0.35, 0.28]} scale={[0.62, 1, 0.72]}>
-            <capsuleGeometry args={[0.2, 0.26, 5, 12]} />
-            <meshStandardMaterial color="#F2C94C" roughness={0.82} />
-          </mesh>
-          <mesh position={[0, 0.35, 0.43]}>
-            <boxGeometry args={[0.18, 0.28, 0.04]} />
-            <meshStandardMaterial color="#FFFDF7" roughness={0.84} />
-          </mesh>
-
-          <group
-            ref={leftUpperArm}
-            position={[-0.31, 0.48, -0.03]}
-            rotation={[1.05, 0, -0.08]}
-          >
-            <mesh castShadow position={[0, -0.16, 0]}>
-              <capsuleGeometry args={[0.07, 0.2, 5, 10]} />
-              <meshStandardMaterial color="#45A7A0" roughness={0.76} />
-            </mesh>
-            <group ref={leftForearm} position={[0, -0.34, 0]} rotation={[0.28, 0, 0]}>
-              <mesh castShadow position={[0, -0.16, 0]}>
-                <capsuleGeometry args={[0.064, 0.2, 5, 10]} />
-                <meshStandardMaterial color="#F2B38A" roughness={0.72} />
-              </mesh>
-              <mesh castShadow position={[0, -0.34, -0.01]}>
-                <sphereGeometry args={[0.085, 10, 8]} />
-                <meshStandardMaterial color="#F2B38A" roughness={0.7} />
-              </mesh>
-            </group>
-          </group>
-          <group
-            ref={rightUpperArm}
-            position={[0.31, 0.48, -0.03]}
-            rotation={[1.05, 0, 0.08]}
-          >
-            <mesh castShadow position={[0, -0.16, 0]}>
-              <capsuleGeometry args={[0.07, 0.2, 5, 10]} />
-              <meshStandardMaterial color="#45A7A0" roughness={0.76} />
-            </mesh>
-            <group ref={rightForearm} position={[0, -0.34, 0]} rotation={[0.28, 0, 0]}>
-              <mesh castShadow position={[0, -0.16, 0]}>
-                <capsuleGeometry args={[0.064, 0.2, 5, 10]} />
-                <meshStandardMaterial color="#F2B38A" roughness={0.72} />
-              </mesh>
-              <mesh castShadow position={[0, -0.34, -0.01]}>
-                <sphereGeometry args={[0.085, 10, 8]} />
-                <meshStandardMaterial color="#F2B38A" roughness={0.7} />
-              </mesh>
-            </group>
-          </group>
-        </group>
-
-        <mesh castShadow position={[0, 0.67, 0]} scale={[0.5, 0.18, 0.34]}>
-          <sphereGeometry args={[0.5, 14, 9]} />
-          <meshStandardMaterial color="#273548" roughness={0.84} />
-        </mesh>
-        <group ref={leftThigh} position={[-0.14, 0.62, 0]}>
-          <mesh castShadow position={[0, -0.16, 0]}>
-            <capsuleGeometry args={[0.085, 0.18, 5, 10]} />
-            <meshStandardMaterial color="#273548" roughness={0.84} />
-          </mesh>
-          <group ref={leftShin} position={[0, -0.34, 0]}>
-            <mesh castShadow position={[0, -0.17, 0]}>
-              <capsuleGeometry args={[0.075, 0.2, 5, 10]} />
-              <meshStandardMaterial color="#3F5268" roughness={0.84} />
-            </mesh>
-            <mesh castShadow position={[0, -0.37, -0.08]} scale={[1, 0.58, 1.45]}>
-              <capsuleGeometry args={[0.09, 0.16, 5, 10]} />
-              <meshStandardMaterial color="#FFFDF7" roughness={0.86} />
-            </mesh>
-            <mesh position={[0, -0.395, -0.12]} scale={[0.12, 0.035, 0.24]}>
-              <boxGeometry />
-              <meshStandardMaterial color="#FF7B66" roughness={0.72} />
-            </mesh>
-          </group>
-        </group>
-        <group ref={rightThigh} position={[0.14, 0.62, 0]}>
-          <mesh castShadow position={[0, -0.16, 0]}>
-            <capsuleGeometry args={[0.085, 0.18, 5, 10]} />
-            <meshStandardMaterial color="#374151" roughness={0.86} />
-          </mesh>
-          <group ref={rightShin} position={[0, -0.34, 0]}>
-            <mesh castShadow position={[0, -0.17, 0]}>
-              <capsuleGeometry args={[0.075, 0.2, 5, 10]} />
-              <meshStandardMaterial color="#3F5268" roughness={0.84} />
-            </mesh>
-            <mesh castShadow position={[0, -0.37, -0.08]} scale={[1, 0.58, 1.45]}>
-              <capsuleGeometry args={[0.09, 0.16, 5, 10]} />
-              <meshStandardMaterial color="#FFFDF7" roughness={0.86} />
-            </mesh>
-            <mesh position={[0, -0.395, -0.12]} scale={[0.12, 0.035, 0.24]}>
-              <boxGeometry />
-              <meshStandardMaterial color="#4169D8" roughness={0.72} />
-            </mesh>
-          </group>
-        </group>
       </group>
     </group>
   )
 }
+
+useGLTF.preload(rollingBallUrl)
 
 function MotionEffects({
   ballRadius,
@@ -1327,6 +1208,30 @@ function RapierWorldColliders({
           response: obstacle.response,
         }
 
+        if (obstacle.assetVariant) {
+          const halfHeight = obstacle.colliderHalfHeight ?? 0.7
+          return (
+            <RigidBody
+              key={obstacle.id}
+              type="fixed"
+              colliders={false}
+              position={[obstacle.x, halfHeight, obstacle.z]}
+              rotation={[0, obstacle.rotationY ?? 0, 0]}
+              userData={{ physics }}
+            >
+              <CuboidCollider
+                args={[
+                  obstacle.colliderHalfWidth ?? obstacle.radius,
+                  halfHeight,
+                  obstacle.colliderHalfDepth ?? obstacle.radius,
+                ]}
+                friction={0.9}
+                restitution={0.03}
+              />
+            </RigidBody>
+          )
+        }
+
         return (
           <RigidBody
             key={obstacle.id}
@@ -1394,7 +1299,7 @@ function RapierWorldColliders({
           >
             <CuboidCollider
               args={[ramp.halfWidth, ramp.halfHeight, ramp.halfDepth]}
-              friction={0.98}
+              friction={0.93}
               restitution={0}
             />
             <mesh castShadow receiveShadow>
@@ -1487,7 +1392,7 @@ function RapierWorldColliders({
       })}
 
       {layout.surfaceZones.map((zone) =>
-        zone.kind === 'water' ? (
+        zone.kind === 'mud' ? null : zone.kind === 'water' ? (
           <AnimatedWaterSurface
             key={zone.id}
             zone={zone}
@@ -1531,6 +1436,27 @@ function RapierWorldColliders({
   )
 }
 
+function PushablePropVisual({ prop }: { prop: PushableProp }) {
+  const isBox = prop.kind === 'block'
+  const isTrashCan = prop.kind === 'trash-can'
+  const { scene } = useGLTF(
+    isBox
+      ? shippingBoxUrl
+      : isTrashCan
+        ? blueTrashCanUrl
+        : getStableConeModelUrl(prop.id),
+  )
+
+  return (
+    <group
+      position={[0, -prop.y, 0]}
+      scale={isBox ? 0.72 : isTrashCan ? 0.86 : 0.76}
+    >
+      <Clone object={scene} castShadow receiveShadow />
+    </group>
+  )
+}
+
 function DynamicPracticeProps({
   stageId,
   props,
@@ -1557,56 +1483,50 @@ function DynamicPracticeProps({
               prop.rotationY,
               index % 2 ? 0.08 : -0.06,
             ]}
-            mass={prop.kind === 'block' ? 0.62 : 0.4}
+            mass={
+              prop.kind === 'block'
+                ? 0.62
+                : prop.kind === 'trash-can'
+                  ? 0.52
+                  : 0.4
+            }
             linearDamping={0.38}
             angularDamping={0.54}
             ccd
             userData={{ physics }}
           >
             {prop.kind === 'block' ? (
-              <>
-                <CuboidCollider
-                  args={[0.34, 0.34, 0.34]}
-                  friction={0.78}
-                  restitution={0.34}
-                />
-                <mesh castShadow receiveShadow>
-                  <boxGeometry args={[0.68, 0.68, 0.68]} />
-                  <meshStandardMaterial color={prop.color} roughness={0.76} />
-                </mesh>
-              </>
+              <CuboidCollider
+                args={[0.36, 0.34, 0.36]}
+                friction={0.78}
+                restitution={0.34}
+              />
+            ) : prop.kind === 'trash-can' ? (
+              <CylinderCollider
+                args={[0.43, 0.34]}
+                friction={0.76}
+                restitution={0.3}
+              />
             ) : (
-              <>
-                <CylinderCollider
-                  args={[0.36, prop.kind === 'cone' ? 0.28 : 0.2]}
-                  friction={0.72}
-                  restitution={0.42}
-                />
-                {prop.kind === 'cone' ? (
-                  <mesh castShadow receiveShadow>
-                    <coneGeometry args={[0.3, 0.72, 16]} />
-                    <meshStandardMaterial color={prop.color} roughness={0.72} />
-                  </mesh>
-                ) : (
-                  <group>
-                    <mesh castShadow receiveShadow>
-                      <cylinderGeometry args={[0.17, 0.21, 0.72, 16]} />
-                      <meshStandardMaterial color={prop.color} roughness={0.66} />
-                    </mesh>
-                    <mesh position={[0, 0.12, 0]} scale={[1.03, 0.13, 1.03]}>
-                      <cylinderGeometry args={[0.18, 0.18, 0.72, 16]} />
-                      <meshStandardMaterial color="#FFFDF7" roughness={0.7} />
-                    </mesh>
-                  </group>
-                )}
-              </>
+              <CylinderCollider
+                args={[0.38, 0.3]}
+                friction={0.72}
+                restitution={0.42}
+              />
             )}
+            <PushablePropVisual prop={prop} />
           </RigidBody>
         )
       })}
     </>
   )
 }
+
+useGLTF.preload(coneRedV1Url)
+useGLTF.preload(coneRedV2Url)
+useGLTF.preload(coneRedV3Url)
+useGLTF.preload(shippingBoxUrl)
+useGLTF.preload(blueTrashCanUrl)
 
 function KinematicElevator({
   elevator,
@@ -1824,9 +1744,16 @@ function TooLargeItemColliders({
   )
 }
 
+interface GameWorldProps extends GameCanvasProps {
+  renderQuality: RenderQuality
+}
+
 function GameWorld({
   stage,
+  stageObjects,
   attachedObjects,
+  droppedObjects,
+  attachmentNormals = {},
   collectedIds,
   ballRadius,
   paused,
@@ -1838,25 +1765,93 @@ function GameWorld({
   onPlayerPosition,
   onCollect,
   onPowerUpCollect,
+  onRecoverDropped,
+  onRunnerHit,
+  onPolarBearHit,
   onTooLarge,
   onPhysicsFeedback,
-}: GameCanvasProps) {
-  const objects = stage.objects
+  renderQuality,
+}: GameWorldProps) {
+  const objects = stageObjects
+  const collectedObjects = useMemo(
+    () =>
+      Number.isFinite(renderQuality.attachedObjectLimit)
+        ? attachedObjects.slice(-renderQuality.attachedObjectLimit)
+        : attachedObjects,
+    [attachedObjects, renderQuality.attachedObjectLimit],
+  )
+  const architectureCameraDistanceOffset = useMemo(
+    () =>
+      getArchitectureCameraDistanceOffset(collectedObjects, ballRadius),
+    [ballRadius, collectedObjects],
+  )
+  const architectureCameraMinimumDistance = useMemo(
+    () =>
+      getArchitectureCameraMinimumDistance(collectedObjects, ballRadius),
+    [ballRadius, collectedObjects],
+  )
+  const architectureCameraFramingLift = useMemo(
+    () => getArchitectureCameraFramingLift(collectedObjects, ballRadius),
+    [ballRadius, collectedObjects],
+  )
+  const tierFourCameraDistanceOffset = getTierFourCameraDistanceOffset(
+    ballRadius,
+  )
   const magnetActive = activePowerUps.magnet > 0
   const speedPowerUpActive = activePowerUps.speed > 0
   const physicsLayout = useMemo(
     () => createWorldPhysicsLayout(stage),
     [stage],
   )
+  const roamingRunnerObstacles = useMemo(
+    () => [
+      ...physicsLayout.obstacles,
+      ...physicsLayout.rideableObstacles.map((obstacle) => ({
+        x: obstacle.x,
+        z: obstacle.z,
+        radius: Math.hypot(obstacle.halfWidth, obstacle.halfDepth) + 0.3,
+      })),
+      ...physicsLayout.terrainRamps.map((ramp) => ({
+        x: ramp.x,
+        z: ramp.z,
+        radius: Math.hypot(ramp.halfWidth, ramp.halfDepth) + 0.3,
+      })),
+      ...physicsLayout.elevatedPlatforms.map((platform) => ({
+        x: platform.x,
+        z: platform.z,
+        radius: Math.hypot(platform.halfWidth, platform.halfDepth) + 0.3,
+      })),
+      ...physicsLayout.elevators.map((elevator) => ({
+        x: elevator.x,
+        z: elevator.z,
+        radius: Math.hypot(elevator.halfWidth, elevator.halfDepth) + 0.4,
+      })),
+      ...physicsLayout.pushableProps.map((prop) => ({
+        x: prop.x,
+        z: prop.z,
+        radius: prop.kind === 'block' ? 0.58 : 0.46,
+      })),
+    ],
+    [physicsLayout],
+  )
   const debugSurface = useMemo(() => {
-    if (
-      !import.meta.env.DEV ||
-      new URLSearchParams(window.location.search).get('spawn') !== 'water'
-    ) {
-      return null
-    }
+    if (!import.meta.env.DEV) return null
+    const spawnMode = new URLSearchParams(window.location.search).get('spawn')
+    if (spawnMode !== 'water' && spawnMode !== 'mud') return null
     return (
-      physicsLayout.surfaceZones.find((zone) => zone.kind === 'water') ?? null
+      physicsLayout.surfaceZones.find((zone) => zone.kind === spawnMode) ?? null
+    )
+  }, [physicsLayout])
+  const debugNaturalObstacle = useMemo(() => {
+    if (!import.meta.env.DEV) return null
+    const spawnMode = new URLSearchParams(window.location.search).get('spawn')
+    if (spawnMode !== 'natural' && spawnMode !== 'log') return null
+    return (
+      physicsLayout.obstacles.find((obstacle) =>
+        spawnMode === 'log'
+          ? obstacle.assetVariant === 'fallen-log-a'
+          : obstacle.assetVariant === 'tree-root',
+      ) ?? null
     )
   }, [physicsLayout])
   const debugCollectionTarget = useMemo(() => {
@@ -1873,7 +1868,7 @@ function GameWorld({
     }
     if (teleportMode === 'cone') {
       return (
-        stage.objects.find(
+        objects.find(
           (item) =>
             item.position[1] < 0.2 &&
             canCollect(0.42, item.size) &&
@@ -1886,7 +1881,7 @@ function GameWorld({
     }
     const needsElevatedItem = teleportMode === 'elevated'
     return (
-      stage.objects.find(
+      objects.find(
         (item) =>
           (needsElevatedItem
             ? item.position[1] > 3
@@ -1895,7 +1890,7 @@ function GameWorld({
           canCollect(0.42, item.size),
       ) ?? null
     )
-  }, [physicsLayout.pushableProps, stage.objects])
+  }, [objects, physicsLayout.pushableProps])
   const debugTeleportMode =
     import.meta.env.DEV
       ? new URLSearchParams(window.location.search).get('teleport')
@@ -1908,12 +1903,35 @@ function GameWorld({
     import.meta.env.DEV && debugTeleportMode === 'treasure'
       ? radarTreasures[0] ?? null
       : null
-  const spawnX = debugSurface?.x ?? 0
-  const spawnZ = debugSurface?.z ?? 0
+  const debugPushableTarget =
+    import.meta.env.DEV && debugTeleportMode === 'trash'
+      ? physicsLayout.pushableProps.find(
+          (prop) => prop.kind === 'trash-can',
+        ) ?? null
+      : null
+  const spawnX =
+    (debugNaturalObstacle
+      ? debugNaturalObstacle.x + debugNaturalObstacle.radius + 2.2
+      : null) ??
+    debugSurface?.x ??
+    (debugPushableTarget ? debugPushableTarget.x + 2.2 : 0)
+  const spawnZ =
+    debugNaturalObstacle?.z ??
+    debugSurface?.z ??
+    debugPushableTarget?.z ??
+    0
   const spawnTranslation = useMemo(
     () => getPlayerSpawnTranslation(spawnX, spawnZ),
     [spawnX, spawnZ],
   )
+  const [renderCenter, setRenderCenter] = useState<[number, number]>(() => [
+    spawnTranslation[0],
+    spawnTranslation[2],
+  ])
+  const renderCenterRef = useRef({
+    x: spawnTranslation[0],
+    z: spawnTranslation[2],
+  })
   const debugAutoDrive =
     import.meta.env.DEV &&
     new URLSearchParams(window.location.search).get('autodrive') === 'true'
@@ -1928,6 +1946,7 @@ function GameWorld({
   const { camera, gl } = useThree()
   const collectedSet = useRef(new Set(collectedIds))
   const collectedPowerUpSet = useRef(new Set<string>())
+  const recoveringDroppedSet = useRef(new Set<string>())
   const runtimeItemPositions = useRef(
     new Map(
       objects.map(
@@ -1943,15 +1962,19 @@ function GameWorld({
   const activeSpeedZoneId = useRef<string | null>(null)
   const activeSurfaceZoneId = useRef<string | null>(null)
   const cameraPosition = useRef(new Vector3(0, 7, 8))
+  const cameraElevation = useRef(0)
   const cameraDirection = useRef(new Vector3(0, 0, -1))
   const cameraTargetDirection = useRef(new Vector3(0, 0, -1))
   const cameraOrbit = useRef<CameraOrbitState>({
     zoom: 1,
+    targetZoom: 1,
     pitch: 0,
     pointerId: null,
     pointerButton: null,
     lastX: 0,
     lastY: 0,
+    activeTouches: new Map(),
+    pinchDistance: null,
     manualUntil: 0,
   })
   const heading = useRef(new Vector3(0, 0, -1))
@@ -1979,6 +2002,15 @@ function GameWorld({
   useEffect(() => {
     collectedSet.current = new Set(collectedIds)
   }, [collectedIds])
+
+  useEffect(() => {
+    const activeDroppedIds = new Set(droppedObjects.map((item) => item.id))
+    for (const itemId of recoveringDroppedSet.current) {
+      if (!activeDroppedIds.has(itemId)) {
+        recoveringDroppedSet.current.delete(itemId)
+      }
+    }
+  }, [droppedObjects])
 
   useEffect(() => {
     if (!paused || !playerBody.current) return
@@ -2064,7 +2096,45 @@ function GameWorld({
     const canvas = gl.domElement
     const orbit = cameraOrbit.current
 
+    const stopOrbit = () => {
+      orbit.pointerId = null
+      orbit.pointerButton = null
+      orbit.activeTouches.clear()
+      orbit.pinchDistance = null
+      orbit.manualUntil = performance.now() + 5200
+      canvas.classList.remove('is-camera-dragging')
+    }
+    const getTouchDistance = () => {
+      const [first, second] = [...orbit.activeTouches.values()]
+      return first && second
+        ? Math.hypot(second.x - first.x, second.y - first.y)
+        : null
+    }
     const handlePointerDown = (event: PointerEvent) => {
+      if (event.pointerType === 'touch') {
+        event.preventDefault()
+        orbit.activeTouches.set(event.pointerId, {
+          x: event.clientX,
+          y: event.clientY,
+        })
+        orbit.manualUntil = Number.POSITIVE_INFINITY
+        canvas.setPointerCapture(event.pointerId)
+        canvas.classList.add('is-camera-dragging')
+
+        if (orbit.activeTouches.size === 1) {
+          orbit.pointerId = event.pointerId
+          orbit.pointerButton = 0
+          orbit.lastX = event.clientX
+          orbit.lastY = event.clientY
+          orbit.pinchDistance = null
+        } else {
+          orbit.pointerId = null
+          orbit.pointerButton = null
+          orbit.pinchDistance = getTouchDistance()
+        }
+        return
+      }
+
       if (event.button !== 0 && event.button !== 2) return
       event.preventDefault()
       orbit.pointerId = event.pointerId
@@ -2075,13 +2145,29 @@ function GameWorld({
       canvas.setPointerCapture(event.pointerId)
       canvas.classList.add('is-camera-dragging')
     }
-    const stopOrbit = () => {
-      orbit.pointerId = null
-      orbit.pointerButton = null
-      orbit.manualUntil = performance.now() + 5200
-      canvas.classList.remove('is-camera-dragging')
-    }
     const handlePointerMove = (event: PointerEvent) => {
+      if (event.pointerType === 'touch') {
+        if (!orbit.activeTouches.has(event.pointerId)) return
+        event.preventDefault()
+        orbit.activeTouches.set(event.pointerId, {
+          x: event.clientX,
+          y: event.clientY,
+        })
+
+        if (orbit.activeTouches.size >= 2) {
+          const nextDistance = getTouchDistance()
+          if (nextDistance !== null && orbit.pinchDistance !== null) {
+            orbit.targetZoom = getPinchZoomTarget(
+              orbit.targetZoom,
+              orbit.pinchDistance,
+              nextDistance,
+            )
+          }
+          orbit.pinchDistance = nextDistance
+          return
+        }
+      }
+
       if (orbit.pointerId !== event.pointerId) return
       const expectedButtonMask = orbit.pointerButton === 2 ? 2 : 1
       if (event.pointerType === 'mouse' && !(event.buttons & expectedButtonMask)) {
@@ -2098,19 +2184,41 @@ function GameWorld({
         cameraTargetDirection.current.x,
         cameraTargetDirection.current.z,
       )
-      const nextAngle = currentAngle - deltaX * 0.006
+      const nextAngle =
+        currentAngle - deltaX * CAMERA_DRAG_YAW_SENSITIVITY
       cameraTargetDirection.current.set(
         Math.sin(nextAngle),
         0,
         Math.cos(nextAngle),
       )
       orbit.pitch = MathUtils.clamp(
-        orbit.pitch - deltaY * 0.012,
+        orbit.pitch - deltaY * CAMERA_DRAG_PITCH_SENSITIVITY,
         -1.1,
         3.2,
       )
     }
     const finishPointer = (event: PointerEvent) => {
+      if (event.pointerType === 'touch') {
+        if (!orbit.activeTouches.has(event.pointerId)) return
+        orbit.activeTouches.delete(event.pointerId)
+        if (canvas.hasPointerCapture(event.pointerId)) {
+          canvas.releasePointerCapture(event.pointerId)
+        }
+
+        const [remainingTouch] = [...orbit.activeTouches.entries()]
+        if (remainingTouch) {
+          orbit.pointerId = remainingTouch[0]
+          orbit.pointerButton = 0
+          orbit.lastX = remainingTouch[1].x
+          orbit.lastY = remainingTouch[1].y
+          orbit.pinchDistance = null
+          orbit.manualUntil = Number.POSITIVE_INFINITY
+        } else {
+          stopOrbit()
+        }
+        return
+      }
+
       if (orbit.pointerId !== event.pointerId) return
       stopOrbit()
       if (canvas.hasPointerCapture(event.pointerId)) {
@@ -2118,14 +2226,20 @@ function GameWorld({
       }
     }
     const handleLostPointerCapture = (event: PointerEvent) => {
-      if (orbit.pointerId === event.pointerId) stopOrbit()
+      if (
+        orbit.pointerId === event.pointerId ||
+        orbit.activeTouches.has(event.pointerId)
+      ) {
+        finishPointer(event)
+      }
     }
     const handleWheel = (event: WheelEvent) => {
       event.preventDefault()
-      orbit.zoom = MathUtils.clamp(
-        orbit.zoom + event.deltaY * 0.0012,
-        0.62,
-        1.75,
+      orbit.targetZoom = getWheelZoomTarget(
+        orbit.targetZoom,
+        event.deltaY,
+        event.deltaMode,
+        canvas.clientHeight,
       )
       orbit.manualUntil = performance.now() + 5200
     }
@@ -2155,6 +2269,10 @@ function GameWorld({
       window.removeEventListener('blur', stopOrbit)
       canvas.removeEventListener('wheel', handleWheel)
       canvas.removeEventListener('contextmenu', preventContextMenu)
+      orbit.pointerId = null
+      orbit.pointerButton = null
+      orbit.activeTouches.clear()
+      orbit.pinchDistance = null
       canvas.classList.remove('is-camera-dragging')
     }
   }, [gl])
@@ -2177,7 +2295,7 @@ function GameWorld({
       body.setLinvel({ x: 0, y: velocity.y, z: 0 }, true)
     }
 
-    motion.current.impact = physics.quiet ? 0.42 : 1
+    if (!physics.quiet) motion.current.impact = 1
     const now = performance.now()
     if (!isRideable) {
       const recoveryDuration =
@@ -2198,6 +2316,60 @@ function GameWorld({
       label: physics.label,
       bounced: physics.response === 'bounce',
     })
+  }
+
+  const applyHazardImpact = (
+    hazardPosition: { x: number; z: number },
+    kind: HazardKind,
+  ) => {
+    const body = playerBody.current
+    if (!body || paused) return
+    const position = body.translation()
+    const impact = createHazardKnockback(
+      { x: position.x, z: position.z },
+      hazardPosition,
+      { x: heading.current.x, z: heading.current.z },
+      stage.mapSize,
+      ballRadius,
+      roamingRunnerObstacles,
+      kind,
+    )
+    const now = performance.now()
+
+    body.setLinvel(
+      {
+        x: impact.directionX * impact.horizontalSpeed,
+        y: impact.verticalSpeed,
+        z: impact.directionZ * impact.horizontalSpeed,
+      },
+      true,
+    )
+    collisionRecoveryUntil.current = Math.max(
+      collisionRecoveryUntil.current,
+      now + impact.controlLockMs,
+    )
+    motion.current.velocityX = impact.directionX * impact.horizontalSpeed
+    motion.current.velocityZ = impact.directionZ * impact.horizontalSpeed
+    motion.current.impact = Math.max(
+      motion.current.impact,
+      kind === 'polar-bear' ? 1.9 : 1.35,
+    )
+  }
+
+  const handleRunnerHazardHit = (
+    position: { x: number; z: number },
+    runnerId: string,
+  ) => {
+    if (!onRunnerHit(position, runnerId)) return
+    applyHazardImpact(position, 'runner')
+  }
+
+  const handlePolarBearHazardHit = (position: {
+    x: number
+    z: number
+  }) => {
+    if (!onPolarBearHit(position)) return
+    applyHazardImpact(position, 'polar-bear')
   }
 
   useFrame((state, delta) => {
@@ -2238,6 +2410,17 @@ function GameWorld({
 
     const position = body.translation()
     playerPosition.current.set(position.x, position.y, position.z)
+    if (
+      renderQuality.lowPower &&
+      Math.hypot(
+        position.x - renderCenterRef.current.x,
+        position.z - renderCenterRef.current.z,
+      ) >= 6
+    ) {
+      renderCenterRef.current.x = position.x
+      renderCenterRef.current.z = position.z
+      setRenderCenter([position.x, position.z])
+    }
     const velocity = body.linvel()
     if (!paused) {
       const lateralInput =
@@ -2297,10 +2480,14 @@ function GameWorld({
         position.x,
         position.z,
       )
-      const speedMultiplier =
+      const requestedSpeedMultiplier =
         (speedZone?.multiplier ?? 1) *
         (surfaceZone?.multiplier ?? 1) *
         getPowerUpSpeedMultiplier(activePowerUps)
+      const speedMultiplier = getCappedRollingSpeedMultiplier(
+        ballRadius,
+        requestedSpeedMultiplier,
+      )
       motion.current.surface = surfaceZone?.kind ?? null
       const recovering =
         performance.now() < collisionRecoveryUntil.current
@@ -2400,6 +2587,15 @@ function GameWorld({
           runtimeItemPositions.current,
           item,
         )
+        const interactionDistance = magnetActive
+          ? MAGNET_PULL_RADIUS + ballRadius + 1.5
+          : ballRadius + 2.5
+        if (
+          Math.abs(runtimePosition.x - position.x) > interactionDistance ||
+          Math.abs(runtimePosition.z - position.z) > interactionDistance
+        ) {
+          continue
+        }
         if (
           magnetActive &&
           canMagnetAttract(
@@ -2447,7 +2643,15 @@ function GameWorld({
 
         if (touchesItem && canCollect(ballRadius, item.size)) {
           collectedSet.current.add(item.id)
-          onCollect(item)
+          onCollect(
+            item,
+            getLocalAttachmentNormal(
+              position,
+              runtimeItem,
+              orb.current?.quaternion,
+              motion.current,
+            ),
+          )
         } else if (touchesItem) {
           if (state.clock.elapsedTime > tooLargeCooldown.current) {
             tooLargeCooldown.current = state.clock.elapsedTime + 1.7
@@ -2499,12 +2703,74 @@ function GameWorld({
         }
         if (isObjectTouchingBall(position, ballRadius, runtimeTreasure)) {
           collectedSet.current.add(treasure.id)
-          onCollect(treasure)
+          onCollect(
+            treasure,
+            getLocalAttachmentNormal(
+              position,
+              runtimeTreasure,
+              orb.current?.quaternion,
+              motion.current,
+            ),
+          )
+        }
+      }
+
+      for (const item of droppedObjects) {
+        if (recoveringDroppedSet.current.has(item.id)) continue
+        const runtimePosition = getRuntimeItemPosition(
+          runtimeItemPositions.current,
+          item,
+        )
+        if (
+          magnetActive &&
+          canMagnetAttract(
+            position,
+            ballRadius,
+            runtimePosition,
+            item.size,
+            physicsLayout.obstacles,
+          )
+        ) {
+          const targetPosition = stepMagnetPosition(
+            runtimePosition,
+            {
+              x: position.x,
+              y:
+                position.y -
+                getObjectVisualScale(item.size) * 0.58,
+              z: position.z,
+            },
+            delta,
+          )
+          runtimePosition.set(
+            targetPosition.x,
+            targetPosition.y,
+            targetPosition.z,
+          )
+        }
+        const runtimeDroppedItem = {
+          ...item,
+          position: [
+            runtimePosition.x,
+            runtimePosition.y,
+            runtimePosition.z,
+          ] as [number, number, number],
+        }
+        if (
+          isObjectTouchingBall(
+            position,
+            ballRadius,
+            runtimeDroppedItem,
+          )
+        ) {
+          recoveringDroppedSet.current.add(item.id)
+          onRecoverDropped(item)
         }
       }
 
       for (const pickup of powerUpPickups) {
         if (collectedPowerUpSet.current.has(pickup.id)) continue
+        if (pickup.collectibleAt > Date.now()) continue
         if (!isPowerUpTouchingBall(position, ballRadius, pickup)) continue
         collectedPowerUpSet.current.add(pickup.id)
         onPowerUpCollect(pickup)
@@ -2534,24 +2800,47 @@ function GameWorld({
     cameraDirection.current.x = MathUtils.damp(
       cameraDirection.current.x,
       cameraTargetDirection.current.x,
-      8.2,
+      13,
       delta,
     )
     cameraDirection.current.z = MathUtils.damp(
       cameraDirection.current.z,
       cameraTargetDirection.current.z,
-      8.2,
+      13,
       delta,
     )
     cameraDirection.current.normalize()
 
-    const cameraDistance =
+    cameraOrbit.current.zoom = MathUtils.damp(
+      cameraOrbit.current.zoom,
+      cameraOrbit.current.targetZoom,
+      14,
+      delta,
+    )
+
+    const manualCameraDistance =
       (4.8 + ballRadius * 1.6) * cameraOrbit.current.zoom
-    const elevation = Math.max(0, position.y - ballRadius)
+    const cameraDistance = Math.max(
+      manualCameraDistance +
+        tierFourCameraDistanceOffset +
+        architectureCameraDistanceOffset,
+      architectureCameraMinimumDistance,
+    )
+    const rawElevation = Math.max(0, position.y - ballRadius)
+    const targetElevation = rawElevation < 0.03 ? 0 : rawElevation
+    cameraElevation.current = MathUtils.damp(
+      cameraElevation.current,
+      targetElevation,
+      12,
+      delta,
+    )
+    const elevation = cameraElevation.current
     cameraPosition.current.set(
       position.x - cameraDirection.current.x * cameraDistance,
       3.2 +
         ballRadius * 1.35 +
+        tierFourCameraDistanceOffset * 0.3 +
+        architectureCameraFramingLift +
         elevation +
         cameraOrbit.current.pitch +
         (cameraOrbit.current.zoom - 1) * 1.35,
@@ -2563,10 +2852,16 @@ function GameWorld({
       cameraPosition.current.x += shake
       cameraPosition.current.y += Math.abs(shake) * 0.5
     }
-    camera.position.lerp(cameraPosition.current, reducedMotion ? 0.18 : 0.1)
+    const cameraDamping = reducedMotion ? 14 : 10
+    camera.position.lerp(
+      cameraPosition.current,
+      1 - Math.exp(-cameraDamping * Math.min(delta, 0.1)),
+    )
     desiredLookTarget.current.set(
       position.x + cameraDirection.current.x * ballRadius * 0.7,
-      ballRadius * 0.72 + elevation,
+      ballRadius * 0.72 +
+        elevation +
+        architectureCameraFramingLift * 0.5,
       position.z + cameraDirection.current.z * ballRadius * 0.7,
     )
     lookTarget.current.x = MathUtils.damp(
@@ -2601,11 +2896,29 @@ function GameWorld({
 
   })
 
-  const visibleObjects = objects.filter(
-    (item) => !collectedIds.includes(item.id),
+  const visibleObjects = useMemo(
+    () => {
+      const collected = new Set(collectedIds)
+      return [
+        ...objects.filter((item) => !collected.has(item.id)),
+        ...droppedObjects,
+      ]
+    },
+    [collectedIds, droppedObjects, objects],
   )
-  const collectedObjects = attachedObjects
-
+  const droppedObjectIds = useMemo(
+    () => new Set(droppedObjects.map((item) => item.id)),
+    [droppedObjects],
+  )
+  const renderedObjects = useMemo(
+    () =>
+      selectNearbyObjects(
+        visibleObjects,
+        renderCenter,
+        renderQuality.objectRenderDistance,
+      ),
+    [renderCenter, renderQuality.objectRenderDistance, visibleObjects],
+  )
   return (
     <>
       <color attach="background" args={[stage.skyColor]} />
@@ -2615,7 +2928,7 @@ function GameWorld({
       />
       <ambientLight intensity={stage.theme === 'starlight-river' ? 1.1 : 1.45} />
       <directionalLight
-        castShadow
+        castShadow={renderQuality.shadows}
         position={[6, 12, 8]}
         intensity={stage.theme === 'starlight-river' ? 1.45 : 2.1}
         color={new Color(
@@ -2632,11 +2945,29 @@ function GameWorld({
         ]}
       />
 
-      <GardenSetDressing floorSize={stage.mapSize} theme={stage.theme} />
+      <GardenSetDressing
+        floorSize={stage.mapSize}
+        receiveShadow={renderQuality.shadows}
+        theme={stage.theme}
+        treeObstacles={physicsLayout.obstacles}
+      />
+      <NaturalObstacleModels
+        obstacles={physicsLayout.obstacles}
+        surfaceZones={physicsLayout.surfaceZones}
+        castShadow={renderQuality.shadows}
+      />
       <RapierWorldColliders
         mapSize={stage.mapSize}
         layout={physicsLayout}
         reducedMotion={reducedMotion}
+      />
+      <RoamingRunnerObstacles
+        mapSize={stage.mapSize}
+        obstacles={roamingRunnerObstacles}
+        paused={paused}
+        reducedMotion={reducedMotion}
+        onRunnerHit={handleRunnerHazardHit}
+        onPolarBearHit={handlePolarBearHazardHit}
       />
       <DynamicPracticeProps
         stageId={stage.id}
@@ -2658,17 +2989,18 @@ function GameWorld({
         />
       ))}
 
-      {visibleObjects.map((item) => (
+      {renderedObjects.map((item) => (
         <LearningItem
           key={item.id}
           item={item}
           reducedMotion={reducedMotion}
           available={canCollect(ballRadius, item.size)}
           runtimePositions={runtimeItemPositions}
+          recoverable={droppedObjectIds.has(item.id)}
         />
       ))}
       <TooLargeItemColliders
-        items={visibleObjects}
+        items={renderedObjects}
         ballRadius={ballRadius}
       />
       {powerUpPickups.map((pickup) => (
@@ -2700,6 +3032,14 @@ function GameWorld({
         angularDamping={1}
         canSleep={false}
         ccd
+        userData={{
+          physics: {
+            kind: 'player',
+            label: '주인공',
+            response: 'stop',
+            quiet: true,
+          } satisfies PhysicsBodyData,
+        }}
         onCollisionEnter={handleCollisionEnter}
       >
         <BallCollider
@@ -2720,6 +3060,7 @@ function GameWorld({
               index={index}
               orbRadius={ballRadius}
               slotCount={64}
+              attachmentNormal={attachmentNormals[item.id]}
             />
           ))}
         </group>
@@ -2734,10 +3075,11 @@ function GameWorld({
           active={magnetActive}
           reducedMotion={reducedMotion}
         />
-        <ChildPusher
+        <RollingCrewCharacter
           ballRadius={ballRadius}
           motion={motion}
           reducedMotion={reducedMotion}
+          paused={paused}
         />
       </RigidBody>
       <WaterContactEffects
@@ -2751,23 +3093,36 @@ function GameWorld({
 }
 
 export function GameCanvas(props: GameCanvasProps) {
+  const renderQuality = useMemo(
+    () => getRecommendedRenderQuality(readDeviceRenderProfile()),
+    [],
+  )
+
   return (
     <Canvas
       className="game-canvas"
-      shadows
-      dpr={[1, 1.7]}
+      shadows={renderQuality.shadows}
+      dpr={renderQuality.dpr}
       camera={{ position: [0, 7, 8], fov: 48, near: 0.1, far: 240 }}
-      gl={{ antialias: true, alpha: false, powerPreference: 'high-performance' }}
+      gl={{
+        antialias: renderQuality.antialias,
+        alpha: false,
+        powerPreference: 'high-performance',
+      }}
     >
       <Suspense fallback={null}>
         <Physics
           gravity={[0, -16, 0]}
           paused={props.paused}
           timeStep={1 / 60}
-          numSolverIterations={8}
-          maxCcdSubsteps={4}
+          numSolverIterations={renderQuality.solverIterations}
+          maxCcdSubsteps={renderQuality.maxCcdSubsteps}
         >
-          <GameWorld {...props} />
+          <GameWorld
+            key={props.stage.id}
+            {...props}
+            renderQuality={renderQuality}
+          />
         </Physics>
       </Suspense>
     </Canvas>
