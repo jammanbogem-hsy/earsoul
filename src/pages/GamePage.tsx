@@ -68,6 +68,7 @@ import { selectActiveStageObjects } from '../game/objectDistribution'
 import {
   createPolarBearDroppedObjects,
   createRunnerDroppedObjects,
+  type DroppedLearningObject,
 } from '../game/polarBearEncounter'
 import type { SurfaceKind } from '../game/worldPhysics'
 import type {
@@ -181,6 +182,7 @@ export function GamePage() {
   })
   const [playerPose, setPlayerPose] = useState<PlayerMapPose>({
     x: 0,
+    y: 0.42,
     z: 0,
     headingX: 0,
     headingZ: -1,
@@ -213,7 +215,7 @@ export function GamePage() {
   const promptedStageIds = useRef(new Set<string>())
   const polarBearHitCount = useRef(0)
   const runnerHitCount = useRef(0)
-  const hazardImmunityUntil = useRef(0)
+  const hazardImmunityTimer = useRef<number | undefined>(undefined)
   const coachSeen = sessionStorage.getItem('earsoul-coach-v4-seen') === 'true'
   const [coachStep, setCoachStep] = useState(coachSeen ? -1 : 0)
   const reducedMotion =
@@ -294,6 +296,9 @@ export function GamePage() {
       if (scoreFeedbackTimer.current) {
         window.clearTimeout(scoreFeedbackTimer.current)
       }
+      if (hazardImmunityTimer.current !== undefined) {
+        window.clearTimeout(hazardImmunityTimer.current)
+      }
     },
     [],
   )
@@ -329,6 +334,13 @@ export function GamePage() {
   const handlePlayerPosition = useCallback((pose: PlayerMapPose) => {
     setPlayerPose(pose)
   }, [])
+  const startHazardImmunity = useCallback(() => {
+    if (hazardImmunityTimer.current !== undefined) return false
+    hazardImmunityTimer.current = window.setTimeout(() => {
+      hazardImmunityTimer.current = undefined
+    }, 2_500)
+    return true
+  }, [])
 
   const previewStageIndex = import.meta.env.DEV
     ? Number(new URLSearchParams(window.location.search).get('stage')) - 1
@@ -348,7 +360,7 @@ export function GamePage() {
     Record<string, PowerUpPickup[]>
   >({})
   const [droppedObjectsByStage, setDroppedObjectsByStage] = useState<
-    Record<string, LearningObject[]>
+    Record<string, DroppedLearningObject[]>
   >({})
   const powerUpPickups =
     respawnedPowerUpsByStage[stage.id] ?? initialPowerUpPickups
@@ -519,16 +531,19 @@ export function GamePage() {
     x: number
     z: number
   }): boolean => {
-    const now = Date.now()
-    if (now < hazardImmunityUntil.current) return false
-    hazardImmunityUntil.current = now + 2_500
+    if (!startHazardImmunity()) return false
 
     polarBearHitCount.current += 1
     const newlyDropped = createPolarBearDroppedObjects(
       stage,
       attachedObjects,
       droppedObjects,
-      { x: playerPose.x, z: playerPose.z },
+      {
+        x: playerPose.x,
+        y: playerPose.y,
+        z: playerPose.z,
+        ballRadius,
+      },
       polarBearHitCount.current,
       undefined,
       position,
@@ -564,16 +579,19 @@ export function GamePage() {
     position: { x: number; z: number },
     runnerId: string,
   ): boolean => {
-    const now = Date.now()
-    if (now < hazardImmunityUntil.current) return false
-    hazardImmunityUntil.current = now + 2_500
+    if (!startHazardImmunity()) return false
 
     runnerHitCount.current += 1
     const newlyDropped = createRunnerDroppedObjects(
       stage,
       attachedObjects,
       droppedObjects,
-      { x: playerPose.x, z: playerPose.z },
+      {
+        x: playerPose.x,
+        y: playerPose.y,
+        z: playerPose.z,
+        ballRadius,
+      },
       runnerHitCount.current,
       runnerId,
       position,
@@ -718,7 +736,7 @@ export function GamePage() {
     setActivePowerUps(createEmptyPowerUps())
     setComboMultiplier(1)
     setControlVector({ x: 0, z: 0 })
-    setPlayerPose({ x: 0, z: 0, headingX: 0, headingZ: -1 })
+    setPlayerPose({ x: 0, y: 0.42, z: 0, headingX: 0, headingZ: -1 })
     setStagePromptOpen(false)
     sessionRef.current = next
     setSession(next)

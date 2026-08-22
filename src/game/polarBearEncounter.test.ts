@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { fallbackLearningPack } from '../data/learningPack'
 import {
+  createDroppedObjectMotion,
   createPolarBearDroppedObjects,
   createRunnerDroppedObjects,
   POLAR_BEAR_DROP_COUNT,
@@ -97,5 +98,35 @@ describe('polar bear encounter', () => {
 
     expect(dropped.some((item) => item.position[2] > 0.5)).toBe(true)
     expect(dropped.some((item) => item.position[2] < -0.5)).toBe(true)
+  })
+
+  it('launches every dropped object from outside the ball with gravity and spin', () => {
+    const center = { x: 2, y: 0.9, z: -3, ballRadius: 0.9 }
+    const dropped = createPolarBearDroppedObjects(
+      stage,
+      attached,
+      [],
+      center,
+      3,
+    )
+
+    for (const item of dropped) {
+      const [originX, originY, originZ] = item.dropMotion.origin
+      expect(Math.hypot(originX - center.x, originZ - center.z)).toBeGreaterThan(
+        center.ballRadius,
+      )
+      expect(originY).toBeGreaterThan(center.y)
+      expect(item.dropMotion.linearVelocity[1]).toBeGreaterThan(0)
+      expect(Math.hypot(...item.dropMotion.angularVelocity)).toBeGreaterThan(5)
+    }
+  })
+
+  it('creates deterministic ballistic motion for the same collision', () => {
+    const item = attached[0]
+    const center = { x: -1, y: 1.1, z: 4, ballRadius: 1.1 }
+
+    expect(createDroppedObjectMotion(item, center, 42)).toEqual(
+      createDroppedObjectMotion(item, center, 42),
+    )
   })
 })

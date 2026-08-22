@@ -6,9 +6,21 @@ export const POLAR_BEAR_HIT_COOLDOWN_MS = 10_000
 export const RUNNER_DROP_COUNT = 5
 export const RUNNER_HIT_COOLDOWN_MS = 4_000
 
-interface DropCenter {
+export interface DroppedObjectMotion {
+  origin: [number, number, number]
+  linearVelocity: [number, number, number]
+  angularVelocity: [number, number, number]
+}
+
+export interface DroppedLearningObject extends LearningObject {
+  dropMotion: DroppedObjectMotion
+}
+
+export interface DropCenter {
   x: number
+  y?: number
   z: number
+  ballRadius?: number
 }
 
 function stableHash(value: string): number {
@@ -169,6 +181,45 @@ function findDropPosition(
   ]
 }
 
+export function createDroppedObjectMotion(
+  item: LearningObject,
+  center: DropCenter,
+  seed: number,
+): DroppedObjectMotion {
+  const flightSeconds = 0.68 + (seed % 5) * 0.035
+  const objectRadius = Math.max(0.18, Math.min(0.72, item.size * 0.52))
+  const targetCenterY = item.position[1] + objectRadius
+  const playerCenterY = center.y ?? Math.max(0.42, center.ballRadius ?? 0.42)
+  const targetOffsetX = item.position[0] - center.x
+  const targetOffsetZ = item.position[2] - center.z
+  const targetDistance = Math.hypot(targetOffsetX, targetOffsetZ) || 1
+  const launchClearance = (center.ballRadius ?? 0.42) + objectRadius + 0.1
+  const originX = center.x + (targetOffsetX / targetDistance) * launchClearance
+  const originZ = center.z + (targetOffsetZ / targetDistance) * launchClearance
+  const originY = Math.max(
+    targetCenterY + 0.75,
+    playerCenterY + (center.ballRadius ?? 0.42) * 0.72,
+  )
+  const verticalVelocity =
+    (targetCenterY - originY + 8 * flightSeconds * flightSeconds) /
+    flightSeconds
+  const spinDirection = seed % 2 === 0 ? 1 : -1
+
+  return {
+    origin: [originX, originY, originZ],
+    linearVelocity: [
+      (item.position[0] - originX) / flightSeconds,
+      verticalVelocity,
+      (item.position[2] - originZ) / flightSeconds,
+    ],
+    angularVelocity: [
+      spinDirection * (4.2 + (seed % 7) * 0.46),
+      ((seed >>> 3) % 2 === 0 ? 1 : -1) * (3.6 + (seed % 5) * 0.42),
+      -spinDirection * (4.8 + (seed % 6) * 0.38),
+    ],
+  }
+}
+
 function createEncounterDroppedObjects(
   stage: Pick<GameStage, 'id' | 'mapSize' | 'theme'>,
   attachedObjects: readonly LearningObject[],
@@ -178,7 +229,7 @@ function createEncounterDroppedObjects(
   encounterKey: string,
   count: number,
   impactSource?: DropCenter,
-): LearningObject[] {
+): DroppedLearningObject[] {
   const seed = `${stage.id}:${encounterKey}:${Math.max(0, hitCount)}`
   const selected = [...attachedObjects]
     .filter((item) => item.modelId !== 'radar-treasure')
@@ -188,7 +239,7 @@ function createEncounterDroppedObjects(
     )
     .slice(0, Math.max(0, count))
   const layout = createWorldPhysicsLayout(stage)
-  const dropped: LearningObject[] = []
+  const dropped: DroppedLearningObject[] = []
 
   const impactAngle = impactSource
     ? Math.atan2(center.z - impactSource.z, center.x - impactSource.x)
@@ -209,7 +260,15 @@ function createEncounterDroppedObjects(
       [...existingDroppedObjects, ...dropped],
       sideAngle,
     )
-    dropped.push({ ...item, position })
+    const droppedItem = { ...item, position }
+    dropped.push({
+      ...droppedItem,
+      dropMotion: createDroppedObjectMotion(
+        droppedItem,
+        center,
+        stableHash(`${seed}:${item.id}:motion`),
+      ),
+    })
   })
 
   return dropped
@@ -223,7 +282,7 @@ export function createPolarBearDroppedObjects(
   hitCount: number,
   count = POLAR_BEAR_DROP_COUNT,
   impactSource?: DropCenter,
-): LearningObject[] {
+): DroppedLearningObject[] {
   return createEncounterDroppedObjects(
     stage,
     attachedObjects,
@@ -244,7 +303,7 @@ export function createRunnerDroppedObjects(
   hitCount: number,
   runnerId: string,
   impactSource?: DropCenter,
-): LearningObject[] {
+): DroppedLearningObject[] {
   return createEncounterDroppedObjects(
     stage,
     attachedObjects,

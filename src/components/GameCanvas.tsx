@@ -111,6 +111,7 @@ import {
   selectNearbyObjects,
   type RenderQuality,
 } from '../game/renderQuality'
+import type { DroppedLearningObject } from '../game/polarBearEncounter'
 import { MaterialIcon } from './MaterialIcon'
 import {
   AttachedObjectMesh,
@@ -143,7 +144,7 @@ interface GameCanvasProps {
   stage: GameStage
   stageObjects: LearningObject[]
   attachedObjects: LearningObject[]
-  droppedObjects: LearningObject[]
+  droppedObjects: DroppedLearningObject[]
   attachmentNormals: Record<string, AttachmentNormal>
   collectedIds: string[]
   ballRadius: number
@@ -207,6 +208,7 @@ function getLocalAttachmentNormal(
 
 export interface PlayerMapPose {
   x: number
+  y: number
   z: number
   headingX: number
   headingZ: number
@@ -474,6 +476,228 @@ const LearningItem = memo(function LearningItem({
         </span>
       </Html>
     </group>
+  )
+})
+
+const DroppedObjectPhysics = memo(function DroppedObjectPhysics({
+  item,
+  runtimePositions,
+  playerPosition,
+  ballRadius,
+  magnetActive,
+  obstacles,
+  reducedMotion,
+}: {
+  item: DroppedLearningObject
+  runtimePositions: MutableRefObject<Map<string, Vector3>>
+  playerPosition: MutableRefObject<Vector3>
+  ballRadius: number
+  magnetActive: boolean
+  obstacles: WorldPhysicsLayout['obstacles']
+  reducedMotion: boolean
+}) {
+  const body = useRef<RapierRigidBody>(null)
+  const recoveryMarker = useRef<Group>(null)
+  const landingEffect = useRef<Group>(null)
+  const landingMaterial = useRef<MeshBasicMaterial>(null)
+  const landingPulse = useRef(0)
+  const hasLanded = useRef(false)
+  const age = useRef(0)
+  const visualScale = getWorldObjectVisualScale(item)
+  const collisionRadius = Math.max(0.16, Math.min(0.72, item.size * 0.52))
+  const collectionCenterOffset = getObjectVisualScale(item.size) * 0.58
+  const runtimePosition = useRef(
+    new Vector3(
+      item.dropMotion.origin[0],
+      item.dropMotion.origin[1] - collectionCenterOffset,
+      item.dropMotion.origin[2],
+    ),
+  )
+
+  useEffect(() => {
+    const positions = runtimePositions.current
+    positions.set(item.id, runtimePosition.current)
+    const rigidBody = body.current
+    if (rigidBody) {
+      rigidBody.setLinvel(
+        {
+          x: item.dropMotion.linearVelocity[0],
+          y: item.dropMotion.linearVelocity[1],
+          z: item.dropMotion.linearVelocity[2],
+        },
+        true,
+      )
+      rigidBody.setAngvel(
+        {
+          x: item.dropMotion.angularVelocity[0],
+          y: item.dropMotion.angularVelocity[1],
+          z: item.dropMotion.angularVelocity[2],
+        },
+        true,
+      )
+    }
+    return () => {
+      positions.delete(item.id)
+    }
+  }, [item, runtimePositions])
+
+  useFrame((_, delta) => {
+    const rigidBody = body.current
+    if (!rigidBody || !rigidBody.isValid()) return
+    age.current += delta
+
+    let translation = rigidBody.translation()
+    runtimePosition.current.set(
+      translation.x,
+      translation.y - collectionCenterOffset,
+      translation.z,
+    )
+    recoveryMarker.current?.position.set(
+      translation.x,
+      translation.y,
+      translation.z,
+    )
+
+    if (
+      magnetActive &&
+      age.current > 0.42 &&
+      canMagnetAttract(
+        playerPosition.current,
+        ballRadius,
+        runtimePosition.current,
+        item.size,
+        obstacles,
+      )
+    ) {
+      const attracted = stepMagnetPosition(
+        runtimePosition.current,
+        {
+          x: playerPosition.current.x,
+          y: playerPosition.current.y - collectionCenterOffset,
+          z: playerPosition.current.z,
+        },
+        delta,
+      )
+      rigidBody.setTranslation(
+        {
+          x: attracted.x,
+          y: attracted.y + collectionCenterOffset,
+          z: attracted.z,
+        },
+        true,
+      )
+      rigidBody.setLinvel({ x: 0, y: 0, z: 0 }, true)
+      translation = rigidBody.translation()
+      runtimePosition.current.set(
+        translation.x,
+        translation.y - collectionCenterOffset,
+        translation.z,
+      )
+    }
+
+    if (landingPulse.current > 0) {
+      landingPulse.current = Math.max(0, landingPulse.current - delta * 2.8)
+      const progress = 1 - landingPulse.current
+      landingEffect.current?.scale.setScalar(0.45 + progress * 1.55)
+      if (landingMaterial.current) {
+        landingMaterial.current.opacity = landingPulse.current * 0.42
+      }
+    }
+  })
+
+  const handleLanding = ({ other }: CollisionEnterPayload) => {
+    if (age.current < 0.1 || hasLanded.current) return
+    const physics = (
+      other.rigidBodyObject?.userData.physics ??
+      other.colliderObject?.userData.physics
+    ) as PhysicsBodyData | undefined
+    if (physics?.kind !== 'floor') return
+    const translation = body.current?.translation()
+    if (!translation) return
+    hasLanded.current = true
+    if (reducedMotion) return
+    landingEffect.current?.position.set(translation.x, 0.025, translation.z)
+    landingPulse.current = 1
+  }
+
+  const physics: PhysicsBodyData = {
+    kind: 'dynamic-prop',
+    label: item.label,
+    response: 'bounce',
+    quiet: true,
+  }
+
+  return (
+    <>
+      <RigidBody
+        ref={body}
+        colliders={false}
+        position={item.dropMotion.origin}
+        linearDamping={0.46}
+        angularDamping={0.62}
+        canSleep
+        ccd
+        userData={{ physics }}
+        onCollisionEnter={handleLanding}
+      >
+        <BallCollider
+          args={[collisionRadius]}
+          friction={0.84}
+          restitution={0.38}
+        />
+        <group scale={visualScale}>
+          <LearningObjectMesh item={item} detail="world" />
+        </group>
+      </RigidBody>
+      <group ref={recoveryMarker} position={item.dropMotion.origin}>
+        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -collisionRadius + 0.025, 0]}>
+          <ringGeometry
+            args={[
+              collisionRadius * 1.12,
+              collisionRadius * 1.42,
+              28,
+            ]}
+          />
+          <meshBasicMaterial
+            color="#FF6B3D"
+            transparent
+            opacity={0.72}
+            depthWrite={false}
+          />
+        </mesh>
+        <Html
+          center
+          position={[0, collisionRadius + 0.58, 0]}
+          distanceFactor={8}
+          zIndexRange={[1, 0]}
+          style={{ pointerEvents: 'none' }}
+        >
+          <span
+            aria-hidden="true"
+            className="world-size-badge is-available"
+            style={{ '--tier-color': '#FF6B3D' } as CSSProperties}
+          >
+            <b>{getSizeTier(item.size).level}</b>
+            다시 줍기 · {getItemDisplayLabel(item)}
+            <i><MaterialIcon name="replay" /></i>
+          </span>
+        </Html>
+      </group>
+      {!reducedMotion && (
+        <group ref={landingEffect} visible position={[0, -10, 0]}>
+          <mesh rotation={[-Math.PI / 2, 0, 0]}>
+            <ringGeometry args={[0.18, 0.48, 28]} />
+            <meshBasicMaterial
+              ref={landingMaterial}
+              color="#D7C7A4"
+              transparent
+              opacity={0}
+              depthWrite={false}
+            />
+          </mesh>
+        </group>
+      )}
+    </>
   )
 })
 
@@ -2721,33 +2945,6 @@ function GameWorld({
           runtimeItemPositions.current,
           item,
         )
-        if (
-          magnetActive &&
-          canMagnetAttract(
-            position,
-            ballRadius,
-            runtimePosition,
-            item.size,
-            physicsLayout.obstacles,
-          )
-        ) {
-          const targetPosition = stepMagnetPosition(
-            runtimePosition,
-            {
-              x: position.x,
-              y:
-                position.y -
-                getObjectVisualScale(item.size) * 0.58,
-              z: position.z,
-            },
-            delta,
-          )
-          runtimePosition.set(
-            targetPosition.x,
-            targetPosition.y,
-            targetPosition.z,
-          )
-        }
         const runtimeDroppedItem = {
           ...item,
           position: [
@@ -2847,10 +3044,13 @@ function GameWorld({
       position.z - cameraDirection.current.z * cameraDistance,
     )
     if (!reducedMotion && motion.current.impact > 0) {
-      const shake =
-        Math.sin(state.clock.elapsedTime * 58) * motion.current.impact * 0.075
-      cameraPosition.current.x += shake
-      cameraPosition.current.y += Math.abs(shake) * 0.5
+      const shakeStrength = Math.min(1.9, motion.current.impact) * 0.072
+      cameraPosition.current.x +=
+        Math.sin(state.clock.elapsedTime * 61) * shakeStrength
+      cameraPosition.current.y +=
+        Math.sin(state.clock.elapsedTime * 73 + 0.8) * shakeStrength * 0.48
+      cameraPosition.current.z +=
+        Math.sin(state.clock.elapsedTime * 53 + 1.7) * shakeStrength * 0.72
     }
     const cameraDamping = reducedMotion ? 14 : 10
     camera.position.lerp(
@@ -2888,6 +3088,7 @@ function GameWorld({
       lastMapUpdate.current = state.clock.elapsedTime
       onPlayerPosition({
         x: position.x,
+        y: position.y,
         z: position.z,
         headingX: heading.current.x,
         headingZ: heading.current.z,
@@ -2899,16 +3100,9 @@ function GameWorld({
   const visibleObjects = useMemo(
     () => {
       const collected = new Set(collectedIds)
-      return [
-        ...objects.filter((item) => !collected.has(item.id)),
-        ...droppedObjects,
-      ]
+      return objects.filter((item) => !collected.has(item.id))
     },
-    [collectedIds, droppedObjects, objects],
-  )
-  const droppedObjectIds = useMemo(
-    () => new Set(droppedObjects.map((item) => item.id)),
-    [droppedObjects],
+    [collectedIds, objects],
   )
   const renderedObjects = useMemo(
     () =>
@@ -2996,7 +3190,18 @@ function GameWorld({
           reducedMotion={reducedMotion}
           available={canCollect(ballRadius, item.size)}
           runtimePositions={runtimeItemPositions}
-          recoverable={droppedObjectIds.has(item.id)}
+        />
+      ))}
+      {droppedObjects.map((item) => (
+        <DroppedObjectPhysics
+          key={item.id}
+          item={item}
+          runtimePositions={runtimeItemPositions}
+          playerPosition={playerPosition}
+          ballRadius={ballRadius}
+          magnetActive={magnetActive}
+          obstacles={physicsLayout.obstacles}
+          reducedMotion={reducedMotion}
         />
       ))}
       <TooLargeItemColliders
