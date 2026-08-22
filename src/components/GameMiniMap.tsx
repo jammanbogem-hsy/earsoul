@@ -43,12 +43,20 @@ export function GameMiniMap({
           <MaterialIcon name="map" />
           미니맵
         </span>
-        <small>2층·승강기 표시</small>
+        <small>
+          {layout.tunnels.length > 0
+            ? '2층·승강기·터널 표시'
+            : '2층·승강기 표시'}
+        </small>
       </header>
       <svg
         viewBox="0 0 100 100"
         role="img"
-        aria-label="수집물과 2층 이동 구조가 표시된 현재 맵"
+        aria-label={
+          layout.tunnels.length > 0
+            ? '수집물과 2층 이동 구조, 터널이 표시된 현재 맵'
+            : '수집물과 2층 이동 구조가 표시된 현재 맵'
+        }
       >
         <rect className="minimap-ground" x="1" y="1" width="98" height="98" rx="12" />
         <g className="minimap-surfaces">
@@ -61,6 +69,22 @@ export function GameMiniMap({
               rx={toMapSize(zone.halfWidth)}
               ry={toMapSize(zone.halfDepth)}
               transform={`rotate(${zone.rotationY * (180 / Math.PI)} ${toMapX(zone.x)} ${toMapY(zone.z)})`}
+            />
+          ))}
+        </g>
+        <g className="minimap-tunnels">
+          {layout.tunnels.map((tunnel) => (
+            <rect
+              key={tunnel.id}
+              x={
+                toMapX(tunnel.x) -
+                toMapSize(tunnel.halfWidth + tunnel.wallThickness)
+              }
+              y={toMapY(tunnel.z) - toMapSize(tunnel.halfDepth)}
+              width={toMapSize((tunnel.halfWidth + tunnel.wallThickness) * 2)}
+              height={toMapSize(tunnel.halfDepth * 2)}
+              rx="1.2"
+              transform={`rotate(${tunnel.rotationY * (180 / Math.PI)} ${toMapX(tunnel.x)} ${toMapY(tunnel.z)})`}
             />
           ))}
         </g>
@@ -168,6 +192,12 @@ export function GameMiniMap({
         2층
         <i className="is-elevator" />
         승강기
+        {layout.tunnels.length > 0 && (
+          <>
+            <i className="is-tunnel" />
+            터널
+          </>
+        )}
       </footer>
     </aside>
   )

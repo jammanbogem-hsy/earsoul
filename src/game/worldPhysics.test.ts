@@ -24,6 +24,7 @@ const stopLayout: WorldPhysicsLayout = {
     },
   ],
   rideableObstacles: [],
+  tunnels: [],
   speedZones: [],
   surfaceZones: [],
   terrainRamps: [],
@@ -45,7 +46,7 @@ describe('world physics', () => {
       ).toHaveLength(2)
       expect(
         layout.surfaceZones.filter((zone) => zone.kind === 'water'),
-      ).toHaveLength(stage.theme === 'forest-trail' ? 3 : 2)
+      ).toHaveLength(stage.theme === 'forest-trail' ? 5 : 2)
       const mudZones = layout.surfaceZones.filter((zone) => zone.kind === 'mud')
       expect(mudZones.length).toBeGreaterThanOrEqual(4)
       expect(new Set(mudZones.map((zone) => zone.assetVariant))).toEqual(
@@ -191,7 +192,7 @@ describe('world physics', () => {
   it('uses the intended natural-obstacle mix for each map theme', () => {
     const expectedByTheme = {
       'sunny-plaza': [3, 2, 2, 2, 2],
-      'forest-trail': [6, 4, 4, 4, 4],
+      'forest-trail': [6, 4, 4, 5, 5],
       'starlight-river': [3, 2, 3, 2, 3],
     } as const
 
@@ -256,7 +257,7 @@ describe('world physics', () => {
     })
   })
 
-  it('gives the second map extra hills, water, mud, and low ridges', () => {
+  it('gives the second map extra hills, water, mud, low ridges, and a tunnel', () => {
     const stage = fallbackLearningPack.stages[1]
     const layout = createWorldPhysicsLayout(stage)
 
@@ -264,14 +265,36 @@ describe('world physics', () => {
     expect(layout.terrainRamps.filter((ramp) => ramp.id.includes('-hill-')))
       .toHaveLength(6)
     expect(layout.surfaceZones.filter((zone) => zone.kind === 'water'))
-      .toHaveLength(3)
+      .toHaveLength(5)
     expect(layout.surfaceZones.filter((zone) => zone.kind === 'mud'))
-      .toHaveLength(8)
+      .toHaveLength(10)
     const ridges = layout.rideableObstacles.filter((obstacle) =>
       obstacle.id.startsWith('forest-ridge-'),
     )
-    expect(ridges).toHaveLength(8)
+    expect(ridges).toHaveLength(14)
     expect(ridges.every((ridge) => ridge.halfHeight <= 0.12)).toBe(true)
+    expect(layout.tunnels).toHaveLength(1)
+    expect(layout.tunnels[0]).toMatchObject({
+      id: 'moon-water-tunnel',
+      label: '달빛 수로 터널',
+      halfWidth: 4.4,
+      clearanceHeight: 5.4,
+    })
+    expect(
+      layout.surfaceZones.find((zone) => zone.id === 'forest-tunnel-runoff'),
+    ).toMatchObject({
+      kind: 'water',
+      x: layout.tunnels[0].x,
+      z: layout.tunnels[0].z,
+      rotationY: layout.tunnels[0].rotationY,
+    })
+  })
+
+  it('does not add the dark-forest tunnel to the other maps', () => {
+    expect(createWorldPhysicsLayout(fallbackLearningPack.stages[0]).tunnels)
+      .toHaveLength(0)
+    expect(createWorldPhysicsLayout(fallbackLearningPack.stages[2]).tunnels)
+      .toHaveLength(0)
   })
 
   it('moves the elevator smoothly from the ground to the second floor', () => {
@@ -362,6 +385,7 @@ describe('world physics', () => {
     const layout: WorldPhysicsLayout = {
       obstacles: [],
       rideableObstacles: [],
+      tunnels: [],
       speedZones: [
         {
           id: 'route',

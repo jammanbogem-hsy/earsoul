@@ -1721,6 +1721,13 @@ md-switch:focus-visible,
   fill: #f0cb62;
 }
 
+.minimap-tunnels rect {
+  fill: rgba(21, 37, 36, 0.82);
+  stroke: #6ed7c8;
+  stroke-dasharray: 1.6 0.9;
+  stroke-width: 0.75;
+}
+
 .minimap-routes rect {
   fill: #ffd44f;
   opacity: 0.8;
@@ -1816,6 +1823,12 @@ md-switch:focus-visible,
   margin-left: 5px;
   border-radius: 50%;
   background: #f3c91d;
+}
+
+.game-minimap footer i.is-tunnel {
+  margin-left: 5px;
+  border: 1px dashed #6ed7c8;
+  background: #263a35;
 }
 
 .game-collection-status {

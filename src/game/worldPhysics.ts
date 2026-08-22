@@ -46,6 +46,21 @@ export interface RideableObstacle {
   rotationY: number
 }
 
+export interface WorldTunnel {
+  id: string
+  label: string
+  x: number
+  z: number
+  halfWidth: number
+  halfDepth: number
+  clearanceHeight: number
+  wallThickness: number
+  roofThickness: number
+  rotationY: number
+  color: string
+  accentColor: string
+}
+
 export type SurfaceKind = 'grass' | 'water' | 'mud'
 
 export interface SurfaceZone {
@@ -190,6 +205,7 @@ export function getElevatedPlatformSurfacePosition(
 export interface WorldPhysicsLayout {
   obstacles: WorldObstacle[]
   rideableObstacles: RideableObstacle[]
+  tunnels: WorldTunnel[]
   speedZones: SpeedZone[]
   surfaceZones: SurfaceZone[]
   terrainRamps: TerrainRamp[]
@@ -448,6 +464,12 @@ function createForestRidges(mapSize: number): RideableObstacle[] {
     [-0.34, -0.18, 0.68, 2.35],
     [0.31, -0.28, -0.18, 2.55],
     [-0.19, 0.3, 1.12, 2.25],
+    [0.38, 0.2, -0.5, 3],
+    [-0.38, 0.12, 0.35, 2.8],
+    [0.08, -0.38, 1.25, 2.45],
+    [-0.02, 0.22, -1.1, 2.9],
+    [0.25, 0.34, 0.62, 2.65],
+    [-0.27, -0.34, -0.35, 2.6],
   ] as const
 
   return ridgeSpecs.map(([xRatio, zRatio, rotationY, halfWidth], index) => ({
@@ -461,6 +483,30 @@ function createForestRidges(mapSize: number): RideableObstacle[] {
     halfDepth: 0.24,
     rotationY,
   }))
+}
+
+function createTunnels(
+  mapSize: number,
+  theme: StageTheme,
+): WorldTunnel[] {
+  if (theme !== 'forest-trail') return []
+
+  return [
+    {
+      id: 'moon-water-tunnel',
+      label: '달빛 수로 터널',
+      x: mapSize * 0.35,
+      z: -mapSize * 0.04,
+      halfWidth: 4.4,
+      halfDepth: 9,
+      clearanceHeight: 5.4,
+      wallThickness: 0.5,
+      roofThickness: 0.42,
+      rotationY: 0.18,
+      color: '#263A35',
+      accentColor: '#6ED7C8',
+    },
+  ]
 }
 
 function createRideableObstacles(
@@ -554,6 +600,30 @@ function createSurfaceZones(
         halfDepth: mapSize * 0.075,
         rotationY: -0.62,
         multiplier: 0.5,
+      },
+      {
+        id: 'forest-tunnel-runoff',
+        label: '터널 속 얕은 수로',
+        kind: 'water',
+        color: '#2D8296',
+        x: mapSize * 0.35,
+        z: -mapSize * 0.04,
+        halfWidth: 3.5,
+        halfDepth: 11.2,
+        rotationY: 0.18,
+        multiplier: 0.58,
+      },
+      {
+        id: 'forest-north-shallows',
+        label: '북쪽 반딧불 여울',
+        kind: 'water',
+        color: '#4AA9B5',
+        x: mapSize * 0.06,
+        z: mapSize * 0.4,
+        halfWidth: mapSize * 0.055,
+        halfDepth: mapSize * 0.034,
+        rotationY: 0.72,
+        multiplier: 0.64,
       },
     ]
   }
@@ -1039,8 +1109,8 @@ function getNaturalAssetCounts(
       'tree-root': 6,
       'fallen-log-a': 4,
       'fallen-log-b': 4,
-      'mud-a': 4,
-      'mud-b': 4,
+      'mud-a': 5,
+      'mud-b': 5,
     }
   }
   if (theme === 'starlight-river') {
@@ -1216,6 +1286,7 @@ export function createWorldPhysicsLayout(
     stage.mapSize,
     stage.theme,
   )
+  const tunnels = createTunnels(stage.mapSize, stage.theme)
   const structureClearances = [
     ...terrainRamps.map((ramp) => ({
       x: ramp.x,
@@ -1239,6 +1310,14 @@ export function createWorldPhysicsLayout(
         z: obstacle.z,
         radius: Math.hypot(obstacle.halfWidth, obstacle.halfDepth) + 0.5,
       })),
+    ...tunnels.map((tunnel) => ({
+      x: tunnel.x,
+      z: tunnel.z,
+      radius: Math.hypot(
+        tunnel.halfWidth + tunnel.wallThickness,
+        tunnel.halfDepth,
+      ) + 0.8,
+    })),
     {
       x: pushRewardSlots[0][0],
       z: pushRewardSlots[0][2],
@@ -1332,6 +1411,7 @@ export function createWorldPhysicsLayout(
   return {
     obstacles,
     rideableObstacles,
+    tunnels,
     speedZones,
     surfaceZones: [...baseSurfaceZones, ...mudZones],
     terrainRamps,

@@ -1570,6 +1570,145 @@ function RapierWorldColliders({
         )
       })}
 
+      {layout.tunnels.map((tunnel) => {
+        const wallCenterX =
+          tunnel.halfWidth + tunnel.wallThickness / 2
+        const roofHalfWidth = tunnel.halfWidth + tunnel.wallThickness
+        const frameDepthRatios = [-0.82, -0.4, 0, 0.4, 0.82]
+        const physics: PhysicsBodyData = {
+          kind: 'obstacle',
+          label: tunnel.label,
+          response: 'stop',
+        }
+
+        return (
+          <RigidBody
+            key={tunnel.id}
+            type="fixed"
+            colliders={false}
+            position={[tunnel.x, 0, tunnel.z]}
+            rotation={[0, tunnel.rotationY, 0]}
+            userData={{ physics }}
+          >
+            {[-1, 1].map((side) => (
+              <CuboidCollider
+                key={`${tunnel.id}-wall-${side}`}
+                args={[
+                  tunnel.wallThickness / 2,
+                  tunnel.clearanceHeight / 2,
+                  tunnel.halfDepth,
+                ]}
+                position={[
+                  wallCenterX * side,
+                  tunnel.clearanceHeight / 2,
+                  0,
+                ]}
+                friction={0.94}
+                restitution={0.02}
+              />
+            ))}
+            <CuboidCollider
+              args={[
+                roofHalfWidth,
+                tunnel.roofThickness / 2,
+                tunnel.halfDepth,
+              ]}
+              position={[
+                0,
+                tunnel.clearanceHeight + tunnel.roofThickness / 2,
+                0,
+              ]}
+              friction={0.94}
+              restitution={0.02}
+            />
+            {[-1, 1].map((side) => (
+              <mesh
+                key={`${tunnel.id}-wall-mesh-${side}`}
+                castShadow
+                receiveShadow
+                position={[
+                  wallCenterX * side,
+                  tunnel.clearanceHeight / 2,
+                  0,
+                ]}
+              >
+                <boxGeometry
+                  args={[
+                    tunnel.wallThickness,
+                    tunnel.clearanceHeight,
+                    tunnel.halfDepth * 2,
+                  ]}
+                />
+                <meshStandardMaterial color={tunnel.color} roughness={0.96} />
+              </mesh>
+            ))}
+            <mesh
+              receiveShadow
+              position={[
+                0,
+                tunnel.clearanceHeight + tunnel.roofThickness / 2,
+                0,
+              ]}
+            >
+              <boxGeometry
+                args={[
+                  roofHalfWidth * 2,
+                  tunnel.roofThickness,
+                  tunnel.halfDepth * 2,
+                ]}
+              />
+              <meshStandardMaterial
+                color={tunnel.color}
+                transparent
+                opacity={0.76}
+                depthWrite={false}
+                roughness={0.92}
+              />
+            </mesh>
+            {frameDepthRatios.map((depthRatio) => (
+              <group
+                key={`${tunnel.id}-frame-${depthRatio}`}
+                position={[0, 0, tunnel.halfDepth * depthRatio]}
+              >
+                {[-1, 1].map((side) => (
+                  <mesh
+                    key={`${tunnel.id}-frame-${depthRatio}-${side}`}
+                    position={[
+                      wallCenterX * side,
+                      tunnel.clearanceHeight / 2,
+                      0,
+                    ]}
+                  >
+                    <boxGeometry
+                      args={[0.13, tunnel.clearanceHeight, 0.18]}
+                    />
+                    <meshBasicMaterial color={tunnel.accentColor} />
+                  </mesh>
+                ))}
+                <mesh position={[0, tunnel.clearanceHeight, 0]}>
+                  <boxGeometry
+                    args={[roofHalfWidth * 2, 0.13, 0.18]}
+                  />
+                  <meshBasicMaterial color={tunnel.accentColor} />
+                </mesh>
+              </group>
+            ))}
+            <Html
+              center
+              position={[0, tunnel.clearanceHeight + 0.82, -tunnel.halfDepth]}
+              distanceFactor={12}
+              zIndexRange={[1, 0]}
+              style={{ pointerEvents: 'none' }}
+            >
+              <span className="world-interaction-label">
+                <MaterialIcon name="dark_mode" />
+                {tunnel.label}
+              </span>
+            </Html>
+          </RigidBody>
+        )
+      })}
+
       {layout.terrainRamps.map((ramp) => {
         const physics: PhysicsBodyData = {
           kind: 'rideable',
@@ -2106,6 +2245,14 @@ function GameWorld({
         z: obstacle.z,
         radius: Math.hypot(obstacle.halfWidth, obstacle.halfDepth) + 0.3,
       })),
+      ...physicsLayout.tunnels.map((tunnel) => ({
+        x: tunnel.x,
+        z: tunnel.z,
+        radius: Math.hypot(
+          tunnel.halfWidth + tunnel.wallThickness,
+          tunnel.halfDepth,
+        ) + 0.3,
+      })),
       ...physicsLayout.terrainRamps.map((ramp) => ({
         x: ramp.x,
         z: ramp.z,
@@ -2148,6 +2295,11 @@ function GameWorld({
           : obstacle.assetVariant === 'tree-root',
       ) ?? null
     )
+  }, [physicsLayout])
+  const debugTunnel = useMemo(() => {
+    if (!import.meta.env.DEV) return null
+    const spawnMode = new URLSearchParams(window.location.search).get('spawn')
+    return spawnMode === 'tunnel' ? physicsLayout.tunnels[0] ?? null : null
   }, [physicsLayout])
   const debugCollectionTarget = useMemo(() => {
     const teleportMode = new URLSearchParams(window.location.search).get(
@@ -2209,10 +2361,12 @@ function GameWorld({
       ? debugNaturalObstacle.x + debugNaturalObstacle.radius + 2.2
       : null) ??
     debugSurface?.x ??
+    debugTunnel?.x ??
     (debugPushableTarget ? debugPushableTarget.x + 2.2 : 0)
   const spawnZ =
     debugNaturalObstacle?.z ??
     debugSurface?.z ??
+    debugTunnel?.z ??
     debugPushableTarget?.z ??
     0
   const spawnTranslation = useMemo(
