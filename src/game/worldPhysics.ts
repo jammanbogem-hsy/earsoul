@@ -285,7 +285,7 @@ function createInteriorTrees(
       id: `interior-tree-${index}`,
       label:
         theme === 'forest-trail'
-          ? '바람숲 안쪽 나무'
+          ? '달그늘 안쪽 나무'
           : theme === 'starlight-river'
             ? '별빛 공원 안쪽 나무'
             : '광장 안쪽 나무',
@@ -361,7 +361,7 @@ function createForestTrees(mapSize: number): WorldObstacle[] {
     const offset = memberOffsets[index % memberOffsets.length]
     return {
       id: `forest-tree-${index}`,
-      label: '바람숲 나무',
+      label: '달그늘 나무',
       x: center[0] * mapSize + offset[0] * offsetScale,
       z: center[1] * mapSize + offset[1] * offsetScale,
       radius: 0.44,
@@ -438,10 +438,38 @@ function createSpeedZones(
   ]
 }
 
-function createRideableObstacles(mapSize: number): RideableObstacle[] {
+function createForestRidges(mapSize: number): RideableObstacle[] {
+  const ridgeSpecs = [
+    [-0.08, -0.27, 0.42, 2.7],
+    [0.14, 0.28, -0.36, 2.3],
+    [0.29, 0.04, 0.94, 2.5],
+    [-0.3, 0.04, -0.82, 2.2],
+    [0.04, 0.36, 0.16, 2.65],
+    [-0.34, -0.18, 0.68, 2.35],
+    [0.31, -0.28, -0.18, 2.55],
+    [-0.19, 0.3, 1.12, 2.25],
+  ] as const
+
+  return ridgeSpecs.map(([xRatio, zRatio, rotationY, halfWidth], index) => ({
+    id: `forest-ridge-${index}`,
+    label: '낮은 숲 둔턱',
+    x: mapSize * xRatio,
+    y: 0.105,
+    z: mapSize * zRatio,
+    halfWidth,
+    halfHeight: 0.105,
+    halfDepth: 0.24,
+    rotationY,
+  }))
+}
+
+function createRideableObstacles(
+  mapSize: number,
+  theme: StageTheme,
+): RideableObstacle[] {
   const mapScale = mapSize / 60
 
-  return Array.from(
+  const steppingBlocks = Array.from(
     { length: Math.round(18 * mapScale) },
     (_, index) => ({
       id: `stepping-block-${index}`,
@@ -455,6 +483,10 @@ function createRideableObstacles(mapSize: number): RideableObstacle[] {
       rotationY: index * 0.22,
     }),
   )
+
+  return theme === 'forest-trail'
+    ? [...steppingBlocks, ...createForestRidges(mapSize)]
+    : steppingBlocks
 }
 
 function createSurfaceZones(
@@ -465,7 +497,7 @@ function createSurfaceZones(
     return [
       {
         id: 'forest-meadow',
-        label: '폭신한 숲 잔디',
+        label: '달그늘 이끼 잔디',
         kind: 'grass',
         color: '#78B86D',
         x: -mapSize * 0.19,
@@ -477,7 +509,7 @@ function createSurfaceZones(
       },
       {
         id: 'forest-creek',
-        label: '얕은 숲 물길',
+        label: '달빛 얕은 물길',
         kind: 'water',
         color: '#67BFD0',
         x: mapSize * 0.2,
@@ -489,7 +521,7 @@ function createSurfaceZones(
       },
       {
         id: 'forest-clearing',
-        label: '작은 숲속 잔디',
+        label: '반딧불 잔디터',
         kind: 'grass',
         color: '#86C77A',
         x: mapSize * 0.24,
@@ -501,7 +533,7 @@ function createSurfaceZones(
       },
       {
         id: 'forest-rain-puddle',
-        label: '숲속 빗물 웅덩이',
+        label: '어두운 빗물 웅덩이',
         kind: 'water',
         color: '#72C9D7',
         x: -mapSize * 0.26,
@@ -510,6 +542,18 @@ function createSurfaceZones(
         halfDepth: mapSize * 0.038,
         rotationY: 0.38,
         multiplier: 0.6,
+      },
+      {
+        id: 'forest-moon-pool',
+        label: '달빛 굽이 물길',
+        kind: 'water',
+        color: '#3A8299',
+        x: -mapSize * 0.35,
+        z: mapSize * 0.28,
+        halfWidth: mapSize * 0.052,
+        halfDepth: mapSize * 0.075,
+        rotationY: -0.62,
+        multiplier: 0.5,
       },
     ]
   }
@@ -702,6 +746,17 @@ function createTerrainRamps(
       -0.58,
       mapSize,
     ),
+    ...(theme === 'forest-trail'
+      ? createHill(
+          'moon-hill',
+          '달그늘 북쪽 언덕',
+          '#435A4B',
+          -mapSize * 0.1,
+          mapSize * 0.31,
+          1.04,
+          mapSize,
+        )
+      : []),
     createUpperDeckRamp(mapSize, theme),
   ]
 }
@@ -981,11 +1036,11 @@ function getNaturalAssetCounts(
 ): Record<NaturalAssetConfig['variant'], number> {
   if (theme === 'forest-trail') {
     return {
-      'tree-root': 5,
-      'fallen-log-a': 3,
-      'fallen-log-b': 3,
-      'mud-a': 3,
-      'mud-b': 3,
+      'tree-root': 6,
+      'fallen-log-a': 4,
+      'fallen-log-b': 4,
+      'mud-a': 4,
+      'mud-b': 4,
     }
   }
   if (theme === 'starlight-river') {
@@ -1157,6 +1212,10 @@ export function createWorldPhysicsLayout(
   const pushableProps = createPushableProps(stage.mapSize, stage.theme)
   const pushRewardSlots = createPushRewardSlots(stage.mapSize)
   const speedZones = createSpeedZones(stage.mapSize, stage.theme)
+  const rideableObstacles = createRideableObstacles(
+    stage.mapSize,
+    stage.theme,
+  )
   const structureClearances = [
     ...terrainRamps.map((ramp) => ({
       x: ramp.x,
@@ -1173,6 +1232,13 @@ export function createWorldPhysicsLayout(
       z: elevator.z,
       radius: Math.hypot(elevator.halfWidth, elevator.halfDepth) + 0.8,
     })),
+    ...rideableObstacles
+      .filter((obstacle) => obstacle.id.startsWith('forest-ridge-'))
+      .map((obstacle) => ({
+        x: obstacle.x,
+        z: obstacle.z,
+        radius: Math.hypot(obstacle.halfWidth, obstacle.halfDepth) + 0.5,
+      })),
     {
       x: pushRewardSlots[0][0],
       z: pushRewardSlots[0][2],
@@ -1265,7 +1331,7 @@ export function createWorldPhysicsLayout(
 
   return {
     obstacles,
-    rideableObstacles: createRideableObstacles(stage.mapSize),
+    rideableObstacles,
     speedZones,
     surfaceZones: [...baseSurfaceZones, ...mudZones],
     terrainRamps,

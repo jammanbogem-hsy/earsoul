@@ -111,6 +111,10 @@ import {
   selectNearbyObjects,
   type RenderQuality,
 } from '../game/renderQuality'
+import {
+  getStageLightingProfile,
+  type StageLightingProfile,
+} from '../game/stageLighting'
 import type { DroppedLearningObject } from '../game/polarBearEncounter'
 import { MaterialIcon } from './MaterialIcon'
 import {
@@ -148,6 +152,7 @@ interface GameCanvasProps {
   attachmentNormals: Record<string, AttachmentNormal>
   collectedIds: string[]
   ballRadius: number
+  illuminationProgress: number
   paused: boolean
   reducedMotion: boolean
   controlVector: ControlVector
@@ -1035,6 +1040,52 @@ function RollingBallCore({
 
 useGLTF.preload(rollingBallUrl)
 
+function BallLanternLight({
+  active,
+  ballRadius,
+  lighting,
+  reducedMotion,
+}: {
+  active: boolean
+  ballRadius: number
+  lighting: StageLightingProfile
+  reducedMotion: boolean
+}) {
+  const glow = useRef<Mesh>(null)
+
+  useFrame(({ clock }) => {
+    if (!glow.current) return
+    const pulse = reducedMotion
+      ? 1
+      : 1 + Math.sin(clock.elapsedTime * 1.8) * 0.025
+    glow.current.scale.setScalar(ballRadius * 1.045 * pulse)
+  })
+
+  if (!active) return null
+
+  return (
+    <group>
+      <pointLight
+        color="#FFD88A"
+        intensity={lighting.ballLightIntensity}
+        distance={lighting.ballLightDistance}
+        decay={1.45}
+        position={[0, ballRadius * 0.35, 0]}
+      />
+      <mesh ref={glow} scale={ballRadius * 1.045}>
+        <sphereGeometry args={[1, 32, 20]} />
+        <meshBasicMaterial
+          color="#FFE6A6"
+          transparent
+          opacity={lighting.ballGlowOpacity}
+          depthWrite={false}
+          toneMapped={false}
+        />
+      </mesh>
+    </group>
+  )
+}
+
 function MotionEffects({
   ballRadius,
   motion,
@@ -1500,6 +1551,21 @@ function RapierWorldColliders({
               friction={0.96}
               restitution={0}
             />
+            {obstacle.id.startsWith('forest-ridge-') && (
+              <mesh castShadow receiveShadow>
+                <boxGeometry
+                  args={[
+                    obstacle.halfWidth * 2,
+                    obstacle.halfHeight * 2,
+                    obstacle.halfDepth * 2,
+                  ]}
+                />
+                <meshStandardMaterial
+                  color="#53685B"
+                  roughness={0.94}
+                />
+              </mesh>
+            )}
           </RigidBody>
         )
       })}
@@ -1980,6 +2046,7 @@ function GameWorld({
   attachmentNormals = {},
   collectedIds,
   ballRadius,
+  illuminationProgress,
   paused,
   reducedMotion,
   controlVector,
@@ -2023,6 +2090,10 @@ function GameWorld({
   )
   const magnetActive = activePowerUps.magnet > 0
   const speedPowerUpActive = activePowerUps.speed > 0
+  const lighting = getStageLightingProfile(
+    stage.theme,
+    illuminationProgress,
+  )
   const physicsLayout = useMemo(
     () => createWorldPhysicsLayout(stage),
     [stage],
@@ -3118,24 +3189,26 @@ function GameWorld({
       <color attach="background" args={[stage.skyColor]} />
       <fog
         attach="fog"
-        args={[stage.fogColor, stage.mapSize * 0.48, stage.mapSize * 1.08]}
+        args={[
+          stage.fogColor,
+          stage.mapSize * lighting.fogNearRatio,
+          stage.mapSize * lighting.fogFarRatio,
+        ]}
       />
-      <ambientLight intensity={stage.theme === 'starlight-river' ? 1.1 : 1.45} />
+      <ambientLight intensity={lighting.ambientIntensity} />
       <directionalLight
         castShadow={renderQuality.shadows}
         position={[6, 12, 8]}
-        intensity={stage.theme === 'starlight-river' ? 1.45 : 2.1}
-        color={new Color(
-          stage.theme === 'starlight-river' ? '#BFD4FF' : '#FFF3D0',
-        )}
+        intensity={lighting.directionalIntensity}
+        color={new Color(lighting.directionalColor)}
         shadow-mapSize-width={1024}
         shadow-mapSize-height={1024}
       />
       <hemisphereLight
         args={[
-          stage.theme === 'starlight-river' ? '#9BB8FF' : '#E6F6FF',
-          stage.theme === 'starlight-river' ? '#263B45' : '#77A869',
-          1.1,
+          lighting.hemisphereSkyColor,
+          lighting.hemisphereGroundColor,
+          lighting.hemisphereIntensity,
         ]}
       />
 
@@ -3256,6 +3329,12 @@ function GameWorld({
         <group ref={orb} name="rolling-orb">
           <RollingBallCore
             ballRadius={ballRadius}
+            reducedMotion={reducedMotion}
+          />
+          <BallLanternLight
+            active={stage.theme === 'forest-trail'}
+            ballRadius={ballRadius}
+            lighting={lighting}
             reducedMotion={reducedMotion}
           />
           {collectedObjects.map((item, index) => (

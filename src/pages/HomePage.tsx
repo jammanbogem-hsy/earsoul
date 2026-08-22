@@ -32,10 +32,10 @@ const stageMaps: {
     color: 'green',
   },
   {
-    title: '바람숲 트레일',
-    description: '갈림길이 많은 숲길',
-    icon: 'local_florist',
-    color: 'yellow',
+    title: '달그늘 탐험숲',
+    description: '모을수록 밝아지는 장애물 숲길',
+    icon: 'dark_mode',
+    color: 'blue',
   },
   {
     title: '별빛 리버파크',

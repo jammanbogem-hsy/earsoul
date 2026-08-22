@@ -77,6 +77,21 @@ export function GameMiniMap({
             />
           ))}
         </g>
+        <g className="minimap-ridges">
+          {layout.rideableObstacles
+            .filter((obstacle) => obstacle.id.startsWith('forest-ridge-'))
+            .map((obstacle) => (
+              <rect
+                key={obstacle.id}
+                x={toMapX(obstacle.x) - toMapSize(obstacle.halfWidth)}
+                y={toMapY(obstacle.z) - toMapSize(obstacle.halfDepth)}
+                width={toMapSize(obstacle.halfWidth * 2)}
+                height={Math.max(0.8, toMapSize(obstacle.halfDepth * 2))}
+                rx="0.45"
+                transform={`rotate(${obstacle.rotationY * (180 / Math.PI)} ${toMapX(obstacle.x)} ${toMapY(obstacle.z)})`}
+              />
+            ))}
+        </g>
         <g className="minimap-upper-levels">
           {layout.elevatedPlatforms.map((platform) => (
             <rect

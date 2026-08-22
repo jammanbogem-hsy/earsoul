@@ -404,6 +404,11 @@ export function GamePage() {
     stage.tierGoals.map((goal) => goal.requiredCount),
   )
   const progress = stageProgress.progress
+  const illuminationProgress = Math.min(
+    1,
+    stageCollectedCount / Math.max(1, stage.objectiveCount),
+  )
+  const illuminationPercent = Math.round(illuminationProgress * 100)
   const reachableTier = getReachableSizeTier(ballRadius)
   const activeStageObjects = selectActiveStageObjects(
     stage.objects,
@@ -777,6 +782,7 @@ export function GamePage() {
           attachmentNormals={session.attachmentNormals}
           collectedIds={session.collectedIds}
           ballRadius={ballRadius}
+          illuminationProgress={illuminationProgress}
           paused={isGamePaused}
           reducedMotion={reducedMotion}
           controlVector={controlVector}
@@ -799,7 +805,7 @@ export function GamePage() {
           className="game-size-status"
           data-tier={reachableTier.level}
           style={{ '--tier-color': reachableTier.color } as CSSProperties}
-          aria-label={`${pack.stages.length}개 중 ${stageIndex + 1}번째 맵 ${stage.title}, ${reachableTier.level}단계 크기, ${stageCollectedCount}개 수집, 목표 ${stage.objectiveCount}개`}
+          aria-label={`${pack.stages.length}개 중 ${stageIndex + 1}번째 맵 ${stage.title}, ${reachableTier.level}단계 크기, ${stageCollectedCount}개 수집, 목표 ${stage.objectiveCount}개${stage.theme === 'forest-trail' ? `, 공의 빛 ${illuminationPercent}%` : ''}`}
         >
           <span
             className="game-size-status__level"
@@ -811,6 +817,8 @@ export function GamePage() {
           <div className="game-size-status__copy">
             <span>
               맵 {stageIndex + 1}/{pack.stages.length} ·{' '}
+              {stage.theme === 'forest-trail' &&
+                `공의 빛 ${illuminationPercent}% · `}
               {stageReady
                 ? '수집 목표 완료'
                 : `다음 크기까지 ${Math.max(
@@ -1002,6 +1010,8 @@ export function GamePage() {
               ? toast.title
               : stageReady
                 ? `${stage.title} 수집 목표를 달성했어요`
+                : stage.theme === 'forest-trail'
+                  ? `${stageCollectedCount}/${stage.objectiveCount}개 수집 · 공의 빛 ${illuminationPercent}%`
                 : `${stageCollectedCount}/${stage.objectiveCount}개 수집 · ${reachableTier.level}단계 크기`}
           </strong>
           <p>
@@ -1011,10 +1021,15 @@ export function GamePage() {
                 ? bonusCount > 0
                   ? `보너스 ${bonusCount}개 · 더 모으거나 다음 맵으로 갈 수 있어요.`
                   : '다음 맵으로 갈 수 있어요. 더 모으는 것은 선택이에요.'
-                : `${nextTierGoal.label}까지 ${Math.max(
-                    0,
-                    nextTierGoal.requiredCount - stageCollectedCount,
-                  )}개만 더 모아요. 점수는 자연스럽게 누적돼요.`}
+                : stage.theme === 'forest-trail'
+                  ? `수집할수록 러닝볼의 빛과 시야가 넓어져요. 다음 크기까지 ${Math.max(
+                      0,
+                      nextTierGoal.requiredCount - stageCollectedCount,
+                    )}개 남았어요.`
+                  : `${nextTierGoal.label}까지 ${Math.max(
+                      0,
+                      nextTierGoal.requiredCount - stageCollectedCount,
+                    )}개만 더 모아요. 점수는 자연스럽게 누적돼요.`}
           </p>
         </div>
       </div>
@@ -1067,7 +1082,7 @@ export function GamePage() {
                   stage.theme === 'sunny-plaza'
                     ? 'directions_run'
                     : stage.theme === 'forest-trail'
-                      ? 'local_florist'
+                      ? 'dark_mode'
                       : 'diamond'
                 }
               />

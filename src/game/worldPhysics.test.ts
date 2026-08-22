@@ -45,7 +45,7 @@ describe('world physics', () => {
       ).toHaveLength(2)
       expect(
         layout.surfaceZones.filter((zone) => zone.kind === 'water'),
-      ).toHaveLength(2)
+      ).toHaveLength(stage.theme === 'forest-trail' ? 3 : 2)
       const mudZones = layout.surfaceZones.filter((zone) => zone.kind === 'mud')
       expect(mudZones.length).toBeGreaterThanOrEqual(4)
       expect(new Set(mudZones.map((zone) => zone.assetVariant))).toEqual(
@@ -76,7 +76,9 @@ describe('world physics', () => {
               (zone.multiplier === 0.48 || zone.multiplier === 0.6),
           ),
       ).toBe(true)
-      expect(layout.terrainRamps).toHaveLength(5)
+      expect(layout.terrainRamps).toHaveLength(
+        stage.theme === 'forest-trail' ? 7 : 5,
+      )
       expect(layout.elevatedPlatforms).toHaveLength(2)
       expect(layout.elevators).toHaveLength(2)
       expect(layout.pushableProps.length).toBeGreaterThanOrEqual(18)
@@ -189,7 +191,7 @@ describe('world physics', () => {
   it('uses the intended natural-obstacle mix for each map theme', () => {
     const expectedByTheme = {
       'sunny-plaza': [3, 2, 2, 2, 2],
-      'forest-trail': [5, 3, 3, 3, 3],
+      'forest-trail': [6, 4, 4, 4, 4],
       'starlight-river': [3, 2, 3, 2, 3],
     } as const
 
@@ -231,7 +233,7 @@ describe('world physics', () => {
       const hills = createWorldPhysicsLayout(stage).terrainRamps.filter(
         (ramp) => ramp.id.includes('-hill-'),
       )
-      expect(hills).toHaveLength(4)
+      expect(hills).toHaveLength(stage.theme === 'forest-trail' ? 6 : 4)
 
       for (let index = 0; index < hills.length; index += 2) {
         const up = hills[index]
@@ -252,6 +254,24 @@ describe('world physics', () => {
         expect(upCrest[1]).toBeCloseTo(downCrest[1], 4)
       }
     })
+  })
+
+  it('gives the second map extra hills, water, mud, and low ridges', () => {
+    const stage = fallbackLearningPack.stages[1]
+    const layout = createWorldPhysicsLayout(stage)
+
+    expect(stage.title).toBe('달그늘 탐험숲')
+    expect(layout.terrainRamps.filter((ramp) => ramp.id.includes('-hill-')))
+      .toHaveLength(6)
+    expect(layout.surfaceZones.filter((zone) => zone.kind === 'water'))
+      .toHaveLength(3)
+    expect(layout.surfaceZones.filter((zone) => zone.kind === 'mud'))
+      .toHaveLength(8)
+    const ridges = layout.rideableObstacles.filter((obstacle) =>
+      obstacle.id.startsWith('forest-ridge-'),
+    )
+    expect(ridges).toHaveLength(8)
+    expect(ridges.every((ridge) => ridge.halfHeight <= 0.12)).toBe(true)
   })
 
   it('moves the elevator smoothly from the ground to the second floor', () => {

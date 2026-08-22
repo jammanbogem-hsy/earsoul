@@ -8,6 +8,7 @@ import calculate from '@material-symbols/svg-400/rounded/calculate.svg'
 import changeHistory from '@material-symbols/svg-400/rounded/change_history.svg'
 import check from '@material-symbols/svg-400/rounded/check.svg'
 import diamond from '@material-symbols/svg-400/rounded/diamond.svg'
+import darkMode from '@material-symbols/svg-400/rounded/dark_mode.svg'
 import directionsRun from '@material-symbols/svg-400/rounded/directions_run.svg'
 import filter4 from '@material-symbols/svg-400/rounded/filter_4.svg'
 import home from '@material-symbols/svg-400/rounded/home.svg'
@@ -52,6 +53,7 @@ const iconSources = {
   change_history: changeHistory,
   check,
   diamond,
+  dark_mode: darkMode,
   directions_run: directionsRun,
   filter_4: filter4,
   home,

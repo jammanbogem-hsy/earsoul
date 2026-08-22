@@ -1641,7 +1641,7 @@ md-switch:focus-visible,
 }
 
 .game-minimap.is-forest-trail {
-  --minimap-ground: #dcebd8;
+  --minimap-ground: #1b302b;
 }
 
 .game-minimap.is-starlight-river {
@@ -1702,9 +1702,34 @@ md-switch:focus-visible,
   fill: #69c6e4;
 }
 
+.minimap-surfaces .is-mud {
+  fill: #8a604a;
+  stroke: rgba(255, 255, 255, 0.72);
+  stroke-dasharray: 1.2 1;
+  stroke-width: 0.35;
+}
+
+.game-minimap.is-forest-trail .minimap-surfaces .is-grass {
+  fill: #4f7c61;
+}
+
+.game-minimap.is-forest-trail .minimap-surfaces .is-water {
+  fill: #42a6c1;
+}
+
+.game-minimap.is-forest-trail .minimap-routes rect {
+  fill: #f0cb62;
+}
+
 .minimap-routes rect {
   fill: #ffd44f;
   opacity: 0.8;
+}
+
+.minimap-ridges rect {
+  fill: #8aa797;
+  stroke: rgba(255, 255, 255, 0.88);
+  stroke-width: 0.3;
 }
 
 .minimap-upper-levels rect {
