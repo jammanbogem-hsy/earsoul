@@ -679,8 +679,8 @@ export function GamePage() {
     if (feedback.type === 'slide') {
       showToast(
         {
-          title: `${feedback.label} · 미끄럼 구간`,
-          body: '방향이 천천히 바뀌고 관성이 오래 남아요. 미리 방향을 잡아 부드럽게 통과해요.',
+          title: `${feedback.label} · 빙판 구간`,
+          body: '접지력이 낮아 방향이 늦게 바뀌고 관성이 오래 남아요. 미리 방향을 잡고 천천히 조작해요.',
           tone: 'wait',
         },
         1900,

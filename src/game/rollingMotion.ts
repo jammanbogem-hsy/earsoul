@@ -68,7 +68,7 @@ export function stepRollingMotion(
   const baseSmoothing = hasInput
     ? 10 - getGrowthProgress(ballRadius) * 1.2
     : 6.5
-  const clampedTraction = Math.min(1, Math.max(0.15, traction))
+  const clampedTraction = Math.min(1, Math.max(0.08, traction))
   const smoothing =
     baseSmoothing *
     (hasInput

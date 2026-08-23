@@ -1277,6 +1277,25 @@ function AnimatedWaterSurface({
 
 function SlickSurface({ zone }: { zone: SurfaceZone }) {
   const streaks = [-0.68, -0.34, 0, 0.34, 0.68]
+  const crackSegments = [
+    [-0.46, -0.18, 0.18, 0.22],
+    [-0.33, -0.1, -0.74, 0.16],
+    [-0.3, -0.02, 0.9, 0.13],
+    [-0.08, 0.25, -0.22, 0.2],
+    [0.05, 0.17, 0.72, 0.14],
+    [0.12, 0.08, -0.95, 0.12],
+    [0.36, -0.2, 0.28, 0.19],
+    [0.46, -0.11, -0.8, 0.14],
+    [0.28, 0.22, 1.08, 0.17],
+  ] as const
+  const frostShards = Array.from({ length: 14 }, (_, index) => {
+    const angle = (index / 14) * Math.PI * 2
+    return {
+      x: Math.cos(angle) * zone.halfWidth * 0.965,
+      z: Math.sin(angle) * zone.halfDepth * 0.965,
+      scale: 0.16 + (index % 4) * 0.035,
+    }
+  })
 
   return (
     <group
@@ -1291,14 +1310,17 @@ function SlickSurface({ zone }: { zone: SurfaceZone }) {
         <circleGeometry args={[1, 96]} />
         <meshPhysicalMaterial
           color={zone.color}
-          emissive="#324D82"
-          emissiveIntensity={0.34}
-          metalness={0.18}
-          roughness={0.12}
+          emissive="#7CA9D8"
+          emissiveIntensity={0.24}
+          metalness={0.06}
+          roughness={0.025}
           clearcoat={1}
-          clearcoatRoughness={0.08}
+          clearcoatRoughness={0.018}
+          transmission={0.16}
+          thickness={0.18}
+          ior={1.31}
           transparent
-          opacity={0.86}
+          opacity={0.93}
         />
       </mesh>
       {streaks.map((xRatio, index) => (
@@ -1316,24 +1338,70 @@ function SlickSurface({ zone }: { zone: SurfaceZone }) {
           <meshBasicMaterial
             color={index % 2 === 0 ? '#EAF8FF' : '#BBD9FF'}
             transparent
-            opacity={0.66}
+            opacity={0.46}
             depthWrite={false}
           />
         </mesh>
       ))}
-      {[0.48, 0.86].map((radius, index) => (
+      {crackSegments.map(([xRatio, zRatio, rotationY, lengthRatio], index) => (
+        <mesh
+          key={`${zone.id}-ice-crack-${index}`}
+          position={[
+            zone.halfWidth * xRatio,
+            0.028 + (index % 2) * 0.002,
+            zone.halfDepth * zRatio,
+          ]}
+          rotation={[0, rotationY, 0]}
+        >
+          <boxGeometry
+            args={[zone.halfWidth * lengthRatio, 0.014, 0.045]}
+          />
+          <meshBasicMaterial
+            color="#F7FCFF"
+            transparent
+            opacity={0.88}
+            depthWrite={false}
+          />
+        </mesh>
+      ))}
+      {[0.42, 0.72, 0.965].map((radius, index) => (
         <mesh
           key={`${zone.id}-slick-ring-${radius}`}
           rotation={[-Math.PI / 2, 0, 0]}
           position={[0, 0.014 + index * 0.002, 0]}
           scale={[zone.halfWidth, zone.halfDepth, 1]}
         >
-          <ringGeometry args={[radius - 0.01, radius, 72]} />
+          <ringGeometry
+            args={[
+              radius - (index === 2 ? 0.038 : 0.012),
+              radius,
+              96,
+            ]}
+          />
           <meshBasicMaterial
-            color="#D9F1FF"
+            color={index === 2 ? '#FFFFFF' : '#D9F1FF'}
             transparent
-            opacity={0.3 - index * 0.06}
+            opacity={index === 2 ? 0.68 : 0.36 - index * 0.06}
             depthWrite={false}
+          />
+        </mesh>
+      ))}
+      {frostShards.map((shard, index) => (
+        <mesh
+          key={`${zone.id}-frost-shard-${index}`}
+          position={[shard.x, 0.08, shard.z]}
+          rotation={[0, index * 0.83, 0]}
+          scale={[shard.scale * 1.35, shard.scale * 0.42, shard.scale]}
+        >
+          <icosahedronGeometry args={[1, 0]} />
+          <meshPhysicalMaterial
+            color="#EAF9FF"
+            emissive="#A8D9F5"
+            emissiveIntensity={0.22}
+            roughness={0.18}
+            transmission={0.12}
+            transparent
+            opacity={0.82}
           />
         </mesh>
       ))}
@@ -1467,6 +1535,134 @@ function WaterContactEffects({
         <pointsMaterial
           color="#BCEEF8"
           size={0.08}
+          sizeAttenuation
+          transparent
+          opacity={0}
+          depthWrite={false}
+        />
+      </points>
+    </group>
+  )
+}
+
+function SlickContactEffects({
+  playerPosition,
+  ballRadius,
+  motion,
+  reducedMotion,
+}: {
+  playerPosition: MutableRefObject<Vector3>
+  ballRadius: number
+  motion: MutableRefObject<MotionState>
+  reducedMotion: boolean
+}) {
+  const group = useRef<Group>(null)
+  const trails = useRef<(Mesh | null)[]>([])
+  const iceChips = useRef<Points>(null)
+  const strength = useRef(0)
+  const chipPositions = useMemo(() => new Float32Array(12 * 3), [])
+
+  useFrame(({ clock }, delta) => {
+    const root = group.current
+    if (!root) return
+
+    const isOnIce = motion.current.surface === 'slick'
+    const targetStrength = isOnIce
+      ? Math.min(1, 0.38 + motion.current.speed * 0.72)
+      : 0
+    strength.current = MathUtils.damp(
+      strength.current,
+      targetStrength,
+      targetStrength > 0 ? 9 : 5,
+      delta,
+    )
+    root.visible = strength.current > 0.012
+    if (!root.visible) return
+
+    const velocityLength = Math.hypot(
+      motion.current.velocityX,
+      motion.current.velocityZ,
+    )
+    const directionX = velocityLength > 0.02
+      ? motion.current.velocityX / velocityLength
+      : motion.current.x
+    const directionZ = velocityLength > 0.02
+      ? motion.current.velocityZ / velocityLength
+      : motion.current.z
+    root.position.set(
+      playerPosition.current.x,
+      0.064,
+      playerPosition.current.z,
+    )
+    root.rotation.y = Math.atan2(directionX, directionZ)
+
+    trails.current.forEach((trail, index) => {
+      if (!trail) return
+      const side = (index === 0 ? -1 : 1) * ballRadius * 0.34
+      const length = ballRadius * (1.55 + motion.current.speed * 1.25)
+      trail.position.set(side, 0, -length * 0.4)
+      trail.scale.set(
+        Math.max(0.07, ballRadius * 0.13),
+        1,
+        length,
+      )
+      const material = trail.material as MeshBasicMaterial
+      material.opacity =
+        strength.current * (reducedMotion ? 0.28 : 0.76)
+    })
+
+    const chipCloud = iceChips.current
+    if (!chipCloud) return
+    const elapsed = reducedMotion ? 0.4 : clock.elapsedTime
+    const positionAttribute = chipCloud.geometry.getAttribute(
+      'position',
+    ) as BufferAttribute
+    for (let index = 0; index < 12; index += 1) {
+      const phase = (elapsed * 2.1 + index * 0.13) % 1
+      const side = index % 2 === 0 ? -1 : 1
+      positionAttribute.setXYZ(
+        index,
+        side * ballRadius * (0.28 + (index % 4) * 0.12),
+        reducedMotion
+          ? 0.02
+          : Math.sin(phase * Math.PI) * ballRadius * 0.38,
+        -ballRadius * (0.35 + phase * 1.75),
+      )
+    }
+    positionAttribute.needsUpdate = true
+    const material = chipCloud.material as PointsMaterial
+    material.size = ballRadius * 0.13
+    material.opacity = reducedMotion ? 0 : strength.current * 0.82
+  })
+
+  return (
+    <group ref={group} visible={false}>
+      {[0, 1].map((index) => (
+        <mesh
+          key={`ice-slide-trail-${index}`}
+          ref={(mesh) => {
+            trails.current[index] = mesh
+          }}
+        >
+          <boxGeometry args={[1, 0.014, 1]} />
+          <meshBasicMaterial
+            color="#F4FCFF"
+            transparent
+            opacity={0}
+            depthWrite={false}
+          />
+        </mesh>
+      ))}
+      <points ref={iceChips}>
+        <bufferGeometry>
+          <bufferAttribute
+            attach="attributes-position"
+            args={[chipPositions, 3]}
+          />
+        </bufferGeometry>
+        <pointsMaterial
+          color="#DDF6FF"
+          size={0.06}
           sizeAttenuation
           transparent
           opacity={0}
@@ -3606,6 +3802,12 @@ function GameWorld({
         />
       </RigidBody>
       <WaterContactEffects
+        playerPosition={playerPosition}
+        ballRadius={ballRadius}
+        motion={motion}
+        reducedMotion={reducedMotion}
+      />
+      <SlickContactEffects
         playerPosition={playerPosition}
         ballRadius={ballRadius}
         motion={motion}

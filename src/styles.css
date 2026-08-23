@@ -1710,10 +1710,10 @@ md-switch:focus-visible,
 }
 
 .minimap-surfaces .is-slick {
-  fill: #9aaeff;
-  stroke: rgba(236, 248, 255, 0.95);
+  fill: #cdeeff;
+  stroke: #ffffff;
   stroke-dasharray: 2.1 0.8;
-  stroke-width: 0.48;
+  stroke-width: 0.72;
 }
 
 .game-minimap.is-forest-trail .minimap-surfaces .is-grass {
@@ -1841,7 +1841,7 @@ md-switch:focus-visible,
 .game-minimap footer i.is-slick {
   margin-left: 5px;
   border: 1px dashed #eaf8ff;
-  background: #9aaeff;
+  background: #cdeeff;
 }
 
 .game-collection-status {

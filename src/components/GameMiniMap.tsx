@@ -51,7 +51,7 @@ export function GameMiniMap({
           {hasTunnels
             ? '2층·승강기·터널 표시'
             : hasSlickZones
-              ? '2층·승강기·미끄럼 표시'
+              ? '2층·승강기·빙판 표시'
               : '2층·승강기 표시'}
         </small>
       </header>
@@ -62,7 +62,7 @@ export function GameMiniMap({
           hasTunnels
             ? '수집물과 2층 이동 구조, 터널이 표시된 현재 맵'
             : hasSlickZones
-              ? '수집물과 2층 이동 구조, 미끄럼 길이 표시된 현재 맵'
+              ? '수집물과 2층 이동 구조, 빙판길이 표시된 현재 맵'
               : '수집물과 2층 이동 구조가 표시된 현재 맵'
         }
       >
@@ -209,7 +209,7 @@ export function GameMiniMap({
         {hasSlickZones && (
           <>
             <i className="is-slick" />
-            미끄럼
+            빙판
           </>
         )}
       </footer>

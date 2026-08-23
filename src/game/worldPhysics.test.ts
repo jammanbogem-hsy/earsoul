@@ -319,7 +319,7 @@ describe('world physics', () => {
       }
 
       expect(slickZones).toHaveLength(2)
-      expect(slickZones.every((zone) => (zone.traction ?? 1) <= 0.2)).toBe(true)
+      expect(slickZones.every((zone) => (zone.traction ?? 1) <= 0.11)).toBe(true)
       expect(slickZones.every((zone) => zone.multiplier >= 1)).toBe(true)
       expect(
         getActiveSurfaceZone(

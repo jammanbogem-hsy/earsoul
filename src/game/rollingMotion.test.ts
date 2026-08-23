@@ -75,7 +75,7 @@ describe('rolling motion', () => {
       0,
       0.9,
       1 / 30,
-      0.2,
+      0.1,
     )
     const normalTurn = stepRollingMotion(current, 0, -1, 0.9, 1 / 30)
     const slickTurn = stepRollingMotion(
@@ -84,7 +84,7 @@ describe('rolling motion', () => {
       -1,
       0.9,
       1 / 30,
-      0.2,
+      0.1,
     )
 
     expect(slickCoast.speed).toBeGreaterThan(normalCoast.speed)
