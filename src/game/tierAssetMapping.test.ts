@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   ASSET_BACKED_LEVEL_UP_MODEL_IDS,
   fallbackLearningPack,
+  ICE_RIVER_OBJECTS_PER_STAGE,
   OBJECTS_PER_STAGE,
 } from '../data/learningPack'
 import { getSizeTier } from './mechanics'
@@ -38,7 +39,11 @@ describe('tier asset mapping', () => {
     const assetModelIds = new Set<string>(ASSET_BACKED_LEVEL_UP_MODEL_IDS)
 
     fallbackLearningPack.stages.forEach((stage) => {
-      expect(stage.objects).toHaveLength(OBJECTS_PER_STAGE)
+      expect(stage.objects).toHaveLength(
+        stage.id === 'starlight-river'
+          ? ICE_RIVER_OBJECTS_PER_STAGE
+          : OBJECTS_PER_STAGE,
+      )
       expect(OBJECTS_PER_STAGE).toBeGreaterThanOrEqual(360)
       expect(
         stage.objects.every(

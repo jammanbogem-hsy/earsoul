@@ -4,6 +4,8 @@ import { getSizeTier } from './mechanics'
 import {
   ACTIVE_OBJECT_TIER_COUNTS,
   createInterleavedTierSequence,
+  ICE_RIVER_ACTIVE_OBJECT_TIER_COUNTS,
+  ICE_RIVER_OBJECT_TIER_TOTALS,
   selectActiveStageObjects,
   STAGE_OBJECT_TIER_TOTALS,
 } from './objectDistribution'
@@ -28,7 +30,11 @@ describe('growth-based object distribution', () => {
             (item) => getSizeTier(item.size).level === tier,
           ).length,
       )
-      expect(counts).toEqual(STAGE_OBJECT_TIER_TOTALS)
+      expect(counts).toEqual(
+        stage.id === 'starlight-river'
+          ? ICE_RIVER_OBJECT_TIER_TOTALS
+          : STAGE_OBJECT_TIER_TOTALS,
+      )
     })
   })
 
@@ -53,5 +59,23 @@ describe('growth-based object distribution', () => {
       })
       previousIds = new Set(active.map((item) => item.id))
     }
+  })
+
+  it('fills the larger ice river map with substantially more early-tier assets', () => {
+    const objects = fallbackLearningPack.stages[2].objects
+
+    for (const tier of [1, 2, 3, 4] as const) {
+      const active = selectActiveStageObjects(objects, tier)
+      const counts = [1, 2, 3, 4].map(
+        (itemTier) =>
+          active.filter(
+            (item) => getSizeTier(item.size).level === itemTier,
+          ).length,
+      )
+      expect(counts).toEqual(ICE_RIVER_ACTIVE_OBJECT_TIER_COUNTS[tier])
+    }
+
+    expect(selectActiveStageObjects(objects, 1)).toHaveLength(286)
+    expect(selectActiveStageObjects(objects, 2)).toHaveLength(359)
   })
 })

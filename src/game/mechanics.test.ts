@@ -1,10 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import {
   fallbackLearningPack,
+  ICE_RIVER_OBJECTS_PER_STAGE,
   OBJECTS_PER_STAGE,
 } from '../data/learningPack'
 import { calculateBallRadius } from './session'
-import { STAGE_OBJECT_TIER_TOTALS } from './objectDistribution'
+import {
+  ICE_RIVER_OBJECT_TIER_TOTALS,
+  STAGE_OBJECT_TIER_TOTALS,
+} from './objectDistribution'
 import { createWorldPhysicsLayout } from './worldPhysics'
 import {
   canCollect,
@@ -165,11 +169,15 @@ describe('rolling collection progression', () => {
   it('offers three increasingly wide maps with many optional routes', () => {
     expect(fallbackLearningPack.stages).toHaveLength(3)
     expect(fallbackLearningPack.objects).toHaveLength(
-      fallbackLearningPack.stages.length * OBJECTS_PER_STAGE,
+      OBJECTS_PER_STAGE * 2 + ICE_RIVER_OBJECTS_PER_STAGE,
     )
 
     fallbackLearningPack.stages.forEach((stage) => {
-      expect(stage.objects).toHaveLength(OBJECTS_PER_STAGE)
+      expect(stage.objects).toHaveLength(
+        stage.id === 'starlight-river'
+          ? ICE_RIVER_OBJECTS_PER_STAGE
+          : OBJECTS_PER_STAGE,
+      )
       expect(stage.objects.length - stage.objectiveCount).toBeGreaterThanOrEqual(
         20,
       )
@@ -186,7 +194,11 @@ describe('rolling collection progression', () => {
           stage.objects.filter((item) => getSizeTier(item.size).level === level)
             .length,
       )
-      expect(tierCounts).toEqual(STAGE_OBJECT_TIER_TOTALS)
+      expect(tierCounts).toEqual(
+        stage.id === 'starlight-river'
+          ? ICE_RIVER_OBJECT_TIER_TOTALS
+          : STAGE_OBJECT_TIER_TOTALS,
+      )
       const templateVarietyByTier = [1, 2, 3, 4].map(
         (level) =>
           new Set(

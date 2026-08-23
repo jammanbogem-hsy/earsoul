@@ -2,6 +2,7 @@ import type { LearningObject, SizeTierLevel } from '../types'
 import { getSizeTier } from './mechanics'
 
 export const STAGE_OBJECT_TIER_TOTALS = [150, 105, 70, 35] as const
+export const ICE_RIVER_OBJECT_TIER_TOTALS = [200, 140, 65, 35] as const
 
 export const ACTIVE_OBJECT_TIER_COUNTS: Record<
   SizeTierLevel,
@@ -11,6 +12,16 @@ export const ACTIVE_OBJECT_TIER_COUNTS: Record<
   2: [135, 70, 24, 5],
   3: [145, 90, 52, 14],
   4: STAGE_OBJECT_TIER_TOTALS,
+}
+
+export const ICE_RIVER_ACTIVE_OBJECT_TIER_COUNTS: Record<
+  SizeTierLevel,
+  readonly [number, number, number, number]
+> = {
+  1: [190, 80, 14, 2],
+  2: [200, 120, 32, 7],
+  3: [200, 140, 60, 16],
+  4: ICE_RIVER_OBJECT_TIER_TOTALS,
 }
 
 const activeSelectionCache = new WeakMap<
@@ -62,7 +73,9 @@ export function selectActiveStageObjects(
   const cached = activeSelectionCache.get(objects)?.get(reachableTier)
   if (cached) return cached
 
-  const limits = ACTIVE_OBJECT_TIER_COUNTS[reachableTier]
+  const limits = objects[0]?.stageId === 'starlight-river'
+    ? ICE_RIVER_ACTIVE_OBJECT_TIER_COUNTS[reachableTier]
+    : ACTIVE_OBJECT_TIER_COUNTS[reachableTier]
   const selectedIds = new Set<string>()
 
   for (const tier of [1, 2, 3, 4] as const) {

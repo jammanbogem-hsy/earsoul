@@ -26,6 +26,7 @@ import {
 } from '../game/worldPhysics'
 import {
   createInterleavedTierSequence,
+  ICE_RIVER_OBJECT_TIER_TOTALS,
   STAGE_OBJECT_TIER_TOTALS,
 } from '../game/objectDistribution'
 
@@ -598,6 +599,7 @@ export { ASSET_BACKED_LEVEL_UP_MODEL_IDS }
 
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5))
 export const OBJECTS_PER_STAGE = 360
+export const ICE_RIVER_OBJECTS_PER_STAGE = 440
 const HILL_SLOT_RATIOS = [
   [-0.58, -0.56],
   [0.32, -0.48],
@@ -744,6 +746,13 @@ function createStageObjects(
   blueprint: StageBlueprint,
   stageIndex: number,
 ): LearningObject[] {
+  const isIceRiver = blueprint.id === 'starlight-river'
+  const tierTotals = isIceRiver
+    ? ICE_RIVER_OBJECT_TIER_TOTALS
+    : STAGE_OBJECT_TIER_TOTALS
+  const objectsPerStage = isIceRiver
+    ? ICE_RIVER_OBJECTS_PER_STAGE
+    : OBJECTS_PER_STAGE
   const templates = objectTemplates.filter(
     (template) =>
       getSizeTier(template.size).level === 1 ||
@@ -819,14 +828,14 @@ function createStageObjects(
     })),
   ]
   const tierSequence = createInterleavedTierSequence([
-    STAGE_OBJECT_TIER_TOTALS[0] - 8,
-    STAGE_OBJECT_TIER_TOTALS[1],
-    STAGE_OBJECT_TIER_TOTALS[2],
-    STAGE_OBJECT_TIER_TOTALS[3],
+    tierTotals[0] - 8,
+    tierTotals[1],
+    tierTotals[2],
+    tierTotals[3],
   ])
   const tierUseCounts = [0, 0, 0, 0]
 
-  return Array.from({ length: OBJECTS_PER_STAGE }, (_, index) => {
+  return Array.from({ length: objectsPerStage }, (_, index) => {
     const starter = index < 8
     const mixedIndex = Math.max(0, index - 8)
     const specialSlot = starter ? undefined : specialSlots[mixedIndex]
@@ -843,7 +852,7 @@ function createStageObjects(
             mixedTierTemplates.length
         ]
     const groundIndex = Math.max(0, mixedIndex - specialSlots.length)
-    const groundCount = OBJECTS_PER_STAGE - 8 - specialSlots.length
+    const groundCount = objectsPerStage - 8 - specialSlots.length
     const progress = groundIndex / Math.max(1, groundCount - 1)
     const radius = starter
       ? 2.4 + index * 0.58
@@ -912,7 +921,7 @@ const stages: GameStage[] = stageBlueprints.map((blueprint, index) => ({
 }))
 
 export const fallbackLearningPack: LearningPack = {
-  version: 21,
+  version: 22,
   title: '러닝크루 월드 투어',
   stages,
   objects: stages.flatMap((stage) => stage.objects),
