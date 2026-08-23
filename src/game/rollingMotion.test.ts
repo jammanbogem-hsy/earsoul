@@ -96,7 +96,7 @@ describe('rolling motion', () => {
     )
   })
 
-  it('holds a long high-speed drift and braking distance on deep ice', () => {
+  it('drifts on deep ice while steadily losing speed', () => {
     let normal = { velocityX: 4.6, velocityZ: 0 }
     let ice = { velocityX: 4.6, velocityZ: 0 }
 
@@ -115,8 +115,19 @@ describe('rolling motion', () => {
       ice = stepRollingMotion(ice, 0, 0, 0.9, 1 / 30, 0.04)
     }
 
+    const speedAfterTwoSeconds = Math.hypot(ice.velocityX, ice.velocityZ)
+    expect(speedAfterTwoSeconds).toBeGreaterThan(speedBeforeCoast * 0.52)
+    expect(speedAfterTwoSeconds).toBeLessThan(speedBeforeCoast * 0.62)
+
+    for (let frame = 0; frame < 90; frame += 1) {
+      ice = stepRollingMotion(ice, 0, 0, 0.9, 1 / 30, 0.04)
+    }
+
     expect(Math.hypot(ice.velocityX, ice.velocityZ)).toBeGreaterThan(
-      speedBeforeCoast * 0.7,
+      speedBeforeCoast * 0.18,
+    )
+    expect(Math.hypot(ice.velocityX, ice.velocityZ)).toBeLessThan(
+      speedBeforeCoast * 0.28,
     )
   })
 })

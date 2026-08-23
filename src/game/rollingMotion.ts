@@ -119,7 +119,9 @@ export function stepRollingMotion(
         frameDelta,
       )
     } else {
-      const coastDrag = 0.11 + clampedTraction * 0.9
+      // Ice should preserve direction, but it still needs enough rolling
+      // resistance for the player to read a clear, gradual slowdown.
+      const coastDrag = 0.24 + clampedTraction * 1.3
       settledSpeed = currentSpeed * Math.exp(-coastDrag * frameDelta)
     }
 
