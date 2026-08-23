@@ -680,10 +680,10 @@ export function GamePage() {
       showToast(
         {
           title: `${feedback.label} · 빙판 구간`,
-          body: '접지력이 낮아 방향이 늦게 바뀌고 관성이 오래 남아요. 미리 방향을 잡고 천천히 조작해요.',
+          body: '공은 가던 방향으로 계속 미끄러져요. 회전과 제동이 늦으니 커브 전에 미리 방향을 잡아요.',
           tone: 'wait',
         },
-        1900,
+        2300,
       )
       return
     }

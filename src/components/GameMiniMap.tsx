@@ -51,7 +51,7 @@ export function GameMiniMap({
           {hasTunnels
             ? '2층·승강기·터널 표시'
             : hasSlickZones
-              ? '2층·승강기·빙판 표시'
+              ? '빙판 약 60%·승강기'
               : '2층·승강기 표시'}
         </small>
       </header>
@@ -66,6 +66,18 @@ export function GameMiniMap({
               : '수집물과 2층 이동 구조가 표시된 현재 맵'
         }
       >
+        <defs>
+          <pattern
+            id="minimap-ice-hatch"
+            width="4"
+            height="4"
+            patternUnits="userSpaceOnUse"
+            patternTransform="rotate(18)"
+          >
+            <rect width="4" height="4" fill="#CDEEFF" />
+            <path d="M 0 0 V 4" stroke="#FFFFFF" strokeWidth="0.85" />
+          </pattern>
+        </defs>
         <rect className="minimap-ground" x="1" y="1" width="98" height="98" rx="12" />
         <g className="minimap-surfaces">
           {layout.surfaceZones.map((zone) => (

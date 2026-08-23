@@ -253,7 +253,7 @@ function createTreeRing(
     const radius = edgeRadius - (index % 3) * 0.65
     return {
       id: `edge-tree-${index}`,
-      label: theme === 'starlight-river' ? '별빛 나무' : '공원 나무',
+      label: theme === 'starlight-river' ? '서리 나무' : '공원 나무',
       x: Math.cos(angle) * radius,
       z: Math.sin(angle) * radius,
       radius: 0.48,
@@ -304,7 +304,7 @@ function createInteriorTrees(
         theme === 'forest-trail'
           ? '달그늘 안쪽 나무'
           : theme === 'starlight-river'
-            ? '별빛 공원 안쪽 나무'
+            ? '아이스 파크 안쪽 나무'
             : '광장 안쪽 나무',
       x: rawX * cosine + rawZ * sine,
       z: -rawX * sine + rawZ * cosine,
@@ -420,7 +420,7 @@ function createSpeedZones(
     return [
       {
         id: 'river-bridge-boost',
-        label: '별빛 스피드 다리',
+        label: '빙하 스피드 다리',
         x: 0,
         z: mapSize * 0.27,
         halfWidth: 1.85,
@@ -632,78 +632,117 @@ function createSurfaceZones(
   if (theme === 'starlight-river') {
     return [
       {
-        id: 'river-grass-bank',
-        label: '별빛 강둑 잔디',
-        kind: 'grass',
-        color: '#5F9A7B',
-        x: -mapSize * 0.21,
-        z: -mapSize * 0.15,
-        halfWidth: mapSize * 0.11,
-        halfDepth: mapSize * 0.075,
-        rotationY: -0.24,
-        multiplier: 0.7,
-      },
-      {
-        id: 'river-shallows',
-        label: '반짝이는 얕은 물',
-        kind: 'water',
-        color: '#4FA8C7',
-        x: mapSize * 0.18,
-        z: mapSize * 0.1,
-        halfWidth: mapSize * 0.13,
-        halfDepth: mapSize * 0.08,
-        rotationY: 0.2,
-        multiplier: 0.52,
-      },
-      {
-        id: 'river-moon-grass',
-        label: '달빛 강변 잔디',
-        kind: 'grass',
-        color: '#6EA888',
-        x: mapSize * 0.23,
-        z: -mapSize * 0.2,
-        halfWidth: mapSize * 0.065,
-        halfDepth: mapSize * 0.042,
-        rotationY: 0.34,
-        multiplier: 0.76,
-      },
-      {
-        id: 'river-small-puddle',
-        label: '별빛 작은 웅덩이',
-        kind: 'water',
-        color: '#5BB7D0',
-        x: -mapSize * 0.26,
-        z: mapSize * 0.18,
-        halfWidth: mapSize * 0.058,
-        halfDepth: mapSize * 0.04,
-        rotationY: -0.3,
-        multiplier: 0.57,
-      },
-      {
-        id: 'river-starlight-glide',
-        label: '별빛 얼음 활주로',
+        id: 'ice-river-center',
+        label: '아이스 리버 중심 빙판',
         kind: 'slick',
         color: '#C9EEFF',
-        x: mapSize * 0.02,
-        z: -mapSize * 0.29,
-        halfWidth: mapSize * 0.13,
-        halfDepth: mapSize * 0.046,
-        rotationY: 0.16,
-        multiplier: 1.04,
-        traction: 0.11,
+        x: 0,
+        z: 0,
+        halfWidth: mapSize * 0.22,
+        halfDepth: mapSize * 0.185,
+        rotationY: 0,
+        multiplier: 1,
+        traction: 0.035,
       },
       {
-        id: 'river-moon-glass',
-        label: '달빛 얼음 수로',
+        id: 'ice-river-north',
+        label: '북쪽 서리 활주로',
         kind: 'slick',
-        color: '#D7D2FF',
-        x: -mapSize * 0.31,
-        z: mapSize * 0.31,
-        halfWidth: mapSize * 0.085,
-        halfDepth: mapSize * 0.045,
-        rotationY: -0.52,
-        multiplier: 1.02,
-        traction: 0.09,
+        color: '#D7F4FF',
+        x: 0,
+        z: mapSize * 0.335,
+        halfWidth: mapSize * 0.315,
+        halfDepth: mapSize * 0.145,
+        rotationY: 0.03,
+        multiplier: 1,
+        traction: 0.045,
+      },
+      {
+        id: 'ice-river-south',
+        label: '남쪽 서리 활주로',
+        kind: 'slick',
+        color: '#CDEBFF',
+        x: 0,
+        z: -mapSize * 0.335,
+        halfWidth: mapSize * 0.315,
+        halfDepth: mapSize * 0.145,
+        rotationY: -0.03,
+        multiplier: 1,
+        traction: 0.04,
+      },
+      {
+        id: 'ice-river-west',
+        label: '서쪽 얼음 만',
+        kind: 'slick',
+        color: '#D9D8FF',
+        x: -mapSize * 0.35,
+        z: 0,
+        halfWidth: mapSize * 0.13,
+        halfDepth: mapSize * 0.225,
+        rotationY: 0.1,
+        multiplier: 1,
+        traction: 0.055,
+      },
+      {
+        id: 'ice-river-east',
+        label: '동쪽 얼음 만',
+        kind: 'slick',
+        color: '#C5E7FF',
+        x: mapSize * 0.35,
+        z: 0,
+        halfWidth: mapSize * 0.13,
+        halfDepth: mapSize * 0.225,
+        rotationY: -0.1,
+        multiplier: 1,
+        traction: 0.05,
+      },
+      {
+        id: 'ice-river-thaw-pool',
+        label: '녹은 얼음 얕은 물',
+        kind: 'water',
+        color: '#4FA8C7',
+        x: mapSize * 0.38,
+        z: mapSize * 0.38,
+        halfWidth: mapSize * 0.055,
+        halfDepth: mapSize * 0.04,
+        rotationY: 0.2,
+        multiplier: 0.55,
+      },
+      {
+        id: 'ice-river-safe-bank',
+        label: '서리 없는 안전 둔덕',
+        kind: 'grass',
+        color: '#6EA888',
+        x: -mapSize * 0.39,
+        z: -mapSize * 0.38,
+        halfWidth: mapSize * 0.05,
+        halfDepth: mapSize * 0.038,
+        rotationY: -0.18,
+        multiplier: 0.78,
+      },
+      {
+        id: 'ice-river-rest-island',
+        label: '동쪽 휴식 잔디섬',
+        kind: 'grass',
+        color: '#78A99A',
+        x: mapSize * 0.4,
+        z: -mapSize * 0.38,
+        halfWidth: mapSize * 0.045,
+        halfDepth: mapSize * 0.034,
+        rotationY: 0.15,
+        multiplier: 0.8,
+      },
+      {
+        id: 'ice-river-cold-spring',
+        label: '북서쪽 찬물 샘',
+        kind: 'water',
+        color: '#62B9D2',
+        x: -mapSize * 0.4,
+        z: mapSize * 0.39,
+        halfWidth: mapSize * 0.042,
+        halfDepth: mapSize * 0.032,
+        rotationY: -0.22,
+        multiplier: 0.58,
       },
     ]
   }
@@ -1179,8 +1218,21 @@ function isCircleClearOfSurfaceZone(
   radius: number,
   zone: SurfaceZone,
 ): boolean {
-  const zoneRadius = Math.hypot(zone.halfWidth, zone.halfDepth)
-  return Math.hypot(x - zone.x, z - zone.z) > radius + zoneRadius + 1
+  const offsetX = x - zone.x
+  const offsetZ = z - zone.z
+  const cosine = Math.cos(zone.rotationY)
+  const sine = Math.sin(zone.rotationY)
+  const localX = offsetX * cosine - offsetZ * sine
+  const localZ = offsetX * sine + offsetZ * cosine
+  const clearance = radius + 1
+  const expandedHalfWidth = zone.halfWidth + clearance
+  const expandedHalfDepth = zone.halfDepth + clearance
+
+  return (
+    (localX * localX) / (expandedHalfWidth * expandedHalfWidth) +
+      (localZ * localZ) / (expandedHalfDepth * expandedHalfDepth) >
+    1
+  )
 }
 
 function createNaturalAssetPlacements(
@@ -1231,12 +1283,8 @@ function createNaturalAssetPlacements(
         ) ||
         surfaceZones.some(
           (zone) =>
-            !isCircleClearOfSurfaceZone(
-              x,
-              z,
-              config.radius,
-              zone,
-            ),
+            (theme !== 'starlight-river' || zone.kind !== 'slick') &&
+            !isCircleClearOfSurfaceZone(x, z, config.radius, zone),
         ) ||
         speedZones.some(
           (zone) =>
@@ -1494,9 +1542,15 @@ export function getActiveSurfaceZone(
   layout: WorldPhysicsLayout,
   x: number,
   z: number,
+  surfaceHeight = 0,
 ): SurfaceZone | undefined {
-  return layout.surfaceZones.find((zone) =>
+  if (surfaceHeight > 0.55) return undefined
+  const matchingZones = layout.surfaceZones.filter((zone) =>
     isInsideSurfaceZone(x, z, zone),
+  )
+  return (
+    matchingZones.find((zone) => zone.kind !== 'slick') ??
+    matchingZones[0]
   )
 }
 

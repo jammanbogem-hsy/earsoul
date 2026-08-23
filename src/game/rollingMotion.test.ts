@@ -95,4 +95,28 @@ describe('rolling motion', () => {
       Math.abs(normalTurn.velocityZ),
     )
   })
+
+  it('holds a long high-speed drift and braking distance on deep ice', () => {
+    let normal = { velocityX: 4.6, velocityZ: 0 }
+    let ice = { velocityX: 4.6, velocityZ: 0 }
+
+    for (let frame = 0; frame < 30; frame += 1) {
+      normal = stepRollingMotion(normal, 0, -1, 0.9, 1 / 30)
+      ice = stepRollingMotion(ice, 0, -1, 0.9, 1 / 30, 0.04)
+    }
+
+    expect(Math.abs(ice.velocityX)).toBeGreaterThan(2.5)
+    expect(Math.abs(ice.velocityZ)).toBeLessThan(
+      Math.abs(normal.velocityZ) * 0.8,
+    )
+
+    const speedBeforeCoast = Math.hypot(ice.velocityX, ice.velocityZ)
+    for (let frame = 0; frame < 60; frame += 1) {
+      ice = stepRollingMotion(ice, 0, 0, 0.9, 1 / 30, 0.04)
+    }
+
+    expect(Math.hypot(ice.velocityX, ice.velocityZ)).toBeGreaterThan(
+      speedBeforeCoast * 0.7,
+    )
+  })
 })

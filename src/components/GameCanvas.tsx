@@ -249,6 +249,7 @@ interface MotionState {
   boost: number
   impact: number
   surface: SurfaceKind | null
+  slip: number
 }
 
 interface CameraOrbitState {
@@ -1100,19 +1101,39 @@ function MotionEffects({
   const puffs = useRef<(Mesh | null)[]>([])
 
   useFrame(({ clock }) => {
-    const { x, z, speed, boost, impact, surface } = motion.current
+    const {
+      x,
+      z,
+      speed,
+      boost,
+      impact,
+      surface,
+      velocityX,
+      velocityZ,
+      slip,
+    } = motion.current
     const isSlick = surface === 'slick'
+    const physicalSpeed = Math.hypot(velocityX, velocityZ)
+    const effectX = isSlick && physicalSpeed > 0.02
+      ? velocityX / physicalSpeed
+      : x
+    const effectZ = isSlick && physicalSpeed > 0.02
+      ? velocityZ / physicalSpeed
+      : z
     puffs.current.forEach((puff, index) => {
       if (!puff) return
-      const sideX = -z
-      const sideZ = x
+      const sideX = -effectZ
+      const sideZ = effectX
       const phase = (clock.elapsedTime * 3.4 + index * 0.7) % 1
-      const spread = (index % 2 ? 1 : -1) * (0.2 + index * 0.06)
+      const spread =
+        (index % 2 ? 1 : -1) *
+        (0.2 + index * 0.06) *
+        (1 + slip * 0.9)
       const behind = ballRadius * 0.55 + phase * 0.85
       puff.position.set(
-        -x * behind + sideX * spread,
+        -effectX * behind + sideX * spread,
         -ballRadius + 0.055,
-        -z * behind + sideZ * spread,
+        -effectZ * behind + sideZ * spread,
       )
       const material = puff.material as MeshBasicMaterial
       material.color.set(
@@ -1131,6 +1152,7 @@ function MotionEffects({
         : Math.min(
             isSlick ? 0.72 : 0.58,
             speed * boost * (1 - phase) * (isSlick ? 0.48 : 0.36) +
+              slip * (1 - phase) * 0.28 +
               impact * 0.12,
           )
       const scale =
@@ -1568,7 +1590,10 @@ function SlickContactEffects({
 
     const isOnIce = motion.current.surface === 'slick'
     const targetStrength = isOnIce
-      ? Math.min(1, 0.38 + motion.current.speed * 0.72)
+      ? Math.min(
+          1,
+          0.38 + motion.current.speed * 0.58 + motion.current.slip * 0.5,
+        )
       : 0
     strength.current = MathUtils.damp(
       strength.current,
@@ -1598,8 +1623,13 @@ function SlickContactEffects({
 
     trails.current.forEach((trail, index) => {
       if (!trail) return
-      const side = (index === 0 ? -1 : 1) * ballRadius * 0.34
-      const length = ballRadius * (1.55 + motion.current.speed * 1.25)
+      const side =
+        (index === 0 ? -1 : 1) *
+        ballRadius *
+        (0.34 + motion.current.slip * 0.18)
+      const length = ballRadius * (
+        1.55 + motion.current.speed * 1.25 + motion.current.slip * 1.1
+      )
       trail.position.set(side, 0, -length * 0.4)
       trail.scale.set(
         Math.max(0.07, ballRadius * 0.13),
@@ -1622,7 +1652,9 @@ function SlickContactEffects({
       const side = index % 2 === 0 ? -1 : 1
       positionAttribute.setXYZ(
         index,
-        side * ballRadius * (0.28 + (index % 4) * 0.12),
+        side * ballRadius * (
+          0.28 + (index % 4) * 0.12 + motion.current.slip * 0.22
+        ),
         reducedMotion
           ? 0.02
           : Math.sin(phase * Math.PI) * ballRadius * 0.38,
@@ -2725,6 +2757,7 @@ function GameWorld({
     boost: 1,
     impact: 0,
     surface: null,
+    slip: 0,
   })
 
   useEffect(() => {
@@ -3177,6 +3210,7 @@ function GameWorld({
         physicsLayout,
         position.x,
         position.z,
+        position.y - getPlayerColliderRadius(ballRadius),
       )
       const rollingStep = stepRollingMotion(
         {
@@ -3195,16 +3229,26 @@ function GameWorld({
         inputStrength > 0.05 &&
         rollingStep.speedRatio > 0.04
       ) {
+        const isOnIce = surfaceZone?.kind === 'slick'
+        const inputDirectionX = driveStep.moveX / inputStrength
+        const inputDirectionZ = driveStep.moveZ / inputStrength
+        const headingTargetX = isOnIce
+          ? inputDirectionX
+          : rollingStep.directionX
+        const headingTargetZ = isOnIce
+          ? inputDirectionZ
+          : rollingStep.directionZ
+        const headingSmoothing = isOnIce ? 2.2 : 4.6
         heading.current.x = MathUtils.damp(
           heading.current.x,
-          rollingStep.directionX,
-          4.6,
+          headingTargetX,
+          headingSmoothing,
           delta,
         )
         heading.current.z = MathUtils.damp(
           heading.current.z,
-          rollingStep.directionZ,
-          4.6,
+          headingTargetZ,
+          headingSmoothing,
           delta,
         )
         heading.current.normalize()
@@ -3249,6 +3293,31 @@ function GameWorld({
       const speedRatio = motion.current.speed
       motion.current.x = heading.current.x
       motion.current.z = heading.current.z
+      const rollingDirectionLength = Math.hypot(
+        rollingStep.velocityX,
+        rollingStep.velocityZ,
+      )
+      const rollingDirectionX = rollingDirectionLength > 0.02
+        ? rollingStep.velocityX / rollingDirectionLength
+        : heading.current.x
+      const rollingDirectionZ = rollingDirectionLength > 0.02
+        ? rollingStep.velocityZ / rollingDirectionLength
+        : heading.current.z
+      const slipTarget = surfaceZone?.kind === 'slick'
+        ? Math.min(
+            1,
+            Math.abs(
+              heading.current.x * rollingDirectionZ -
+                heading.current.z * rollingDirectionX,
+            ) * rollingStep.speedRatio * 1.35,
+          )
+        : 0
+      motion.current.slip = MathUtils.damp(
+        motion.current.slip,
+        slipTarget,
+        surfaceZone?.kind === 'slick' ? 5 : 9,
+        delta,
+      )
       motion.current.speed = speedRatio
       motion.current.boost = speedMultiplier
       motion.current.impact = Math.max(

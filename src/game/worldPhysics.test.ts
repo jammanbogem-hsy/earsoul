@@ -307,9 +307,10 @@ describe('world physics', () => {
       .toHaveLength(0)
   })
 
-  it('adds two low-traction glide surfaces only to the starlight river map', () => {
+  it('covers about 60% of the ice river map with connected low-traction ice', () => {
     fallbackLearningPack.stages.forEach((stage) => {
-      const slickZones = createWorldPhysicsLayout(stage).surfaceZones.filter(
+      const layout = createWorldPhysicsLayout(stage)
+      const slickZones = layout.surfaceZones.filter(
         (zone) => zone.kind === 'slick',
       )
 
@@ -318,16 +319,36 @@ describe('world physics', () => {
         return
       }
 
-      expect(slickZones).toHaveLength(2)
-      expect(slickZones.every((zone) => (zone.traction ?? 1) <= 0.11)).toBe(true)
-      expect(slickZones.every((zone) => zone.multiplier >= 1)).toBe(true)
+      expect(slickZones).toHaveLength(5)
+      expect(slickZones.every((zone) => (zone.traction ?? 1) <= 0.055)).toBe(true)
+      expect(slickZones.every((zone) => zone.multiplier === 1)).toBe(true)
       expect(
         getActiveSurfaceZone(
-          createWorldPhysicsLayout(stage),
+          layout,
           slickZones[0].x,
           slickZones[0].z,
         )?.kind,
       ).toBe('slick')
+
+      let sampledPoints = 0
+      let sampledIcePoints = 0
+      const halfMap = stage.mapSize / 2
+      for (let xIndex = 0; xIndex < 81; xIndex += 1) {
+        const x = -halfMap + ((xIndex + 0.5) / 81) * stage.mapSize
+        for (let zIndex = 0; zIndex < 81; zIndex += 1) {
+          const z = -halfMap + ((zIndex + 0.5) / 81) * stage.mapSize
+          sampledPoints += 1
+          if (getActiveSurfaceZone(layout, x, z)?.kind === 'slick') {
+            sampledIcePoints += 1
+          }
+        }
+      }
+      const iceCoverage = sampledIcePoints / sampledPoints
+      expect(iceCoverage).toBeGreaterThan(0.57)
+      expect(iceCoverage).toBeLessThan(0.63)
+      expect(
+        getActiveSurfaceZone(layout, 0, 0, 0.8),
+      ).toBeUndefined()
     })
   })
 

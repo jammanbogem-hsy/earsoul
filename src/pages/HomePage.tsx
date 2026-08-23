@@ -38,8 +38,8 @@ const stageMaps: {
     color: 'blue',
   },
   {
-    title: '별빛 리버파크',
-    description: '미끄러운 별빛 길과 강변',
+    title: '아이스 리버파크',
+    description: '맵의 60%를 덮은 빙판과 긴 관성',
     icon: 'diamond',
     color: 'blue',
   },

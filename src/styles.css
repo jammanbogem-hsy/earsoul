@@ -1710,7 +1710,7 @@ md-switch:focus-visible,
 }
 
 .minimap-surfaces .is-slick {
-  fill: #cdeeff;
+  fill: url('#minimap-ice-hatch');
   stroke: #ffffff;
   stroke-dasharray: 2.1 0.8;
   stroke-width: 0.72;

@@ -717,9 +717,9 @@ const stageBlueprints: StageBlueprint[] = [
   },
   {
     id: 'starlight-river',
-    title: '별빛 리버파크',
-    subtitle: '미끄러운 별빛 길과 수직 동선을 누비는 마지막 맵',
-    description: '관성이 오래 남는 별빛 길, 강변과 높은 전망대를 오가며 큰 보물을 모아요.',
+    title: '아이스 리버파크',
+    subtitle: '맵의 대부분을 덮은 빙판과 수직 동선을 누비는 마지막 맵',
+    description: '조향이 늦게 따라오고 관성이 오래 남는 넓은 빙판에서 미끄러짐을 조절하며 큰 보물을 모아요.',
     theme: 'starlight-river',
     mapSize: 192,
     objectiveCount: 104,
@@ -912,7 +912,7 @@ const stages: GameStage[] = stageBlueprints.map((blueprint, index) => ({
 }))
 
 export const fallbackLearningPack: LearningPack = {
-  version: 20,
+  version: 21,
   title: '러닝크루 월드 투어',
   stages,
   objects: stages.flatMap((stage) => stage.objects),
