@@ -27,8 +27,9 @@ import maleRunnerUrl from '../../assets/game/달리는+남성+런닝크루.glb?u
 import femaleRunnerUrl from '../../assets/game/달리는+여성+런닝크루.glb?url'
 import polarBearUrl from '../../assets/game/무서운+북극곰.glb?url'
 import {
-  createRoamingPolarBearSpec,
+  createRoamingPolarBearSpecs,
   createRoamingRunnerSpecs,
+  getRoamingHazardCounts,
   ROAMING_POLAR_BEAR_RADIUS,
   ROAMING_RUNNER_RADIUS,
   shouldRoamingRunnerTurnOnCollision,
@@ -38,9 +39,11 @@ import {
   type RoamingRunnerSpec,
   type RoamingRunnerState,
 } from '../../game/roamingRunners'
+import type { StageTheme } from '../../types'
 
 interface RoamingRunnerObstaclesProps {
   mapSize: number
+  theme: StageTheme
   obstacles: readonly RoamingObstacle[]
   paused: boolean
   reducedMotion: boolean
@@ -450,38 +453,59 @@ useGLTF.preload(polarBearUrl)
 
 export function RoamingRunnerObstacles({
   mapSize,
+  theme,
   obstacles,
   paused,
   reducedMotion,
   onRunnerHit,
   onPolarBearHit,
 }: RoamingRunnerObstaclesProps) {
+  const hazardCounts = getRoamingHazardCounts(theme)
   const previewNearby =
     import.meta.env.DEV &&
     new URLSearchParams(window.location.search).get('runnerPreview') === 'true'
   const specs = useMemo(
     () => {
-      const roamingSpecs = createRoamingRunnerSpecs(mapSize, obstacles)
+      const roamingSpecs = createRoamingRunnerSpecs(
+        mapSize,
+        obstacles,
+        hazardCounts.runnerCount,
+      )
       if (!previewNearby) return roamingSpecs
       return roamingSpecs.map((spec, index) => ({
         ...spec,
-        x: index % 2 === 0 ? -2.2 : 2.2,
-        z: index < 2 ? -4.5 : -7.5,
+        x: ((index % 4) - 1.5) * 2.4,
+        z: -4.5 - Math.floor(index / 4) * 3,
         heading: 0,
         speed: 0.18,
       }))
     },
-    [mapSize, obstacles, previewNearby],
+    [hazardCounts.runnerCount, mapSize, obstacles, previewNearby],
   )
-  const polarBearSpec = useMemo(() => {
-    const spec = createRoamingPolarBearSpec(mapSize, obstacles)
+  const polarBearSpecs = useMemo(() => {
+    const runnerAvoidance = specs.map((spec) => ({
+      x: spec.x,
+      z: spec.z,
+      radius: ROAMING_RUNNER_RADIUS * 1.8,
+    }))
+    const roamingSpecs = createRoamingPolarBearSpecs(
+      mapSize,
+      [...obstacles, ...runnerAvoidance],
+      hazardCounts.polarBearCount,
+    )
     const previewNearby =
       import.meta.env.DEV &&
       new URLSearchParams(window.location.search).get('bearPreview') === 'true'
     return previewNearby
-      ? { ...spec, x: 0, z: -0.9, heading: 0, speed: 0.05 }
-      : spec
-  }, [mapSize, obstacles])
+      ? roamingSpecs.map((spec, index) => ({
+          ...spec,
+          x: (index - (roamingSpecs.length - 1) / 2) * 2.4,
+          z: -0.9,
+          heading: 0,
+          speed: 0.05,
+        }))
+      : roamingSpecs
+  }, [hazardCounts.polarBearCount, mapSize, obstacles, specs])
 
   return (
     <>
@@ -497,14 +521,17 @@ export function RoamingRunnerObstacles({
           onPlayerHit={onRunnerHit}
         />
       ))}
-      <RoamingPolarBear
-        spec={polarBearSpec}
-        mapSize={mapSize}
-        obstacles={obstacles}
-        paused={paused}
-        reducedMotion={reducedMotion}
-        onPlayerHit={onPolarBearHit}
-      />
+      {polarBearSpecs.map((spec) => (
+        <RoamingPolarBear
+          key={spec.id}
+          spec={spec}
+          mapSize={mapSize}
+          obstacles={obstacles}
+          paused={paused}
+          reducedMotion={reducedMotion}
+          onPlayerHit={onPolarBearHit}
+        />
+      ))}
     </>
   )
 }

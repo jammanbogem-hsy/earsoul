@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
   createRoamingPolarBearSpec,
+  createRoamingPolarBearSpecs,
   createRoamingRunnerSpecs,
+  getRoamingHazardCounts,
   ROAMING_POLAR_BEAR_RADIUS,
   ROAMING_POLAR_BEAR_SPEED,
   ROAMING_RUNNER_RADIUS,
@@ -11,8 +13,8 @@ import {
 } from './roamingRunners'
 
 describe('roaming running crew', () => {
-  it('keeps all eight runners deliberately slower than the player', () => {
-    expect(ROAMING_RUNNER_SPEEDS).toHaveLength(8)
+  it('keeps every runner deliberately slower than the player', () => {
+    expect(ROAMING_RUNNER_SPEEDS).toHaveLength(12)
     ROAMING_RUNNER_SPEEDS.forEach((speed) => {
       expect(speed).toBeGreaterThanOrEqual(0.5)
       expect(speed).toBeLessThanOrEqual(0.8)
@@ -84,6 +86,42 @@ describe('roaming running crew', () => {
         )
       })
     })
+  })
+
+  it('adds four runners and a second polar bear only to the dark second map', () => {
+    expect(getRoamingHazardCounts('sunny-plaza')).toEqual({
+      runnerCount: 8,
+      polarBearCount: 1,
+    })
+    expect(getRoamingHazardCounts('forest-trail')).toEqual({
+      runnerCount: 12,
+      polarBearCount: 2,
+    })
+    expect(getRoamingHazardCounts('starlight-river')).toEqual({
+      runnerCount: 8,
+      polarBearCount: 1,
+    })
+
+    const runners = createRoamingRunnerSpecs(168, [], 12)
+    const bears = createRoamingPolarBearSpecs(
+      168,
+      runners.map((runner) => ({
+        x: runner.x,
+        z: runner.z,
+        radius: ROAMING_RUNNER_RADIUS * 1.8,
+      })),
+      2,
+    )
+
+    expect(runners).toHaveLength(12)
+    expect(runners.filter((runner) => runner.variant === 'male')).toHaveLength(6)
+    expect(runners.filter((runner) => runner.variant === 'female')).toHaveLength(6)
+    expect(bears).toHaveLength(2)
+    expect(bears[0].id).toBe('scary-polar-bear')
+    expect(bears[1].id).toBe('scary-polar-bear-2')
+    expect(
+      Math.hypot(bears[0].x - bears[1].x, bears[0].z - bears[1].z),
+    ).toBeGreaterThan(ROAMING_POLAR_BEAR_RADIUS * 2)
   })
 
   it('does not turn for the player but still turns for world obstacles', () => {

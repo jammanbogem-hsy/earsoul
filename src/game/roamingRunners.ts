@@ -1,3 +1,5 @@
+import type { StageTheme } from '../types'
+
 export interface RoamingObstacle {
   x: number
   z: number
@@ -11,22 +13,14 @@ export interface RoamingRunnerState {
 }
 
 export interface RoamingRunnerSpec extends RoamingRunnerState {
-  id:
-    | 'male-running-crew-1'
-    | 'male-running-crew-2'
-    | 'male-running-crew-3'
-    | 'male-running-crew-4'
-    | 'female-running-crew-1'
-    | 'female-running-crew-2'
-    | 'female-running-crew-3'
-    | 'female-running-crew-4'
+  id: `male-running-crew-${number}` | `female-running-crew-${number}`
   variant: 'male' | 'female'
   speed: number
   turnSign: -1 | 1
 }
 
 export interface RoamingPolarBearSpec extends RoamingRunnerState {
-  id: 'scary-polar-bear'
+  id: 'scary-polar-bear' | `scary-polar-bear-${number}`
   speed: number
   turnSign: -1 | 1
 }
@@ -42,12 +36,25 @@ export const ROAMING_RUNNER_SPEEDS = [
   0.63,
   0.6,
   0.57,
+  0.55,
+  0.53,
+  0.51,
+  0.5,
 ] as const
 export const ROAMING_POLAR_BEAR_SPEED = 0.44
 const MAP_EDGE_CLEARANCE = 1.65
 const OBSTACLE_CLEARANCE = 0.52
 const LOOK_AHEAD_DISTANCE = 1.15
 const TURN_OFFSETS = [Math.PI / 3, Math.PI / 2, (Math.PI * 2) / 3, Math.PI]
+
+export function getRoamingHazardCounts(theme: StageTheme): {
+  runnerCount: number
+  polarBearCount: number
+} {
+  return theme === 'forest-trail'
+    ? { runnerCount: 12, polarBearCount: 2 }
+    : { runnerCount: 8, polarBearCount: 1 }
+}
 
 export function shouldRoamingRunnerTurnOnCollision(
   physicsKind?: string,
@@ -176,6 +183,7 @@ function findClearSpawn(
 export function createRoamingRunnerSpecs(
   mapSize: number,
   obstacles: readonly RoamingObstacle[],
+  count = 8,
 ): RoamingRunnerSpec[] {
   const definitions = [
     {
@@ -242,23 +250,57 @@ export function createRoamingRunnerSpecs(
       seedAngle: Math.PI * 1.92,
       heading: -Math.PI * 0.42,
     },
+    {
+      id: 'male-running-crew-5',
+      variant: 'male',
+      speed: ROAMING_RUNNER_SPEEDS[8],
+      turnSign: 1,
+      seedAngle: Math.PI * 0.08,
+      heading: Math.PI * 1.28,
+    },
+    {
+      id: 'female-running-crew-5',
+      variant: 'female',
+      speed: ROAMING_RUNNER_SPEEDS[9],
+      turnSign: -1,
+      seedAngle: Math.PI * 0.62,
+      heading: -Math.PI * 0.72,
+    },
+    {
+      id: 'male-running-crew-6',
+      variant: 'male',
+      speed: ROAMING_RUNNER_SPEEDS[10],
+      turnSign: -1,
+      seedAngle: Math.PI * 1.36,
+      heading: Math.PI * 0.52,
+    },
+    {
+      id: 'female-running-crew-6',
+      variant: 'female',
+      speed: ROAMING_RUNNER_SPEEDS[11],
+      turnSign: 1,
+      seedAngle: Math.PI * 1.82,
+      heading: Math.PI * 1.74,
+    },
   ] as const
 
   const runners: RoamingRunnerSpec[] = []
-  definitions.forEach(({ seedAngle, ...definition }) => {
-    const occupied = [
-      ...obstacles,
-      ...runners.map((runner) => ({
-        x: runner.x,
-        z: runner.z,
-        radius: ROAMING_RUNNER_RADIUS * 2,
-      })),
-    ]
-    runners.push({
-      ...definition,
-      ...findClearSpawn(mapSize, occupied, seedAngle),
+  definitions
+    .slice(0, Math.max(0, Math.min(definitions.length, Math.floor(count))))
+    .forEach(({ seedAngle, ...definition }) => {
+      const occupied = [
+        ...obstacles,
+        ...runners.map((runner) => ({
+          x: runner.x,
+          z: runner.z,
+          radius: ROAMING_RUNNER_RADIUS * 2,
+        })),
+      ]
+      runners.push({
+        ...definition,
+        ...findClearSpawn(mapSize, occupied, seedAngle),
+      })
     })
-  })
 
   return runners
 }
@@ -267,16 +309,41 @@ export function createRoamingPolarBearSpec(
   mapSize: number,
   obstacles: readonly RoamingObstacle[],
 ): RoamingPolarBearSpec {
-  return {
-    id: 'scary-polar-bear',
-    speed: ROAMING_POLAR_BEAR_SPEED,
-    turnSign: -1,
-    heading: Math.PI * 1.12,
-    ...findClearSpawn(
-      mapSize,
-      obstacles,
-      Math.PI * 1.43,
-      ROAMING_POLAR_BEAR_RADIUS,
-    ),
+  return createRoamingPolarBearSpecs(mapSize, obstacles, 1)[0]
+}
+
+export function createRoamingPolarBearSpecs(
+  mapSize: number,
+  obstacles: readonly RoamingObstacle[],
+  count = 1,
+): RoamingPolarBearSpec[] {
+  const bears: RoamingPolarBearSpec[] = []
+  const safeCount = Math.max(0, Math.min(3, Math.floor(count)))
+
+  for (let index = 0; index < safeCount; index += 1) {
+    const occupied = [
+      ...obstacles,
+      ...bears.map((bear) => ({
+        x: bear.x,
+        z: bear.z,
+        radius: ROAMING_POLAR_BEAR_RADIUS * 2,
+      })),
+    ]
+    const id: RoamingPolarBearSpec['id'] =
+      index === 0 ? 'scary-polar-bear' : `scary-polar-bear-${index + 1}`
+    bears.push({
+      id,
+      speed: Math.max(0.36, ROAMING_POLAR_BEAR_SPEED - index * 0.04),
+      turnSign: index % 2 === 0 ? -1 : 1,
+      heading: Math.PI * (1.12 + index * 0.46),
+      ...findClearSpawn(
+        mapSize,
+        occupied,
+        Math.PI * (1.43 + index * 0.58),
+        ROAMING_POLAR_BEAR_RADIUS,
+      ),
+    })
   }
+
+  return bears
 }

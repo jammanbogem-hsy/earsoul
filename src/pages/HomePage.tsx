@@ -39,7 +39,7 @@ const stageMaps: {
   },
   {
     title: '별빛 리버파크',
-    description: '강변과 컬러 브리지',
+    description: '미끄러운 별빛 길과 강변',
     icon: 'diamond',
     color: 'blue',
   },

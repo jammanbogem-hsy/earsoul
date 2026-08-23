@@ -61,7 +61,7 @@ export interface WorldTunnel {
   accentColor: string
 }
 
-export type SurfaceKind = 'grass' | 'water' | 'mud'
+export type SurfaceKind = 'grass' | 'water' | 'mud' | 'slick'
 
 export interface SurfaceZone {
   id: string
@@ -74,6 +74,7 @@ export interface SurfaceZone {
   halfDepth: number
   rotationY: number
   multiplier: number
+  traction?: number
   assetVariant?: MudAssetVariant
   modelScale?: [number, number, number]
 }
@@ -677,6 +678,32 @@ function createSurfaceZones(
         halfDepth: mapSize * 0.04,
         rotationY: -0.3,
         multiplier: 0.57,
+      },
+      {
+        id: 'river-starlight-glide',
+        label: '별빛 글라이드 길',
+        kind: 'slick',
+        color: '#8DBBFF',
+        x: mapSize * 0.02,
+        z: -mapSize * 0.29,
+        halfWidth: mapSize * 0.13,
+        halfDepth: mapSize * 0.046,
+        rotationY: 0.16,
+        multiplier: 1.04,
+        traction: 0.2,
+      },
+      {
+        id: 'river-moon-glass',
+        label: '달빛 유리 수로',
+        kind: 'slick',
+        color: '#A9A8FF',
+        x: -mapSize * 0.31,
+        z: mapSize * 0.31,
+        halfWidth: mapSize * 0.085,
+        halfDepth: mapSize * 0.045,
+        rotationY: -0.52,
+        multiplier: 1.02,
+        traction: 0.18,
       },
     ]
   }

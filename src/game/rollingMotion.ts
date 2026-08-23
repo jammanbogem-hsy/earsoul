@@ -55,6 +55,7 @@ export function stepRollingMotion(
   inputZ: number,
   ballRadius: number,
   delta: number,
+  traction = 1,
 ): RollingMotionStep {
   const frameDelta = Math.min(Math.max(delta, 0), 1 / 30)
   const inputLength = Math.hypot(inputX, inputZ)
@@ -64,9 +65,15 @@ export function stepRollingMotion(
   const topSpeed = getRollingTopSpeed(ballRadius)
   const inputStrength = Math.min(1, inputLength)
   const targetSpeed = hasInput ? topSpeed * inputStrength : 0
-  const smoothing = hasInput
+  const baseSmoothing = hasInput
     ? 10 - getGrowthProgress(ballRadius) * 1.2
     : 6.5
+  const clampedTraction = Math.min(1, Math.max(0.15, traction))
+  const smoothing =
+    baseSmoothing *
+    (hasInput
+      ? 0.28 + clampedTraction * 0.72
+      : 0.12 + clampedTraction * 0.88)
   let velocityX = damp(
     current.velocityX,
     normalizedX * targetSpeed,

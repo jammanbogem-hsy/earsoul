@@ -173,7 +173,7 @@ interface GameCanvasProps {
   onPolarBearHit: (position: { x: number; z: number }) => boolean
   onTooLarge: (item: LearningObject) => void
   onPhysicsFeedback: (feedback: {
-    type: 'collision' | 'boost' | 'slow' | 'elevator'
+    type: 'collision' | 'boost' | 'slow' | 'slide' | 'elevator'
     label: string
     bounced?: boolean
     surfaceKind?: SurfaceKind
@@ -1100,7 +1100,8 @@ function MotionEffects({
   const puffs = useRef<(Mesh | null)[]>([])
 
   useFrame(({ clock }) => {
-    const { x, z, speed, boost, impact } = motion.current
+    const { x, z, speed, boost, impact, surface } = motion.current
+    const isSlick = surface === 'slick'
     puffs.current.forEach((puff, index) => {
       if (!puff) return
       const sideX = -z
@@ -1115,7 +1116,9 @@ function MotionEffects({
       )
       const material = puff.material as MeshBasicMaterial
       material.color.set(
-        speedPowerUpActive
+        isSlick
+          ? '#A9E9FF'
+          : speedPowerUpActive
           ? '#FFB36B'
           : boost > 1
             ? '#B6F3FF'
@@ -1125,10 +1128,18 @@ function MotionEffects({
       )
       material.opacity = reducedMotion
         ? 0
-        : Math.min(0.58, speed * boost * (1 - phase) * 0.36 + impact * 0.12)
+        : Math.min(
+            isSlick ? 0.72 : 0.58,
+            speed * boost * (1 - phase) * (isSlick ? 0.48 : 0.36) +
+              impact * 0.12,
+          )
       const scale =
         0.7 + phase * (speedPowerUpActive ? 2.55 : boost > 1 ? 2.15 : 1.6)
-      puff.scale.set(scale, 0.18, scale * 0.72)
+      puff.scale.set(
+        isSlick ? scale * 0.42 : scale,
+        0.18,
+        isSlick ? scale * 2.35 : scale * 0.72,
+      )
     })
   })
 
@@ -1256,6 +1267,72 @@ function AnimatedWaterSurface({
             color="#D9FAFF"
             transparent
             opacity={0.22 - index * 0.035}
+            depthWrite={false}
+          />
+        </mesh>
+      ))}
+    </group>
+  )
+}
+
+function SlickSurface({ zone }: { zone: SurfaceZone }) {
+  const streaks = [-0.68, -0.34, 0, 0.34, 0.68]
+
+  return (
+    <group
+      position={[zone.x, 0.034, zone.z]}
+      rotation={[0, zone.rotationY, 0]}
+    >
+      <mesh
+        rotation={[-Math.PI / 2, 0, 0]}
+        scale={[zone.halfWidth, zone.halfDepth, 1]}
+        receiveShadow
+      >
+        <circleGeometry args={[1, 96]} />
+        <meshPhysicalMaterial
+          color={zone.color}
+          emissive="#324D82"
+          emissiveIntensity={0.34}
+          metalness={0.18}
+          roughness={0.12}
+          clearcoat={1}
+          clearcoatRoughness={0.08}
+          transparent
+          opacity={0.86}
+        />
+      </mesh>
+      {streaks.map((xRatio, index) => (
+        <mesh
+          key={`${zone.id}-glide-streak-${xRatio}`}
+          position={[zone.halfWidth * xRatio, 0.012 + index * 0.001, 0]}
+        >
+          <boxGeometry
+            args={[
+              0.055 + (index % 2) * 0.035,
+              0.012,
+              zone.halfDepth * (1.28 + (index % 3) * 0.12),
+            ]}
+          />
+          <meshBasicMaterial
+            color={index % 2 === 0 ? '#EAF8FF' : '#BBD9FF'}
+            transparent
+            opacity={0.66}
+            depthWrite={false}
+          />
+        </mesh>
+      ))}
+      {[0.48, 0.86].map((radius, index) => (
+        <mesh
+          key={`${zone.id}-slick-ring-${radius}`}
+          rotation={[-Math.PI / 2, 0, 0]}
+          position={[0, 0.014 + index * 0.002, 0]}
+          scale={[zone.halfWidth, zone.halfDepth, 1]}
+        >
+          <ringGeometry args={[radius - 0.01, radius, 72]} />
+          <meshBasicMaterial
+            color="#D9F1FF"
+            transparent
+            opacity={0.3 - index * 0.06}
             depthWrite={false}
           />
         </mesh>
@@ -1827,6 +1904,8 @@ function RapierWorldColliders({
             zone={zone}
             reducedMotion={reducedMotion}
           />
+        ) : zone.kind === 'slick' ? (
+          <SlickSurface key={zone.id} zone={zone} />
         ) : (
           <group
             key={zone.id}
@@ -2279,7 +2358,11 @@ function GameWorld({
   const debugSurface = useMemo(() => {
     if (!import.meta.env.DEV) return null
     const spawnMode = new URLSearchParams(window.location.search).get('spawn')
-    if (spawnMode !== 'water' && spawnMode !== 'mud') return null
+    if (
+      spawnMode !== 'water' &&
+      spawnMode !== 'mud' &&
+      spawnMode !== 'slick'
+    ) return null
     return (
       physicsLayout.surfaceZones.find((zone) => zone.kind === spawnMode) ?? null
     )
@@ -2889,6 +2972,16 @@ function GameWorld({
         lateralInput,
         forwardInput,
       )
+      const speedZone = getActiveSpeedZone(
+        physicsLayout,
+        position.x,
+        position.z,
+      )
+      const surfaceZone = getActiveSurfaceZone(
+        physicsLayout,
+        position.x,
+        position.z,
+      )
       const rollingStep = stepRollingMotion(
         {
           velocityX: motion.current.velocityX,
@@ -2898,6 +2991,7 @@ function GameWorld({
         driveStep.moveZ,
         ballRadius,
         delta,
+        surfaceZone?.traction ?? 1,
       )
       const inputStrength = Math.hypot(driveStep.moveX, driveStep.moveZ)
       if (
@@ -2919,16 +3013,6 @@ function GameWorld({
         )
         heading.current.normalize()
       }
-      const speedZone = getActiveSpeedZone(
-        physicsLayout,
-        position.x,
-        position.z,
-      )
-      const surfaceZone = getActiveSurfaceZone(
-        physicsLayout,
-        position.x,
-        position.z,
-      )
       const requestedSpeedMultiplier =
         (speedZone?.multiplier ?? 1) *
         (surfaceZone?.multiplier ?? 1) *
@@ -3003,7 +3087,7 @@ function GameWorld({
       ) {
         physicsFeedbackCooldown.current = state.clock.elapsedTime + 1.1
         onPhysicsFeedback({
-          type: 'slow',
+          type: surfaceZone?.kind === 'slick' ? 'slide' : 'slow',
           label: surfaceZone?.label ?? '천천히 구간',
           surfaceKind: surfaceZone?.kind,
         })
@@ -3384,6 +3468,7 @@ function GameWorld({
       />
       <RoamingRunnerObstacles
         mapSize={stage.mapSize}
+        theme={stage.theme}
         obstacles={roamingRunnerObstacles}
         paused={paused}
         reducedMotion={reducedMotion}

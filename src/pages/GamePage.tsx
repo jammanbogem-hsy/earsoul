@@ -659,7 +659,7 @@ export function GamePage() {
   }
 
   const handlePhysicsFeedback = (feedback: {
-    type: 'collision' | 'boost' | 'slow' | 'elevator'
+    type: 'collision' | 'boost' | 'slow' | 'slide' | 'elevator'
     label: string
     bounced?: boolean
     surfaceKind?: SurfaceKind
@@ -672,6 +672,18 @@ export function GamePage() {
           tone: 'learned',
         },
         1500,
+      )
+      return
+    }
+
+    if (feedback.type === 'slide') {
+      showToast(
+        {
+          title: `${feedback.label} · 미끄럼 구간`,
+          body: '방향이 천천히 바뀌고 관성이 오래 남아요. 미리 방향을 잡아 부드럽게 통과해요.',
+          tone: 'wait',
+        },
+        1900,
       )
       return
     }

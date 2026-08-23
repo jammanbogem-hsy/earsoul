@@ -65,4 +65,34 @@ describe('rolling motion', () => {
     )
     expect(getCappedRollingSpeedMultiplier(radius, 1.1)).toBe(1.1)
   })
+
+  it('keeps momentum longer and turns more slowly on a slick surface', () => {
+    const current = { velocityX: 4.6, velocityZ: 0 }
+    const normalCoast = stepRollingMotion(current, 0, 0, 0.9, 1 / 30)
+    const slickCoast = stepRollingMotion(
+      current,
+      0,
+      0,
+      0.9,
+      1 / 30,
+      0.2,
+    )
+    const normalTurn = stepRollingMotion(current, 0, -1, 0.9, 1 / 30)
+    const slickTurn = stepRollingMotion(
+      current,
+      0,
+      -1,
+      0.9,
+      1 / 30,
+      0.2,
+    )
+
+    expect(slickCoast.speed).toBeGreaterThan(normalCoast.speed)
+    expect(Math.abs(slickTurn.velocityX)).toBeGreaterThan(
+      Math.abs(normalTurn.velocityX),
+    )
+    expect(Math.abs(slickTurn.velocityZ)).toBeLessThan(
+      Math.abs(normalTurn.velocityZ),
+    )
+  })
 })

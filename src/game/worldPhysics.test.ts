@@ -155,7 +155,17 @@ describe('world physics', () => {
         ),
       ).toBe(true)
       expect(
-        layout.surfaceZones.every((zone) => zone.multiplier < 1),
+        layout.surfaceZones
+          .filter((zone) => zone.kind !== 'slick')
+          .every((zone) => zone.multiplier < 1),
+      ).toBe(true)
+      expect(
+        layout.surfaceZones
+          .filter((zone) => zone.kind === 'slick')
+          .every(
+            (zone) =>
+              zone.multiplier >= 1 && (zone.traction ?? 1) < 1,
+          ),
       ).toBe(true)
       expect(layout.rideableObstacles.length).toBeGreaterThan(20)
       expect(
@@ -295,6 +305,30 @@ describe('world physics', () => {
       .toHaveLength(0)
     expect(createWorldPhysicsLayout(fallbackLearningPack.stages[2]).tunnels)
       .toHaveLength(0)
+  })
+
+  it('adds two low-traction glide surfaces only to the starlight river map', () => {
+    fallbackLearningPack.stages.forEach((stage) => {
+      const slickZones = createWorldPhysicsLayout(stage).surfaceZones.filter(
+        (zone) => zone.kind === 'slick',
+      )
+
+      if (stage.theme !== 'starlight-river') {
+        expect(slickZones).toHaveLength(0)
+        return
+      }
+
+      expect(slickZones).toHaveLength(2)
+      expect(slickZones.every((zone) => (zone.traction ?? 1) <= 0.2)).toBe(true)
+      expect(slickZones.every((zone) => zone.multiplier >= 1)).toBe(true)
+      expect(
+        getActiveSurfaceZone(
+          createWorldPhysicsLayout(stage),
+          slickZones[0].x,
+          slickZones[0].z,
+        )?.kind,
+      ).toBe('slick')
+    })
   })
 
   it('moves the elevator smoothly from the ground to the second floor', () => {
