@@ -1,5 +1,5 @@
 import { Euler, Quaternion } from 'three'
-import type { ElevatedPlatform, TerrainRamp } from './worldPhysics'
+import type { ElevatedPlatform, ElevatedWalkway, TerrainRamp } from './worldPhysics'
 
 type Triple = [number, number, number]
 
@@ -81,6 +81,42 @@ function guard(
   })
 }
 
+function groundSupport(
+  assembly: TerraceAssembly,
+  deck: Pick<ElevatedPlatform, 'y' | 'halfHeight'>,
+  x: number,
+  z: number,
+  braceAxis: 'x' | 'z' = 'x',
+) {
+  const h = deck.halfHeight
+  const supportHeight = Math.max(0.24, deck.y - h)
+  const prefix = `support-${x}-${z}`
+  solid(assembly, 'frame', {
+    id: `${prefix}-foot`, size: [0.98, 0.24, 0.98],
+    position: [x, -deck.y + 0.12, z], color: STONE, bevel: 0.045,
+  })
+  solid(assembly, 'frame', {
+    id: `${prefix}-column`, size: [0.46, supportHeight - 0.22, 0.46],
+    position: [x, -h - (supportHeight - 0.22) / 2, z], color: STEEL,
+  })
+  assembly.frame.push({
+    id: `${prefix}-capital`, size: [0.76, 0.19, 0.76],
+    position: [x, -h - 0.1, z], color: LIGHT_STEEL,
+  })
+  // Short braces stay beside the columns, leaving the ground-floor center open.
+  const direction = Math.sign(braceAxis === 'x' ? x : z)
+  assembly.frame.push({
+    id: `${prefix}-brace`, size: [0.17, 1.03, 0.17],
+    position: [
+      x - (braceAxis === 'x' ? direction * 0.32 : 0),
+      -h - 0.42,
+      z - (braceAxis === 'z' ? direction * 0.32 : 0),
+    ],
+    rotation: braceAxis === 'x' ? [0, 0, -direction * 0.72] : [direction * 0.72, 0, 0],
+    color: STEEL,
+  })
+}
+
 export function createTerraceParts(platform: ElevatedPlatform): TerraceAssembly {
   const assembly: TerraceAssembly = { deck: [], frame: [], railing: [], colliders: [] }
   const { halfWidth: w, halfDepth: d, halfHeight: h } = platform
@@ -105,28 +141,9 @@ export function createTerraceParts(platform: ElevatedPlatform): TerraceAssembly 
     }
   }
 
-  const supportHeight = Math.max(0.2, platform.y - h)
   for (const x of [-w + 0.67, w - 0.67]) {
     for (const z of [-d + 0.67, d - 0.67]) {
-      const prefix = `support-${x}-${z}`
-      solid(assembly, 'frame', {
-        id: `${prefix}-foot`, size: [0.98, 0.24, 0.98],
-        position: [x, -platform.y + 0.12, z], color: STONE, bevel: 0.045,
-      })
-      solid(assembly, 'frame', {
-        id: `${prefix}-column`, size: [0.46, supportHeight - 0.22, 0.46],
-        position: [x, -h - (supportHeight - 0.22) / 2, z], color: STEEL,
-      })
-      assembly.frame.push({
-        id: `${prefix}-capital`, size: [0.76, 0.19, 0.76],
-        position: [x, -h - 0.1, z], color: LIGHT_STEEL,
-      })
-      // Short knee braces remain outside the broad ground-floor passage.
-      assembly.frame.push({
-        id: `${prefix}-brace`, size: [0.17, 1.03, 0.17],
-        position: [x - Math.sign(x) * 0.32, -h - 0.42, z],
-        rotation: [0, 0, -Math.sign(x) * 0.72], color: STEEL,
-      })
+      groundSupport(assembly, platform, x, z)
     }
   }
   for (const z of [-d + 0.67, d - 0.67]) {
@@ -149,10 +166,18 @@ export function createTerraceParts(platform: ElevatedPlatform): TerraceAssembly 
     guard(assembly, `end-left-${z}`, [-edgeX, z], [-approachOpening, z], h)
     guard(assembly, `end-right-${z}`, [approachOpening, z], [edgeX, z], h)
   }
-  guard(assembly, 'west', [-edgeX, -edgeZ], [-edgeX, edgeZ], h)
-  // Leave the full east-side lift landing open; no bar crosses its approach.
-  guard(assembly, 'east-north', [edgeX, -edgeZ], [edgeX, -2.4], h)
-  guard(assembly, 'east-south', [edgeX, 2.4], [edgeX, edgeZ], h)
+  for (const side of ['west', 'east'] as const) {
+    const x = side === 'west' ? -edgeX : edgeX
+    const opening = platform.bridgeSide === side
+      ? 3.84
+      : (platform.elevatorSide ?? 'east') === side ? 2.4 : 0
+    if (opening > 0) {
+      guard(assembly, `${side}-north`, [x, -edgeZ], [x, -opening], h)
+      guard(assembly, `${side}-south`, [x, opening], [x, edgeZ], h)
+    } else {
+      guard(assembly, side, [x, -edgeZ], [x, edgeZ], h)
+    }
+  }
 
   // Two broad, flush threshold stripes make both ramp entrances readable.
   for (const z of [-d + 0.2, d - 0.2]) {
@@ -160,6 +185,65 @@ export function createTerraceParts(platform: ElevatedPlatform): TerraceAssembly 
       id: `threshold-${z}`, size: [7.35, 0.016, 0.24],
       position: [0, h + 0.008, z], color: '#E7B95E',
     })
+  }
+  return assembly
+}
+
+export function createTerraceWalkwayParts(walkway: ElevatedWalkway): TerraceAssembly {
+  const assembly: TerraceAssembly = { deck: [], frame: [], railing: [], colliders: [] }
+  const { halfWidth: w, halfDepth: d, halfHeight: h } = walkway
+  solid(assembly, 'deck', {
+    id: 'walkway-slab', size: [w * 2, h * 2, d * 2],
+    position: [0, 0, 0], color: walkway.color,
+  })
+
+  const alongZ = d >= w
+  const length = (alongZ ? d : w) * 2
+  const across = (alongZ ? w : d) * 2
+  const slatCount = Math.max(1, Math.ceil(length / 0.9))
+  const spacing = length / slatCount
+  for (let index = 0; index < slatCount; index += 1) {
+    const along = -length / 2 + (index + 0.5) * spacing
+    assembly.deck.push({
+      id: `walkway-slat-${index}`,
+      size: alongZ ? [across - 0.5, 0.014, spacing - 0.035] : [spacing - 0.035, 0.014, across - 0.5],
+      position: alongZ ? [0, h + 0.003, along] : [along, h + 0.003, 0],
+      color: index % 3 === 0 ? '#DDD8BF' : '#EAE4CF',
+    })
+  }
+
+  const supportedLength = Math.max(0, length - 1.34)
+  const supportBays = Math.max(1, Math.ceil(supportedLength / 10))
+  const sideOffset = across / 2 - 0.67
+  for (let index = 0; index <= supportBays; index += 1) {
+    const along = -supportedLength / 2 + supportedLength * index / supportBays
+    for (const side of [-sideOffset, sideOffset]) {
+      groundSupport(assembly, walkway, alongZ ? side : along, alongZ ? along : side, alongZ ? 'x' : 'z')
+    }
+    assembly.frame.push({
+      id: `walkway-crossbeam-${index}`,
+      size: alongZ ? [across - 0.7, 0.28, 0.23] : [0.23, 0.28, across - 0.7],
+      position: alongZ ? [0, -h - 0.16, along] : [along, -h - 0.16, 0], color: STEEL,
+    })
+  }
+  for (const side of [-1, 1]) {
+    assembly.frame.push({
+      id: `walkway-fascia-${side}`,
+      size: alongZ ? [0.1, 0.19, length] : [length, 0.19, 0.1],
+      position: alongZ ? [side * (w - 0.12), 0, 0] : [0, 0, side * (d - 0.12)], color: WOOD,
+    })
+  }
+
+  const edgeX = w - 0.16
+  const edgeZ = d - 0.16
+  for (const side of walkway.railSides) {
+    if (side === 'north' || side === 'south') {
+      const z = side === 'north' ? -edgeZ : edgeZ
+      guard(assembly, `walkway-${side}`, [-edgeX, z], [edgeX, z], h)
+    } else {
+      const x = side === 'west' ? -edgeX : edgeX
+      guard(assembly, `walkway-${side}`, [x, -edgeZ], [x, edgeZ], h)
+    }
   }
   return assembly
 }

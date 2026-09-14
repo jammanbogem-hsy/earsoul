@@ -82,6 +82,7 @@ import {
   getElevatorDeckY,
   getPushableCollectionAssist,
   getTerrainRampSurfacePosition,
+  getWalkwayClearances,
   type SurfaceKind,
   type SurfaceZone,
   type ObstacleResponse,
@@ -126,6 +127,7 @@ import {
 } from './game/GameSceneAssets'
 import { RollingCrewCharacter } from './game/RollingCrewCharacter'
 import { TerracedStructures } from './game/TerracedStructures'
+import { CentralPark } from './game/CentralPark'
 import { CharacterSightline } from './game/CharacterSightline'
 import { getTerraceRampQuaternion } from '../game/terraceParts'
 import { RoamingRunnerObstacles } from './game/RoamingRunnerObstacles'
@@ -1265,7 +1267,7 @@ function AnimatedWaterSurface({
 
   return (
     <group
-      position={[zone.x, 0.032, zone.z]}
+      position={[zone.x, zone.id === 'central-park-pond' ? 0.067 : 0.032, zone.z]}
       rotation={[0, zone.rotationY, 0]}
     >
       <mesh
@@ -2020,7 +2022,7 @@ function RapierWorldColliders({
         )
       })}
 
-      {layout.terrainRamps.filter((ramp) => !ramp.id.startsWith('upper-deck')).map((ramp) => {
+      {layout.terrainRamps.filter((ramp) => !ramp.id.startsWith('upper-deck') && !ramp.id.startsWith('central-park-hill')).map((ramp) => {
         const physics: PhysicsBodyData = {
           kind: 'rideable',
           label: ramp.label,
@@ -2057,7 +2059,7 @@ function RapierWorldColliders({
       })}
 
       {layout.surfaceZones.map((zone) =>
-        zone.kind === 'mud' ? null : zone.kind === 'water' ? (
+        zone.kind === 'mud' || zone.id === 'central-park-lawn' ? null : zone.kind === 'water' ? (
           <AnimatedWaterSurface
             key={zone.id}
             zone={zone}
@@ -2479,6 +2481,7 @@ function GameWorld({
   const roamingRunnerObstacles = useMemo(
     () => [
       ...physicsLayout.obstacles,
+      ...getWalkwayClearances(physicsLayout.elevatedWalkways),
       ...physicsLayout.rideableObstacles.map((obstacle) => ({
         x: obstacle.x,
         z: obstacle.z,
@@ -2548,6 +2551,14 @@ function GameWorld({
     if (!import.meta.env.DEV) return null
     const mode = new URLSearchParams(window.location.search).get('spawn')
     const platform = physicsLayout.elevatedPlatforms[0]
+    if (mode === 'bridge') {
+      const spine = physicsLayout.elevatedWalkways.find((part) => part.id === 'bridge-park-spine')!
+      return [spine.x, spine.z + spine.halfDepth - 2] as const
+    }
+    if (mode === 'park') {
+      const pond = physicsLayout.surfaceZones.find((zone) => zone.id === 'central-park-pond')!
+      return [pond.x, pond.z + pond.halfDepth + 3] as const
+    }
     if (mode === 'underdeck') return [platform.x, platform.z] as const
     if (mode !== 'ramp') return null
     const ramp = physicsLayout.terrainRamps.find((entry) => entry.id === 'upper-deck-ramp')!
@@ -2625,7 +2636,11 @@ function GameWorld({
     debugPushableTarget?.z ??
     0
   const spawnTranslation = useMemo(
-    () => getPlayerSpawnTranslation(spawnX, spawnZ),
+    () => {
+      const position = getPlayerSpawnTranslation(spawnX, spawnZ)
+      if (import.meta.env.DEV && new URLSearchParams(window.location.search).get('spawn') === 'bridge') position[1] += 3.65
+      return position
+    },
     [spawnX, spawnZ],
   )
   const [renderCenter, setRenderCenter] = useState<[number, number]>(() => [
@@ -3677,9 +3692,11 @@ function GameWorld({
       />
       <TerracedStructures
         platforms={physicsLayout.elevatedPlatforms}
+        walkways={physicsLayout.elevatedWalkways}
         ramps={physicsLayout.terrainRamps.filter((ramp) => ramp.id.startsWith('upper-deck'))}
         castShadow={renderQuality.shadows}
       />
+      <CentralPark zones={physicsLayout.surfaceZones} ramps={physicsLayout.terrainRamps} />
       <RoamingRunnerObstacles
         mapSize={stage.mapSize}
         theme={stage.theme}

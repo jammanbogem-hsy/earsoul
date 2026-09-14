@@ -29,6 +29,7 @@ const stopLayout: WorldPhysicsLayout = {
   surfaceZones: [],
   terrainRamps: [],
   elevatedPlatforms: [],
+  elevatedWalkways: [],
   elevators: [],
   pushableProps: [],
   pushRewardSlots: [],
@@ -67,10 +68,10 @@ describe('world physics', () => {
       expect(layout.surfaceZones.length).toBeGreaterThanOrEqual(8)
       expect(
         layout.surfaceZones.filter((zone) => zone.kind === 'grass'),
-      ).toHaveLength(2)
+      ).toHaveLength(3)
       expect(
         layout.surfaceZones.filter((zone) => zone.kind === 'water'),
-      ).toHaveLength(stage.theme === 'forest-trail' ? 5 : 2)
+      ).toHaveLength(stage.theme === 'forest-trail' ? 6 : 3)
       const mudZones = layout.surfaceZones.filter((zone) => zone.kind === 'mud')
       expect(mudZones.length).toBeGreaterThanOrEqual(4)
       expect(new Set(mudZones.map((zone) => zone.assetVariant))).toEqual(
@@ -102,7 +103,7 @@ describe('world physics', () => {
           ),
       ).toBe(true)
       expect(layout.terrainRamps).toHaveLength(
-        stage.theme === 'forest-trail' ? 10 : 8,
+        stage.theme === 'forest-trail' ? 12 : 10,
       )
       expect(layout.elevatedPlatforms).toHaveLength(2)
       expect(layout.elevators).toHaveLength(2)
@@ -171,9 +172,8 @@ describe('world physics', () => {
               Math.abs(elevator.z - platform.z) <
                 platform.halfDepth &&
               Math.abs(
-                elevator.x -
-                  elevator.halfWidth -
-                  (platform.x + platform.halfWidth),
+                Math.abs(elevator.x - platform.x) -
+                  elevator.halfWidth - platform.halfWidth,
               ) < 0.1,
           ),
         ),
@@ -201,9 +201,10 @@ describe('world physics', () => {
         true,
       )
       const interiorTrees = layout.obstacles.filter((obstacle) =>
-        obstacle.id.startsWith('interior-tree-'),
+        obstacle.id.startsWith('interior-tree-') || (obstacle.id.startsWith('park-tree-') && Number(obstacle.id.split('-').at(-1)) < 10),
       )
-      expect(interiorTrees.length).toBeGreaterThanOrEqual(4)
+      expect(interiorTrees.length).toBeGreaterThanOrEqual(10)
+      expect(layout.obstacles.filter((obstacle) => obstacle.id.startsWith('park-tree-'))).toHaveLength(26)
       expect(
         interiorTrees.every(
           (tree) => Math.hypot(tree.x, tree.z) < stage.mapSize * 0.32,
@@ -268,7 +269,7 @@ describe('world physics', () => {
       const hills = createWorldPhysicsLayout(stage).terrainRamps.filter(
         (ramp) => ramp.id.includes('-hill-'),
       )
-      expect(hills).toHaveLength(stage.theme === 'forest-trail' ? 6 : 4)
+      expect(hills).toHaveLength(stage.theme === 'forest-trail' ? 8 : 6)
 
       for (let index = 0; index < hills.length; index += 2) {
         const up = hills[index]
@@ -297,9 +298,9 @@ describe('world physics', () => {
 
     expect(stage.title).toBe('달그늘 탐험숲')
     expect(layout.terrainRamps.filter((ramp) => ramp.id.includes('-hill-')))
-      .toHaveLength(6)
+      .toHaveLength(8)
     expect(layout.surfaceZones.filter((zone) => zone.kind === 'water'))
-      .toHaveLength(5)
+      .toHaveLength(6)
     expect(layout.surfaceZones.filter((zone) => zone.kind === 'mud'))
       .toHaveLength(10)
     const ridges = layout.rideableObstacles.filter((obstacle) =>
@@ -480,6 +481,7 @@ describe('world physics', () => {
       surfaceZones: [],
       terrainRamps: [],
       elevatedPlatforms: [],
+      elevatedWalkways: [],
       elevators: [],
       pushableProps: [],
       pushRewardSlots: [],

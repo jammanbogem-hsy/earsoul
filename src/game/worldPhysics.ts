@@ -104,6 +104,13 @@ export interface ElevatedPlatform {
   halfHeight: number
   halfDepth: number
   rotationY: number
+  bridgeSide?: 'west' | 'east'
+  elevatorSide?: 'west' | 'east'
+}
+
+export type TerraceSide = 'north' | 'south' | 'east' | 'west'
+export interface ElevatedWalkway extends Omit<ElevatedPlatform, 'bridgeSide' | 'elevatorSide'> {
+  railSides: TerraceSide[]
 }
 
 export interface WorldElevator {
@@ -211,6 +218,7 @@ export interface WorldPhysicsLayout {
   surfaceZones: SurfaceZone[]
   terrainRamps: TerrainRamp[]
   elevatedPlatforms: ElevatedPlatform[]
+  elevatedWalkways: ElevatedWalkway[]
   elevators: WorldElevator[]
   pushableProps: PushableProp[]
   pushRewardSlots: [number, number, number][]
@@ -865,6 +873,10 @@ function createTerrainRamps(
 
   return [
     ...createHill(
+      'central-park-hill', '공원 산책 언덕', colors[0],
+      mapSize * 0.21, mapSize * 0.055, Math.PI / 2, mapSize,
+    ),
+    ...createHill(
       'east-hill',
       '완만한 동쪽 언덕',
       colors[0],
@@ -938,6 +950,8 @@ function createElevatedPlatforms(
     halfHeight,
     halfDepth: 6.6,
     rotationY: 0,
+    bridgeSide: 'west',
+    elevatorSide: 'east',
   }
   const elevatorPlatform: ElevatedPlatform = {
     id: 'elevator-upper-deck',
@@ -950,9 +964,62 @@ function createElevatedPlatforms(
     halfHeight,
     halfDepth: 6.6,
     rotationY: 0,
+    bridgeSide: 'east',
+    elevatorSide: 'west',
   }
 
   return [towerPlatform, elevatorPlatform]
+}
+
+function createElevatedWalkways(mapSize: number, theme: StageTheme): ElevatedWalkway[] {
+  const [north, south] = createElevatedPlatforms(mapSize, theme)
+  const width = 3.7
+  const spineX = -mapSize * 0.035
+  const color = getUpperDeckColors(theme).platform
+  const part = (id: string, minX: number, maxX: number, minZ: number, maxZ: number, railSides: TerraceSide[]): ElevatedWalkway => ({
+    id, label: '공원 연결 다리', color,
+    x: (minX + maxX) / 2, z: (minZ + maxZ) / 2,
+    y: UPPER_DECK_SURFACE_Y - 0.22, halfHeight: 0.22,
+    halfWidth: (maxX - minX) / 2, halfDepth: (maxZ - minZ) / 2,
+    rotationY: 0, railSides,
+  })
+  // Five flush sections form a continuous route without covering either
+  // ground ramp. The west-side lift leaves the second bridge landing free.
+  return [
+    part('bridge-north-arm', spineX + width, north.x - north.halfWidth, north.z - width, north.z + width, ['north', 'south']),
+    part('bridge-north-corner', spineX - width, spineX + width, north.z - width, north.z + width, ['north', 'west']),
+    part('bridge-park-spine', spineX - width, spineX + width, north.z + width, south.z - width, ['east', 'west']),
+    part('bridge-south-corner', spineX - width, spineX + width, south.z - width, south.z + width, ['south', 'east']),
+    part('bridge-south-arm', south.x + south.halfWidth, spineX - width, south.z - width, south.z + width, ['north', 'south']),
+  ]
+}
+
+export function getWalkwayClearances(walkways: readonly ElevatedWalkway[]) {
+  return walkways.flatMap((walkway) => {
+    const alongX = walkway.halfWidth > walkway.halfDepth
+    const longHalf = Math.max(walkway.halfWidth, walkway.halfDepth)
+    const segments = Math.ceil(longHalf * 2 / 4)
+    return Array.from({ length: segments + 1 }, (_, index) => {
+      const offset = (index / segments * 2 - 1) * longHalf
+      return {
+        x: walkway.x + (alongX ? offset : 0),
+        z: walkway.z + (alongX ? 0 : offset),
+        radius: Math.min(walkway.halfWidth, walkway.halfDepth) + 0.8,
+      }
+    })
+  })
+}
+
+export function getCentralParkZones(mapSize: number, theme: StageTheme): SurfaceZone[] {
+  return [
+    { id: 'central-park-lawn', label: '중앙 공원 잔디', kind: 'grass',
+      x: mapSize * (theme === 'starlight-river' ? 0.09 : 0.06), z: mapSize * (theme === 'starlight-river' ? 0.08 : 0.055),
+      halfWidth: mapSize * (theme === 'starlight-river' ? 0.085 : 0.12), halfDepth: mapSize * (theme === 'starlight-river' ? 0.08 : 0.115),
+      rotationY: -0.22, multiplier: 0.94, color: theme === 'starlight-river' ? '#A4C4B0' : '#8BBE74' },
+    { id: 'central-park-pond', label: '중앙 공원 연못', kind: 'water',
+      x: mapSize * 0.075, z: mapSize * 0.11, halfWidth: mapSize * 0.042, halfDepth: mapSize * 0.029,
+      rotationY: -0.28, multiplier: 0.58, color: '#69BED0' },
+  ]
 }
 
 function createUpperDeckRamps(
@@ -1006,7 +1073,7 @@ function createElevators(
         ? '전망대 연결 승강 발판'
         : '보물마당 연결 승강 발판',
     color: getUpperDeckColors(theme).elevator,
-    x: landing.x + landing.halfWidth + 2.05,
+    x: landing.x + (landing.elevatorSide === 'west' ? -1 : 1) * (landing.halfWidth + 2.05),
     z: landing.z,
     bottomY: halfHeight,
     topY: UPPER_DECK_SURFACE_Y - halfHeight,
@@ -1402,6 +1469,7 @@ export function createWorldPhysicsLayout(
     stage.mapSize,
     stage.theme,
   )
+  const elevatedWalkways = createElevatedWalkways(stage.mapSize, stage.theme)
   const elevators = createElevators(stage.mapSize, stage.theme)
   let pushableProps = createPushableProps(stage.mapSize, stage.theme)
   const pushRewardSlots = createPushRewardSlots(stage.mapSize)
@@ -1412,6 +1480,7 @@ export function createWorldPhysicsLayout(
   )
   const tunnels = createTunnels(stage.mapSize, stage.theme)
   const structureClearances = [
+    ...getWalkwayClearances(elevatedWalkways),
     ...terrainRamps.flatMap((ramp) => {
       // A chain of small bounds reserves the actual approach, not a huge
       // circular clearing around long, narrow ramps.
@@ -1482,9 +1551,26 @@ export function createWorldPhysicsLayout(
         obstacle.radius + clearance.radius,
       ),
   )
-  const baseSurfaceZones = createSurfaceZones(stage.mapSize, stage.theme)
+  const baseSurfaceZones = [...createSurfaceZones(stage.mapSize, stage.theme), ...getCentralParkZones(stage.mapSize, stage.theme)]
+  // More asset-backed trees in the interior and around the park, with the
+  // central spawn, bridge columns, pond and ramp entrances kept clear.
+  for (let attempt = 0, added = 0; attempt < 800 && added < 26; attempt += 1) {
+    const parkTree = added < 10 && attempt < 240
+    const angle = attempt * NATURAL_GOLDEN_ANGLE + 0.61
+    const distance = stage.mapSize * (parkTree ? 0.07 + (attempt % 4) * 0.017 : added < 10 ? 0.17 + (attempt % 9) * 0.01 : 0.19 + (attempt % 9) * 0.023)
+    const x = (parkTree ? stage.mapSize * 0.06 : 0) + Math.cos(angle) * distance
+    const z = (parkTree ? stage.mapSize * 0.055 : 0) + Math.sin(angle) * distance
+    const tree: WorldObstacle = { id: `park-tree-${added}`, label: '공원 산책 나무', x, z, radius: 0.48, response: 'stop' }
+    if (Math.hypot(x, z) < 8 ||
+      baseObstacles.some((other) => Math.hypot(x - other.x, z - other.z) < other.radius + 3.3) ||
+      structureClearances.some((other) => Math.hypot(x - other.x, z - other.z) < other.radius + 1.4) ||
+      speedZones.some((zone) => !isCircleClearOfSpeedZone(tree, zone, 1.4)) ||
+      baseSurfaceZones.some((zone) => zone.kind === 'water' && !isCircleClearOfSurfaceZone(x, z, 0.6, zone))) continue
+    baseObstacles.push(tree)
+    added += 1
+  }
   pushableProps = distributePushableProps(pushableProps, stage.mapSize, baseObstacles, [
-    ...terrainRamps, ...elevatedPlatforms, ...rideableObstacles, ...tunnels,
+    ...terrainRamps, ...elevatedPlatforms, ...elevatedWalkways, ...rideableObstacles, ...tunnels,
     ...elevators.map((elevator) => ({ ...elevator, rotationY: 0 })),
   ])
   const naturalPlacementObstacles = [
@@ -1548,6 +1634,7 @@ export function createWorldPhysicsLayout(
     surfaceZones: [...baseSurfaceZones, ...mudZones],
     terrainRamps,
     elevatedPlatforms,
+    elevatedWalkways,
     elevators,
     pushableProps,
     pushRewardSlots,
@@ -1606,6 +1693,7 @@ export function getActiveSurfaceZone(
     isInsideSurfaceZone(x, z, zone),
   )
   return (
+    matchingZones.find((zone) => zone.id === 'central-park-pond') ??
     matchingZones.find((zone) => zone.kind !== 'slick') ??
     matchingZones[0]
   )

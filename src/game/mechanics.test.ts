@@ -237,8 +237,9 @@ describe('rolling collection progression', () => {
       )
 
       expect(elevatedObjects).toHaveLength(
-        layout.terrainRamps.length * 4 +
-          layout.elevatedPlatforms.length * 8,
+        layout.terrainRamps.reduce((sum, ramp) => sum + (ramp.id.startsWith('upper-deck') ? 8 : 4), 0) +
+          layout.elevatedPlatforms.length * 12 +
+          layout.elevatedWalkways.reduce((sum, walkway) => sum + Math.max(2, Math.floor(Math.max(walkway.halfWidth, walkway.halfDepth) * 2 / 3.5)), 0),
       )
       expect(
         new Set(elevatedObjects.map((item) => getSizeTier(item.size).level)),
@@ -270,7 +271,7 @@ describe('rolling collection progression', () => {
             item.position[1] > platform.y,
         )
 
-        expect(objectsOnPlatform).toHaveLength(8)
+        expect(objectsOnPlatform).toHaveLength(12)
       })
 
       layout.pushRewardSlots.forEach((slot) => {

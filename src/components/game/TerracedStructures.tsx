@@ -3,10 +3,11 @@ import { CuboidCollider, RigidBody } from '@react-three/rapier'
 import { BoxGeometry, Color, Euler, Float32BufferAttribute, Matrix4, Quaternion, Vector3 } from 'three'
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
-import type { ElevatedPlatform, TerrainRamp } from '../../game/worldPhysics'
+import type { ElevatedPlatform, ElevatedWalkway, TerrainRamp } from '../../game/worldPhysics'
 import {
   createTerraceParts,
   createTerraceRampParts,
+  createTerraceWalkwayParts,
   getTerraceRampQuaternion,
   type TerraceAssembly,
   type TerracePart,
@@ -85,15 +86,30 @@ function Approach({ ramp, castShadow }: { ramp: TerrainRamp; castShadow: boolean
   )
 }
 
-export function TerracedStructures({ platforms, ramps, castShadow }: {
+function Walkway({ walkway, castShadow }: { walkway: ElevatedWalkway; castShadow: boolean }) {
+  const assembly = useMemo(() => createTerraceWalkwayParts(walkway), [walkway])
+  return (
+    <RigidBody
+      name={`walkway-${walkway.id}`} type="fixed" colliders={false}
+      position={[walkway.x, walkway.y, walkway.z]} rotation={[0, walkway.rotationY, 0]}
+      userData={{ sightOccluder: true, sightBoxes: assembly.colliders, physics: { kind: 'rideable', label: walkway.label, response: 'bounce', quiet: true } }}
+    >
+      <AssemblyMeshes assembly={assembly} castShadow={castShadow} />
+    </RigidBody>
+  )
+}
+
+export function TerracedStructures({ platforms, ramps, walkways = [], castShadow }: {
   platforms: readonly ElevatedPlatform[]
   ramps: readonly TerrainRamp[]
+  walkways?: readonly ElevatedWalkway[]
   castShadow: boolean
 }) {
   return (
     <group name="terraced-structures">
       {platforms.map((platform) => <Terrace key={platform.id} platform={platform} castShadow={castShadow} />)}
       {ramps.map((ramp) => <Approach key={ramp.id} ramp={ramp} castShadow={castShadow} />)}
+      {walkways.map((walkway) => <Walkway key={walkway.id} walkway={walkway} castShadow={castShadow} />)}
     </group>
   )
 }

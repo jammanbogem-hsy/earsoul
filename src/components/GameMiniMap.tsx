@@ -52,7 +52,7 @@ export function GameMiniMap({
             ? '2층·승강기·터널 표시'
             : hasSlickZones
               ? '빙판 약 60%·승강기'
-              : '2층·승강기 표시'}
+              : '연결 다리·공원·2층'}
         </small>
       </header>
       <svg
@@ -137,14 +137,14 @@ export function GameMiniMap({
             ))}
         </g>
         <g className="minimap-upper-levels">
-          {layout.elevatedPlatforms.map((platform) => (
+          {[...layout.elevatedPlatforms, ...layout.elevatedWalkways].map((platform) => (
             <rect
               key={platform.id}
               x={toMapX(platform.x) - toMapSize(platform.halfWidth)}
               y={toMapY(platform.z) - toMapSize(platform.halfDepth)}
               width={toMapSize(platform.halfWidth * 2)}
               height={toMapSize(platform.halfDepth * 2)}
-              rx="1.6"
+              rx="0.4"
             />
           ))}
           {layout.terrainRamps.map((ramp) => {

@@ -75,7 +75,7 @@ describe('growth-based object distribution', () => {
       expect(counts).toEqual(ICE_RIVER_ACTIVE_OBJECT_TIER_COUNTS[tier])
     }
 
-    expect(selectActiveStageObjects(objects, 1)).toHaveLength(286)
-    expect(selectActiveStageObjects(objects, 2)).toHaveLength(359)
+    expect(selectActiveStageObjects(objects, 1)).toHaveLength(335)
+    expect(selectActiveStageObjects(objects, 2)).toHaveLength(425)
   })
 })

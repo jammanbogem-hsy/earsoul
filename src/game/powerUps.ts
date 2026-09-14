@@ -239,7 +239,7 @@ function isSafePowerUpPosition(
           1.8,
         ),
     ) ||
-    layout.elevatedPlatforms.some(
+    [...layout.elevatedPlatforms, ...layout.elevatedWalkways].some(
       (platform) =>
         !isOutsideRotatedFootprint(
           x,
