@@ -1908,11 +1908,97 @@ export function GardenSetDressing({
     <group>
       <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow={receiveShadow}>
         <planeGeometry args={[parkSize, parkSize]} />
-        <Paint color={themeColors.ground} roughness={0.98} />
+        <Paint
+          color={theme === 'sunny-plaza' ? '#C6DEC0' : themeColors.ground}
+          roughness={0.98}
+        />
       </mesh>
 
       {theme === 'sunny-plaza' && (
         <>
+          <mesh
+            rotation={[-Math.PI / 2, 0, 0]}
+            position={[0, 0.006, 0]}
+            receiveShadow={receiveShadow}
+          >
+            <circleGeometry args={[parkSize * 0.482, 24]} />
+            <Paint color={themeColors.ground} roughness={0.98} />
+          </mesh>
+          {[
+            {
+              id: 'west-garden',
+              position: [-parkSize * 0.24, 0.011, -parkSize * 0.09],
+              scale: [parkSize * 0.145, parkSize * 0.105, 1],
+              color: '#BDE3B3',
+              rotationY: -0.24,
+            },
+            {
+              id: 'east-garden',
+              position: [parkSize * 0.25, 0.012, parkSize * 0.12],
+              scale: [parkSize * 0.13, parkSize * 0.09, 1],
+              color: '#C7E8BA',
+              rotationY: 0.34,
+            },
+            {
+              id: 'north-plaza',
+              position: [parkSize * 0.08, 0.013, -parkSize * 0.29],
+              scale: [parkSize * 0.12, parkSize * 0.072, 1],
+              color: '#C8E4DB',
+              rotationY: -0.08,
+            },
+          ].map((district) => (
+            <mesh
+              key={district.id}
+              rotation={[-Math.PI / 2, 0, district.rotationY]}
+              position={district.position as VectorTuple}
+              scale={district.scale as VectorTuple}
+              receiveShadow={receiveShadow}
+            >
+              <circleGeometry args={[1, 14]} />
+              <Paint color={district.color} roughness={0.97} />
+            </mesh>
+          ))}
+          {[
+            {
+              id: 'west-curve',
+              position: [-parkSize * 0.2, 0.017, -parkSize * 0.08],
+              radius: parkSize * 0.105,
+              start: -0.3,
+              arc: Math.PI * 1.35,
+              rotationY: 0.38,
+            },
+            {
+              id: 'east-curve',
+              position: [parkSize * 0.22, 0.018, parkSize * 0.1],
+              radius: parkSize * 0.092,
+              start: 0.5,
+              arc: Math.PI * 1.28,
+              rotationY: -0.42,
+            },
+          ].map((curve) => (
+            <mesh
+              key={curve.id}
+              rotation={[-Math.PI / 2, 0, curve.rotationY]}
+              position={curve.position as VectorTuple}
+              receiveShadow={receiveShadow}
+            >
+              <ringGeometry
+                args={[
+                  curve.radius - 0.72,
+                  curve.radius + 0.72,
+                  40,
+                  1,
+                  curve.start,
+                  curve.arc,
+                ]}
+              />
+              <meshStandardMaterial
+                color={themeColors.trail}
+                roughness={0.96}
+                side={DoubleSide}
+              />
+            </mesh>
+          ))}
           <mesh
             rotation={[-Math.PI / 2, 0, 0]}
             position={[0, 0.016, 0]}

@@ -5,10 +5,13 @@ import {
   createWorldPhysicsLayout,
   getActiveSpeedZone,
   getActiveSurfaceZone,
+  getAutomaticGatePanelPosition,
   getElevatorDeckY,
   getPushableCollectionAssist,
   getTerrainRampSurfacePosition,
+  isAutomaticGateTriggered,
   resolveWorldPhysics,
+  stepAutomaticGateOpenAmount,
   type WorldPhysicsLayout,
 } from './worldPhysics'
 
@@ -29,7 +32,9 @@ const stopLayout: WorldPhysicsLayout = {
   surfaceZones: [],
   terrainRamps: [],
   elevatedPlatforms: [],
+  elevatedWalkways: [],
   elevators: [],
+  automaticGates: [],
   pushableProps: [],
   pushRewardSlots: [],
 }
@@ -78,10 +83,20 @@ describe('world physics', () => {
           ),
       ).toBe(true)
       expect(layout.terrainRamps).toHaveLength(
-        stage.theme === 'forest-trail' ? 7 : 5,
+        stage.theme === 'forest-trail'
+          ? 7
+          : stage.theme === 'sunny-plaza'
+            ? 6
+            : 5,
       )
       expect(layout.elevatedPlatforms).toHaveLength(2)
+      expect(layout.elevatedWalkways).toHaveLength(
+        stage.theme === 'sunny-plaza' ? 1 : 0,
+      )
       expect(layout.elevators).toHaveLength(2)
+      expect(layout.automaticGates).toHaveLength(
+        stage.theme === 'sunny-plaza' ? 1 : 0,
+      )
       expect(layout.pushableProps.length).toBeGreaterThanOrEqual(18)
       expect(
         layout.pushableProps.filter((prop) => prop.kind === 'block'),
@@ -258,8 +273,8 @@ describe('world physics', () => {
         expect(upGround[1]).toBeLessThanOrEqual(0.05)
         expect(downGround[1]).toBeGreaterThanOrEqual(0)
         expect(downGround[1]).toBeLessThanOrEqual(0.05)
-        expect(upCrest[1]).toBeGreaterThan(0.55)
-        expect(upCrest[1]).toBeLessThan(0.8)
+        expect(upCrest[1]).toBeGreaterThan(0.9)
+        expect(upCrest[1]).toBeLessThan(1.25)
         expect(Math.hypot(upCrest[0] - downCrest[0], upCrest[2] - downCrest[2]))
           .toBeLessThan(0.05)
         expect(upCrest[1]).toBeCloseTo(downCrest[1], 4)
@@ -367,6 +382,48 @@ describe('world physics', () => {
     )
   })
 
+  it('opens the sunny-plaza gate smoothly and widens its trigger for the growing ball', () => {
+    const gate = createWorldPhysicsLayout(
+      fallbackLearningPack.stages[0],
+    ).automaticGates[0]
+
+    expect(gate).toBeDefined()
+    expect(
+      isAutomaticGateTriggered(
+        gate,
+        { x: gate.x + gate.sensorRadius + 0.6, z: gate.z },
+        0.2,
+      ),
+    ).toBe(false)
+    expect(
+      isAutomaticGateTriggered(
+        gate,
+        { x: gate.x + gate.sensorRadius + 0.6, z: gate.z },
+        1.2,
+      ),
+    ).toBe(true)
+
+    const opening = stepAutomaticGateOpenAmount(
+      gate,
+      0,
+      true,
+      gate.openDuration / 2,
+    )
+    expect(opening).toBeCloseTo(0.5)
+    expect(
+      stepAutomaticGateOpenAmount(
+        gate,
+        opening,
+        false,
+        gate.closeDuration,
+      ),
+    ).toBe(0)
+
+    const closedLeft = getAutomaticGatePanelPosition(gate, -1, 0)
+    const openLeft = getAutomaticGatePanelPosition(gate, -1, 1)
+    expect(openLeft[0]).toBeLessThan(closedLeft[0] - 3)
+  })
+
   it('adds a small pickup assist only beside pushable cones', () => {
     const layout = createWorldPhysicsLayout(
       fallbackLearningPack.stages[0],
@@ -456,7 +513,9 @@ describe('world physics', () => {
       surfaceZones: [],
       terrainRamps: [],
       elevatedPlatforms: [],
+      elevatedWalkways: [],
       elevators: [],
+      automaticGates: [],
       pushableProps: [],
       pushRewardSlots: [],
     }

@@ -816,10 +816,34 @@ function createStageObjects(
       z: platform.z,
       radius: Math.hypot(platform.halfWidth, platform.halfDepth),
     })),
+    ...physicsLayout.elevatedWalkways.flatMap((walkway) => {
+      const cosine = Math.cos(walkway.rotationY)
+      const sine = Math.sin(walkway.rotationY)
+      return Array.from({ length: walkway.supportCount }, (_, index) => {
+        const ratio =
+          walkway.supportCount === 1
+            ? 0
+            : -0.72 + (index / (walkway.supportCount - 1)) * 1.44
+        return [-1, 1].map((side) => {
+          const localX = side * walkway.halfWidth * 0.72
+          const localZ = walkway.halfDepth * ratio
+          return {
+            x: walkway.x + localX * cosine + localZ * sine,
+            z: walkway.z - localX * sine + localZ * cosine,
+            radius: 1.05,
+          }
+        })
+      }).flat()
+    }),
     ...physicsLayout.elevators.map((elevator) => ({
       x: elevator.x,
       z: elevator.z,
       radius: Math.hypot(elevator.halfWidth, elevator.halfDepth),
+    })),
+    ...physicsLayout.automaticGates.map((gate) => ({
+      x: gate.x,
+      z: gate.z,
+      radius: gate.panelHalfWidth * 2 + 0.9,
     })),
     ...physicsLayout.pushableProps.map((prop) => ({
       x: prop.x,

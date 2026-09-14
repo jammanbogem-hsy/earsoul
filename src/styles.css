@@ -1759,6 +1759,17 @@ md-switch:focus-visible,
   stroke-width: 2.4;
 }
 
+.minimap-upper-levels line.is-walkway {
+  stroke: #4e87bd;
+  stroke-width: 3.4;
+}
+
+.minimap-upper-levels line.is-gate {
+  stroke: #f2b827;
+  stroke-dasharray: 1.4 0.9;
+  stroke-width: 2;
+}
+
 .minimap-upper-levels circle {
   fill: #f3c91d;
   stroke: #fff;
@@ -1830,6 +1841,12 @@ md-switch:focus-visible,
   margin-left: 5px;
   border-radius: 50%;
   background: #f3c91d;
+}
+
+.game-minimap footer i.is-gate {
+  margin-left: 5px;
+  border: 1px dashed #d89a12;
+  background: #ffe27a;
 }
 
 .game-minimap footer i.is-tunnel {

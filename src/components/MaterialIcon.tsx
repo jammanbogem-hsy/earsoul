@@ -32,6 +32,7 @@ import progressActivity from '@material-symbols/svg-400/rounded/progress_activit
 import radar from '@material-symbols/svg-400/rounded/radar.svg'
 import replay from '@material-symbols/svg-400/rounded/replay.svg'
 import science from '@material-symbols/svg-400/rounded/science.svg'
+import sensorDoor from '@material-symbols/svg-400/rounded/sensor_door.svg'
 import sentimentSatisfied from '@material-symbols/svg-400/rounded/sentiment_satisfied.svg'
 import star from '@material-symbols/svg-400/rounded/star-fill.svg'
 import steps from '@material-symbols/svg-400/rounded/steps.svg'
@@ -77,6 +78,7 @@ const iconSources = {
   radar,
   replay,
   science,
+  sensor_door: sensorDoor,
   sentiment_satisfied: sentimentSatisfied,
   star,
   steps,

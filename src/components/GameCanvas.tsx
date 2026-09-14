@@ -79,12 +79,16 @@ import {
   createWorldPhysicsLayout,
   getActiveSpeedZone,
   getActiveSurfaceZone,
+  getAutomaticGatePanelPosition,
   getElevatorDeckY,
   getPushableCollectionAssist,
+  isAutomaticGateTriggered,
+  stepAutomaticGateOpenAmount,
   type SurfaceKind,
   type SurfaceZone,
   type ObstacleResponse,
   type PushableProp,
+  type WorldAutomaticGate,
   type WorldElevator,
   type WorldPhysicsLayout,
 } from '../game/worldPhysics'
@@ -2021,6 +2025,10 @@ function RapierWorldColliders({
           response: 'bounce',
           quiet: true,
         }
+        const isHill = ramp.id.includes('-hill-')
+        const surfaceColor = new Color(ramp.color)
+          .offsetHSL(0, 0.02, isHill ? 0.055 : 0.035)
+          .getStyle()
 
         return (
           <RigidBody
@@ -2046,6 +2054,39 @@ function RapierWorldColliders({
               />
               <meshStandardMaterial color={ramp.color} roughness={0.94} />
             </mesh>
+            <mesh
+              receiveShadow
+              position={[0, ramp.halfHeight + 0.012, 0]}
+              rotation={[-Math.PI / 2, 0, 0]}
+            >
+              <planeGeometry
+                args={[ramp.halfWidth * 2, ramp.halfDepth * 2]}
+              />
+              <meshStandardMaterial
+                color={surfaceColor}
+                roughness={0.9}
+              />
+            </mesh>
+            {isHill &&
+              [-0.62, -0.18, 0.28, 0.68].map((ratio) => (
+                <mesh
+                  key={`${ramp.id}-contour-${ratio}`}
+                  position={[
+                    0,
+                    ramp.halfHeight + 0.026,
+                    ramp.halfDepth * ratio,
+                  ]}
+                >
+                  <boxGeometry
+                    args={[ramp.halfWidth * 1.82, 0.025, 0.12]}
+                  />
+                  <meshBasicMaterial
+                    color="#EEF3C0"
+                    transparent
+                    opacity={0.34}
+                  />
+                </mesh>
+              ))}
           </RigidBody>
         )
       })}
@@ -2121,6 +2162,130 @@ function RapierWorldColliders({
                 {platform.label}
               </span>
             </Html>
+          </RigidBody>
+        )
+      })}
+
+      {layout.elevatedWalkways.map((walkway) => {
+        const physics: PhysicsBodyData = {
+          kind: 'rideable',
+          label: walkway.label,
+          response: 'bounce',
+          quiet: true,
+        }
+        const supportHalfHeight = Math.max(
+          0.2,
+          (walkway.y - walkway.halfHeight) / 2,
+        )
+        const supportLocalY = -walkway.y + supportHalfHeight
+
+        return (
+          <RigidBody
+            key={walkway.id}
+            type="fixed"
+            colliders={false}
+            position={[walkway.x, walkway.y, walkway.z]}
+            rotation={[0, walkway.rotationY, 0]}
+            userData={{ physics }}
+          >
+            <CuboidCollider
+              args={[
+                walkway.halfWidth,
+                walkway.halfHeight,
+                walkway.halfDepth,
+              ]}
+              friction={0.98}
+              restitution={0}
+            />
+            {[-1, 1].map((side) => (
+              <CuboidCollider
+                key={`${walkway.id}-rail-${side}`}
+                args={[0.12, 0.44, walkway.halfDepth]}
+                position={[
+                  side * (walkway.halfWidth - 0.12),
+                  walkway.halfHeight + 0.44,
+                  0,
+                ]}
+                friction={0.9}
+                restitution={0.02}
+              />
+            ))}
+            <mesh castShadow receiveShadow>
+              <boxGeometry
+                args={[
+                  walkway.halfWidth * 2,
+                  walkway.halfHeight * 2,
+                  walkway.halfDepth * 2,
+                ]}
+              />
+              <meshStandardMaterial color={walkway.color} roughness={0.86} />
+            </mesh>
+            <mesh
+              receiveShadow
+              position={[0, walkway.halfHeight + 0.012, 0]}
+              rotation={[-Math.PI / 2, 0, 0]}
+            >
+              <planeGeometry
+                args={[walkway.halfWidth * 1.35, walkway.halfDepth * 2]}
+              />
+              <meshStandardMaterial
+                color={walkway.accentColor}
+                roughness={0.9}
+              />
+            </mesh>
+            {[-1, 1].map((side) => (
+              <mesh
+                key={`${walkway.id}-rail-mesh-${side}`}
+                castShadow
+                position={[
+                  side * (walkway.halfWidth - 0.12),
+                  walkway.halfHeight + 0.44,
+                  0,
+                ]}
+              >
+                <boxGeometry args={[0.24, 0.88, walkway.halfDepth * 2]} />
+                <meshStandardMaterial
+                  color="#34516A"
+                  roughness={0.72}
+                />
+              </mesh>
+            ))}
+            {Array.from({ length: walkway.supportCount }, (_, index) => {
+              const ratio =
+                walkway.supportCount === 1
+                  ? 0
+                  : -0.72 + (index / (walkway.supportCount - 1)) * 1.44
+              return [-1, 1].map((side) => (
+                <group key={`${walkway.id}-support-${index}-${side}`}>
+                  <CuboidCollider
+                    args={[0.28, supportHalfHeight, 0.28]}
+                    position={[
+                      side * (walkway.halfWidth * 0.72),
+                      supportLocalY,
+                      walkway.halfDepth * ratio,
+                    ]}
+                    friction={0.94}
+                    restitution={0.02}
+                  />
+                  <mesh
+                    castShadow
+                    position={[
+                      side * (walkway.halfWidth * 0.72),
+                      supportLocalY,
+                      walkway.halfDepth * ratio,
+                    ]}
+                  >
+                    <boxGeometry
+                      args={[0.56, supportHalfHeight * 2, 0.56]}
+                    />
+                    <meshStandardMaterial
+                      color="#496273"
+                      roughness={0.9}
+                    />
+                  </mesh>
+                </group>
+              ))
+            })}
           </RigidBody>
         )
       })}
@@ -2436,6 +2601,228 @@ function KinematicElevator({
   )
 }
 
+function KinematicAutomaticGate({
+  gate,
+  playerPosition,
+  ballRadius,
+  paused,
+  reducedMotion,
+}: {
+  gate: WorldAutomaticGate
+  playerPosition: MutableRefObject<Vector3>
+  ballRadius: number
+  paused: boolean
+  reducedMotion: boolean
+}) {
+  const leftBody = useRef<RapierRigidBody>(null)
+  const rightBody = useRef<RapierRigidBody>(null)
+  const statusLabel = useRef<HTMLSpanElement>(null)
+  const openAmount = useRef(0)
+  const archHalfWidth =
+    gate.panelHalfWidth * 2 + gate.openDistance + 0.55
+  const closedLeft = getAutomaticGatePanelPosition(gate, -1, 0)
+  const closedRight = getAutomaticGatePanelPosition(gate, 1, 0)
+
+  useFrame((_, delta) => {
+    const shouldOpen = isAutomaticGateTriggered(
+      gate,
+      playerPosition.current,
+      ballRadius,
+    )
+    if (!paused) {
+      openAmount.current = stepAutomaticGateOpenAmount(
+        gate,
+        openAmount.current,
+        shouldOpen,
+        reducedMotion ? delta * 1.8 : delta,
+      )
+    }
+
+    const left = getAutomaticGatePanelPosition(
+      gate,
+      -1,
+      openAmount.current,
+    )
+    const right = getAutomaticGatePanelPosition(
+      gate,
+      1,
+      openAmount.current,
+    )
+    leftBody.current?.setNextKinematicTranslation({
+      x: left[0],
+      y: left[1],
+      z: left[2],
+    })
+    rightBody.current?.setNextKinematicTranslation({
+      x: right[0],
+      y: right[1],
+      z: right[2],
+    })
+
+    if (statusLabel.current) {
+      statusLabel.current.textContent =
+        openAmount.current >= 0.96
+          ? '자동문 열림'
+          : shouldOpen
+            ? '자동문 열리는 중'
+            : '가까이 가면 자동으로 열려요'
+    }
+  })
+
+  const panelPhysics: PhysicsBodyData = {
+    kind: 'obstacle',
+    label: gate.label,
+    response: 'stop',
+    quiet: true,
+  }
+
+  return (
+    <group>
+      <RigidBody
+        type="fixed"
+        colliders={false}
+        position={[gate.x, 0, gate.z]}
+        rotation={[0, gate.rotationY, 0]}
+        userData={{ physics: panelPhysics }}
+      >
+        {[-1, 1].map((side) => (
+          <group key={`${gate.id}-arch-post-${side}`}>
+            <CuboidCollider
+              args={[0.32, gate.panelHalfHeight + 0.38, 0.42]}
+              position={[
+                side * archHalfWidth,
+                gate.panelHalfHeight + 0.38,
+                0,
+              ]}
+              friction={0.92}
+              restitution={0.02}
+            />
+            <mesh
+              castShadow
+              position={[
+                side * archHalfWidth,
+                gate.panelHalfHeight + 0.38,
+                0,
+              ]}
+            >
+              <boxGeometry
+                args={[0.64, gate.panelHalfHeight * 2 + 0.76, 0.84]}
+              />
+              <meshStandardMaterial color="#34516A" roughness={0.76} />
+            </mesh>
+          </group>
+        ))}
+        <CuboidCollider
+          args={[archHalfWidth + 0.32, 0.24, 0.42]}
+          position={[0, gate.panelHalfHeight * 2 + 0.52, 0]}
+          friction={0.9}
+          restitution={0.02}
+        />
+        <mesh
+          castShadow
+          position={[0, gate.panelHalfHeight * 2 + 0.52, 0]}
+        >
+          <boxGeometry args={[(archHalfWidth + 0.32) * 2, 0.48, 0.84]} />
+          <meshStandardMaterial color="#34516A" roughness={0.76} />
+        </mesh>
+        <mesh
+          position={[0, gate.panelHalfHeight * 2 + 0.53, 0.44]}
+        >
+          <boxGeometry args={[5.8, 0.3, 0.08]} />
+          <meshStandardMaterial
+            color={gate.accentColor}
+            emissive={gate.accentColor}
+            emissiveIntensity={reducedMotion ? 0.04 : 0.18}
+            roughness={0.62}
+          />
+        </mesh>
+      </RigidBody>
+
+      {([-1, 1] as const).map((side) => {
+        const position = side === -1 ? closedLeft : closedRight
+        const bodyRef = side === -1 ? leftBody : rightBody
+        return (
+          <RigidBody
+            key={`${gate.id}-panel-${side}`}
+            ref={bodyRef}
+            type="kinematicPosition"
+            colliders={false}
+            position={position}
+            rotation={[0, gate.rotationY, 0]}
+            userData={{ physics: panelPhysics }}
+          >
+            <CuboidCollider
+              args={[
+                gate.panelHalfWidth,
+                gate.panelHalfHeight,
+                gate.panelHalfDepth,
+              ]}
+              friction={0.86}
+              restitution={0.01}
+            />
+            <mesh castShadow receiveShadow>
+              <boxGeometry
+                args={[
+                  gate.panelHalfWidth * 2,
+                  gate.panelHalfHeight * 2,
+                  gate.panelHalfDepth * 2,
+                ]}
+              />
+              <meshStandardMaterial
+                color={gate.color}
+                roughness={0.4}
+                metalness={0.08}
+              />
+            </mesh>
+            {[-0.48, 0, 0.48].map((ratio) => (
+              <mesh
+                key={`${gate.id}-panel-stripe-${side}-${ratio}`}
+                position={[
+                  gate.panelHalfWidth * ratio,
+                  0,
+                  gate.panelHalfDepth + 0.011,
+                ]}
+              >
+                <boxGeometry
+                  args={[0.08, gate.panelHalfHeight * 1.5, 0.025]}
+                />
+                <meshBasicMaterial color="#CDEEFF" transparent opacity={0.82} />
+              </mesh>
+            ))}
+          </RigidBody>
+        )
+      })}
+
+      <mesh
+        position={[gate.x, 0.022, gate.z]}
+        rotation={[-Math.PI / 2, 0, gate.rotationY]}
+      >
+        <ringGeometry
+          args={[gate.sensorRadius * 0.78, gate.sensorRadius, 48]}
+        />
+        <meshBasicMaterial
+          color={gate.accentColor}
+          transparent
+          opacity={0.28}
+          depthWrite={false}
+        />
+      </mesh>
+      <Html
+        center
+        position={[gate.x, gate.panelHalfHeight * 2 + 1.25, gate.z]}
+        distanceFactor={11}
+        zIndexRange={[2, 0]}
+        style={{ pointerEvents: 'none' }}
+      >
+        <span className="world-interaction-label is-gate">
+          <MaterialIcon name="sensor_door" />
+          <span ref={statusLabel}>가까이 가면 자동으로 열려요</span>
+        </span>
+      </Html>
+    </group>
+  )
+}
+
 function TooLargeItemColliders({
   items,
   ballRadius,
@@ -2575,6 +2962,11 @@ function GameWorld({
         z: elevator.z,
         radius: Math.hypot(elevator.halfWidth, elevator.halfDepth) + 0.4,
       })),
+      ...physicsLayout.automaticGates.map((gate) => ({
+        x: gate.x,
+        z: gate.z,
+        radius: gate.panelHalfWidth * 2 + gate.openDistance + 0.5,
+      })),
       ...physicsLayout.pushableProps.map((prop) => ({
         x: prop.x,
         z: prop.z,
@@ -2611,6 +3003,13 @@ function GameWorld({
     if (!import.meta.env.DEV) return null
     const spawnMode = new URLSearchParams(window.location.search).get('spawn')
     return spawnMode === 'tunnel' ? physicsLayout.tunnels[0] ?? null : null
+  }, [physicsLayout])
+  const debugGate = useMemo(() => {
+    if (!import.meta.env.DEV) return null
+    const spawnMode = new URLSearchParams(window.location.search).get('spawn')
+    return spawnMode === 'gate'
+      ? physicsLayout.automaticGates[0] ?? null
+      : null
   }, [physicsLayout])
   const debugCollectionTarget = useMemo(() => {
     const teleportMode = new URLSearchParams(window.location.search).get(
@@ -2673,11 +3072,13 @@ function GameWorld({
       : null) ??
     debugSurface?.x ??
     debugTunnel?.x ??
+    debugGate?.x ??
     (debugPushableTarget ? debugPushableTarget.x + 2.2 : 0)
   const spawnZ =
     debugNaturalObstacle?.z ??
     debugSurface?.z ??
     debugTunnel?.z ??
+    (debugGate ? debugGate.z + debugGate.sensorRadius + 2.6 : null) ??
     debugPushableTarget?.z ??
     0
   const spawnTranslation = useMemo(
@@ -3757,6 +4158,16 @@ function GameWorld({
               label,
             })
           }
+        />
+      ))}
+      {physicsLayout.automaticGates.map((gate) => (
+        <KinematicAutomaticGate
+          key={`${stage.id}-${gate.id}`}
+          gate={gate}
+          playerPosition={playerPosition}
+          ballRadius={ballRadius}
+          paused={paused}
+          reducedMotion={reducedMotion}
         />
       ))}
 
