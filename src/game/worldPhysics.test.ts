@@ -35,6 +35,30 @@ const stopLayout: WorldPhysicsLayout = {
 }
 
 describe('world physics', () => {
+  it('connects both sides of every upper deck to ground without a gap or step', () => {
+    for (const stage of fallbackLearningPack.stages) {
+      const layout = createWorldPhysicsLayout(stage)
+      const approaches = layout.terrainRamps.filter((ramp) => ramp.id.startsWith('upper-deck'))
+      expect(approaches).toHaveLength(4)
+      for (const platform of layout.elevatedPlatforms) {
+        const connections = approaches.filter((ramp) => Math.abs(ramp.x - platform.x) < 0.01)
+        expect(connections).toHaveLength(2)
+        expect(new Set(connections.map((ramp) => Math.sign(ramp.z - platform.z)))).toEqual(new Set([-1, 1]))
+        for (const ramp of connections) {
+          const ground = getTerrainRampSurfacePosition(ramp, 0, -1)
+          const top = getTerrainRampSurfacePosition(ramp, 0, 1)
+          expect(ground[1]).toBeCloseTo(0.045, 5)
+          expect(top[1]).toBeCloseTo(platform.y + platform.halfHeight + 0.025, 5)
+          expect(top[0]).toBeCloseTo(platform.x, 5)
+          expect(Math.abs(top[2] - platform.z)).toBeCloseTo(platform.halfDepth, 5)
+          expect(Math.abs(ground[2])).toBeLessThan(stage.mapSize / 2 - 6)
+          expect(Math.abs(ramp.rotationX)).toBeLessThan(0.17)
+          expect(ramp.halfWidth).toBeGreaterThan(3.5)
+        }
+      }
+    }
+  })
+
   it('builds solid scenery and speed routes for every map', () => {
     fallbackLearningPack.stages.forEach((stage) => {
       const layout = createWorldPhysicsLayout(stage)
@@ -78,7 +102,7 @@ describe('world physics', () => {
           ),
       ).toBe(true)
       expect(layout.terrainRamps).toHaveLength(
-        stage.theme === 'forest-trail' ? 7 : 5,
+        stage.theme === 'forest-trail' ? 10 : 8,
       )
       expect(layout.elevatedPlatforms).toHaveLength(2)
       expect(layout.elevators).toHaveLength(2)
@@ -88,10 +112,10 @@ describe('world physics', () => {
       ).toHaveLength(3)
       expect(
         layout.pushableProps.filter((prop) => prop.kind === 'cone'),
-      ).toHaveLength(15)
+      ).toHaveLength(27)
       expect(
         layout.pushableProps.filter((prop) => prop.kind === 'trash-can'),
-      ).toHaveLength(7)
+      ).toHaveLength(15)
       expect(new Set(layout.pushableProps.map((prop) => prop.label))).toEqual(
         new Set([
           '배송 상자',

@@ -893,7 +893,7 @@ function createTerrainRamps(
           mapSize,
         )
       : []),
-    createUpperDeckRamp(mapSize, theme),
+    ...createUpperDeckRamps(mapSize, theme),
   ]
 }
 
@@ -934,9 +934,9 @@ function createElevatedPlatforms(
     x: mapSize * 0.1,
     y: UPPER_DECK_SURFACE_Y - halfHeight,
     z: -mapSize * 0.19,
-    halfWidth: 5.5,
+    halfWidth: 7.4,
     halfHeight,
-    halfDepth: 5.5,
+    halfDepth: 6.6,
     rotationY: 0,
   }
   const elevatorPlatform: ElevatedPlatform = {
@@ -946,43 +946,50 @@ function createElevatedPlatforms(
     x: -mapSize * 0.14,
     y: UPPER_DECK_SURFACE_Y - halfHeight,
     z: mapSize * 0.2,
-    halfWidth: 5.2,
+    halfWidth: 7.4,
     halfHeight,
-    halfDepth: 5.2,
+    halfDepth: 6.6,
     rotationY: 0,
   }
 
   return [towerPlatform, elevatorPlatform]
 }
 
-function createUpperDeckRamp(
+function createUpperDeckRamps(
   mapSize: number,
   theme: StageTheme,
-): TerrainRamp {
-  const platform = createElevatedPlatforms(mapSize, theme)[0]
+): TerrainRamp[] {
   const halfDepth = Math.min(14, mapSize * 0.085)
-  const halfWidth = 3.15
+  const halfWidth = 3.7
   const halfHeight = 0.18
-  const baseSurfaceY = 0.04
+  const baseSurfaceY = 0.02
   const rotationMagnitude = Math.asin(
     (UPPER_DECK_SURFACE_Y - baseSurfaceY) / (halfDepth * 2),
   )
   const rotationX = -rotationMagnitude
   const centerSurfaceY = (UPPER_DECK_SURFACE_Y + baseSurfaceY) / 2
 
-  return {
-    id: 'upper-deck-ramp',
-    label: '2층 연결 경사로',
-    color: getUpperDeckColors(theme).ramp,
-    x: platform.x,
-    y: centerSurfaceY - halfHeight * Math.cos(rotationX),
-    z: platform.z + platform.halfDepth + halfDepth,
-    halfWidth,
-    halfHeight,
-    halfDepth,
-    rotationX,
-    rotationY: Math.PI,
-  }
+  // Match the pitched top surface, not the unrotated box extent. This keeps
+  // the ramp flush with the landing without a step or a gap at either end.
+  const topOffsetZ =
+    halfDepth * Math.cos(rotationX) + halfHeight * Math.sin(rotationX)
+  return createElevatedPlatforms(mapSize, theme).flatMap((platform, index) =>
+    [1, -1].map((side) => ({
+      id: index === 0 && side === 1
+        ? 'upper-deck-ramp'
+        : `upper-deck-${index}-${side === 1 ? 'south' : 'north'}-ramp`,
+      label: `${index === 0 ? '전망대' : '보물마당'} ${side === 1 ? '남쪽' : '북쪽'} 경사로`,
+      color: getUpperDeckColors(theme).ramp,
+      x: platform.x,
+      y: centerSurfaceY - halfHeight * Math.cos(rotationX),
+      z: platform.z + side * (platform.halfDepth + topOffsetZ),
+      halfWidth,
+      halfHeight,
+      halfDepth,
+      rotationX,
+      rotationY: side === 1 ? Math.PI : 0,
+    })),
+  )
 }
 
 function createElevators(
@@ -1079,6 +1086,48 @@ function createPushRewardSlots(
     [centerX - 0.42, 0, centerZ + 0.28],
     [centerX + 0.42, 0, centerZ + 0.28],
   ]
+}
+
+// Keep the walking routes open while spreading a modest number of sleeping
+// rigid bodies through every quadrant. No per-frame placement or mesh colliders.
+function distributePushableProps(
+  props: PushableProp[],
+  mapSize: number,
+  obstacles: readonly WorldObstacle[],
+  structures: readonly Pick<SpeedZone, 'x' | 'z' | 'halfWidth' | 'halfDepth' | 'rotationY'>[],
+): PushableProp[] {
+  const additions: PushableProp[] = Array.from({ length: 20 }, (_, index) => ({
+    id: `scattered-${index < 12 ? 'cone' : 'trash'}-${index}`,
+    kind: index < 12 ? 'cone' : 'trash-can',
+    label: index < 12 ? '빨간 장애물 콘' : '파란 쓰레기통',
+    color: index < 12 ? '#FF8A3D' : '#2F6FB5',
+    x: 0, z: 0, y: index < 12 ? 0.38 : 0.43, rotationY: index * 0.83,
+  }))
+  const placed = props.filter((prop) => prop.id.startsWith('treasure-cone'))
+  const isClear = (x: number, z: number) =>
+    structures.every((structure) => isCircleClearOfSpeedZone(
+      { x, z, radius: 0.65 }, structure, 1.5,
+    )) &&
+    obstacles.every((obstacle) => Math.hypot(x - obstacle.x, z - obstacle.z) > obstacle.radius + 1.1) &&
+    placed.every((other) => Math.hypot(x - other.x, z - other.z) > 2.4)
+  const scattered = [...props.filter((prop) => !prop.id.startsWith('treasure-cone')), ...additions]
+  scattered.forEach((prop, index) => {
+    if (Math.hypot(prop.x, prop.z) > 5 && isClear(prop.x, prop.z)) {
+      placed.push(prop)
+      return
+    }
+    for (let attempt = 0; attempt < 600; attempt += 1) {
+      const step = index * 31 + attempt
+      const angle = step * Math.PI * (3 - Math.sqrt(5)) + 0.35
+      const radius = mapSize * (0.1 + ((step * 7) % 23) / 22 * 0.29)
+      const x = Math.cos(angle) * radius
+      const z = Math.sin(angle) * radius
+      if (!isClear(x, z)) continue
+      placed.push({ ...prop, x, z })
+      break
+    }
+  })
+  return placed
 }
 
 interface NaturalAssetConfig {
@@ -1328,7 +1377,7 @@ function createNaturalAssetPlacements(
 
 function isCircleClearOfSpeedZone(
   tree: Pick<WorldObstacle, 'x' | 'z' | 'radius'>,
-  zone: SpeedZone,
+  zone: Pick<SpeedZone, 'x' | 'z' | 'halfWidth' | 'halfDepth' | 'rotationY'>,
   extraClearance = 1.15,
 ): boolean {
   const offsetX = tree.x - zone.x
@@ -1354,7 +1403,7 @@ export function createWorldPhysicsLayout(
     stage.theme,
   )
   const elevators = createElevators(stage.mapSize, stage.theme)
-  const pushableProps = createPushableProps(stage.mapSize, stage.theme)
+  let pushableProps = createPushableProps(stage.mapSize, stage.theme)
   const pushRewardSlots = createPushRewardSlots(stage.mapSize)
   const speedZones = createSpeedZones(stage.mapSize, stage.theme)
   const rideableObstacles = createRideableObstacles(
@@ -1363,11 +1412,15 @@ export function createWorldPhysicsLayout(
   )
   const tunnels = createTunnels(stage.mapSize, stage.theme)
   const structureClearances = [
-    ...terrainRamps.map((ramp) => ({
-      x: ramp.x,
-      z: ramp.z,
-      radius: Math.hypot(ramp.halfWidth, ramp.halfDepth) + 0.7,
-    })),
+    ...terrainRamps.flatMap((ramp) => {
+      // A chain of small bounds reserves the actual approach, not a huge
+      // circular clearing around long, narrow ramps.
+      const segments = Math.ceil(ramp.halfDepth * 2 / 4)
+      return Array.from({ length: segments + 1 }, (_, index) => {
+        const [x, , z] = getTerrainRampSurfacePosition(ramp, 0, index / segments * 2 - 1)
+        return { x, z, radius: ramp.halfWidth + 1 }
+      })
+    }),
     ...elevatedPlatforms.map((platform) => ({
       x: platform.x,
       z: platform.z,
@@ -1430,6 +1483,10 @@ export function createWorldPhysicsLayout(
       ),
   )
   const baseSurfaceZones = createSurfaceZones(stage.mapSize, stage.theme)
+  pushableProps = distributePushableProps(pushableProps, stage.mapSize, baseObstacles, [
+    ...terrainRamps, ...elevatedPlatforms, ...rideableObstacles, ...tunnels,
+    ...elevators.map((elevator) => ({ ...elevator, rotationY: 0 })),
+  ])
   const naturalPlacementObstacles = [
     ...baseObstacles,
     ...pushableProps.map((prop) => ({

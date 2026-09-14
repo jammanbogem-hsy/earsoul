@@ -1392,6 +1392,8 @@ export function AttachedObjectMesh({
       position={transform.position}
       quaternion={transform.orientation}
       scale={transform.scale}
+      name={`attached-${item.id}`}
+      userData={{ sightOccluder: true }}
     >
       <LearningObjectMesh item={item} detail="attached" />
     </group>
@@ -1563,6 +1565,7 @@ function ImportedTree({ spec }: { spec: ImportedTreeSpec }) {
   return (
     <Clone
       name={`imported-tree-${spec.variant}`}
+      userData={{ sightOccluder: true }}
       object={scene}
       position={spec.position}
       rotation={[0, spec.rotationY, 0]}
@@ -1595,6 +1598,7 @@ function ImportedBench({ spec }: { spec: ImportedBenchSpec }) {
   return (
     <Clone
       name="imported-bench-chair"
+      userData={{ sightOccluder: true }}
       object={scene}
       position={spec.position}
       rotation={[0, spec.rotationY, 0]}
@@ -1629,6 +1633,7 @@ function NaturalBlockModel({
   return (
     <Clone
       name={`natural-obstacle-${obstacle.assetVariant}`}
+      userData={{ sightOccluder: true }}
       object={scene}
       position={[obstacle.x, 0.01, obstacle.z]}
       rotation={[0, obstacle.rotationY ?? 0, 0]}
@@ -2053,7 +2058,7 @@ export function GardenSetDressing({
       <InstancedBoxes specs={scenery.gear} />
       <InstancedBoxes specs={scenery.steppingBlocks} />
 
-      <group position={[-parkSize * 0.35, 0, parkSize * 0.24]}>
+      <group position={[-parkSize * 0.35, 0, parkSize * 0.24]} userData={{ sightOccluder: true }}>
         <CrewKiosk
           color={themeColors.markers[0]}
           compact={theme !== 'sunny-plaza'}
@@ -2062,6 +2067,7 @@ export function GardenSetDressing({
       <group
         position={[parkSize * 0.35, 0, -parkSize * 0.24]}
         rotation={[0, Math.PI, 0]}
+        userData={{ sightOccluder: true }}
       >
         <CrewKiosk
           color={themeColors.markers[1]}

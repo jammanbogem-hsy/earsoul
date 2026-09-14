@@ -81,6 +81,7 @@ import {
   getActiveSurfaceZone,
   getElevatorDeckY,
   getPushableCollectionAssist,
+  getTerrainRampSurfacePosition,
   type SurfaceKind,
   type SurfaceZone,
   type ObstacleResponse,
@@ -124,6 +125,9 @@ import {
   NaturalObstacleModels,
 } from './game/GameSceneAssets'
 import { RollingCrewCharacter } from './game/RollingCrewCharacter'
+import { TerracedStructures } from './game/TerracedStructures'
+import { CharacterSightline } from './game/CharacterSightline'
+import { getTerraceRampQuaternion } from '../game/terraceParts'
 import { RoamingRunnerObstacles } from './game/RoamingRunnerObstacles'
 import coneRedV1Url from '../assets/game/cone_red_v1.glb?url'
 import coneRedV2Url from '../assets/game/cone_red_v2.glb?url'
@@ -443,6 +447,8 @@ const LearningItem = memo(function LearningItem({
       </group>
       <group
         ref={visual}
+        name={`collectible-${item.id}`}
+        userData={{ sightOccluder: true }}
         position={[0, visualScale * 0.58, 0]}
         scale={visualScale}
       >
@@ -651,7 +657,7 @@ const DroppedObjectPhysics = memo(function DroppedObjectPhysics({
           friction={0.84}
           restitution={0.38}
         />
-        <group scale={visualScale}>
+        <group scale={visualScale} userData={{ sightOccluder: true }}>
           <LearningObjectMesh item={item} detail="world" />
         </group>
       </RigidBody>
@@ -1026,7 +1032,7 @@ function RollingBallCore({
   })
 
   return (
-    <group ref={core} scale={INITIAL_PLAYER_RADIUS}>
+    <group ref={core} scale={INITIAL_PLAYER_RADIUS} userData={{ sightOccluder: true }}>
       <group scale={2.003914}>
         <Clone
           object={scene}
@@ -1893,7 +1899,7 @@ function RapierWorldColliders({
             colliders={false}
             position={[tunnel.x, 0, tunnel.z]}
             rotation={[0, tunnel.rotationY, 0]}
-            userData={{ physics }}
+            userData={{ physics, sightOccluder: true }}
           >
             {[-1, 1].map((side) => (
               <CuboidCollider
@@ -2014,7 +2020,7 @@ function RapierWorldColliders({
         )
       })}
 
-      {layout.terrainRamps.map((ramp) => {
+      {layout.terrainRamps.filter((ramp) => !ramp.id.startsWith('upper-deck')).map((ramp) => {
         const physics: PhysicsBodyData = {
           kind: 'rideable',
           label: ramp.label,
@@ -2028,8 +2034,8 @@ function RapierWorldColliders({
             type="fixed"
             colliders={false}
             position={[ramp.x, ramp.y, ramp.z]}
-            rotation={[ramp.rotationX, ramp.rotationY, 0]}
-            userData={{ physics }}
+            quaternion={getTerraceRampQuaternion(ramp)}
+            userData={{ physics, sightOccluder: true }}
           >
             <CuboidCollider
               args={[ramp.halfWidth, ramp.halfHeight, ramp.halfDepth]}
@@ -2046,81 +2052,6 @@ function RapierWorldColliders({
               />
               <meshStandardMaterial color={ramp.color} roughness={0.94} />
             </mesh>
-          </RigidBody>
-        )
-      })}
-
-      {layout.elevatedPlatforms.map((platform) => {
-        const physics: PhysicsBodyData = {
-          kind: 'rideable',
-          label: platform.label,
-          response: 'bounce',
-          quiet: true,
-        }
-        const supportHeight = Math.max(0.2, platform.y - platform.halfHeight)
-
-        return (
-          <RigidBody
-            key={platform.id}
-            type="fixed"
-            colliders={false}
-            position={[platform.x, platform.y, platform.z]}
-            rotation={[0, platform.rotationY, 0]}
-            userData={{ physics }}
-          >
-            <CuboidCollider
-              args={[
-                platform.halfWidth,
-                platform.halfHeight,
-                platform.halfDepth,
-              ]}
-              friction={0.98}
-              restitution={0}
-            />
-            <mesh castShadow receiveShadow>
-              <boxGeometry
-                args={[
-                  platform.halfWidth * 2,
-                  platform.halfHeight * 2,
-                  platform.halfDepth * 2,
-                ]}
-              />
-              <meshStandardMaterial color={platform.color} roughness={0.88} />
-            </mesh>
-            {[
-              [-0.78, -0.78],
-              [0.78, -0.78],
-              [-0.78, 0.78],
-              [0.78, 0.78],
-            ].map(([xRatio, zRatio], index) => (
-              <mesh
-                key={`${platform.id}-support-${index}`}
-                castShadow
-                position={[
-                  platform.halfWidth * xRatio,
-                  -platform.y / 2,
-                  platform.halfDepth * zRatio,
-                ]}
-              >
-                <boxGeometry args={[0.34, supportHeight, 0.34]} />
-                <meshStandardMaterial
-                  color="#425066"
-                  roughness={0.9}
-                />
-              </mesh>
-            ))}
-            <Html
-              center
-              position={[0, platform.halfHeight + 0.72, 0]}
-              distanceFactor={11}
-              zIndexRange={[1, 0]}
-              style={{ pointerEvents: 'none' }}
-            >
-              <span className="world-interaction-label">
-                <MaterialIcon name="arrow_upward" />
-                {platform.label}
-              </span>
-            </Html>
           </RigidBody>
         )
       })}
@@ -2228,8 +2159,9 @@ function DynamicPracticeProps({
             }
             linearDamping={0.38}
             angularDamping={0.54}
+            canSleep
             ccd
-            userData={{ physics }}
+            userData={{ physics, sightOccluder: true }}
           >
             {prop.kind === 'block' ? (
               <CuboidCollider
@@ -2349,7 +2281,7 @@ function KinematicElevator({
   const guideHeight = elevator.topY + elevator.halfHeight
 
   return (
-    <group>
+    <group userData={{ sightOccluder: true }}>
       {[-1, 1].map((side) => (
         <mesh
           key={`${elevator.id}-guide-${side}`}
@@ -2612,6 +2544,16 @@ function GameWorld({
     const spawnMode = new URLSearchParams(window.location.search).get('spawn')
     return spawnMode === 'tunnel' ? physicsLayout.tunnels[0] ?? null : null
   }, [physicsLayout])
+  const debugTerraceSpawn = useMemo(() => {
+    if (!import.meta.env.DEV) return null
+    const mode = new URLSearchParams(window.location.search).get('spawn')
+    const platform = physicsLayout.elevatedPlatforms[0]
+    if (mode === 'underdeck') return [platform.x, platform.z] as const
+    if (mode !== 'ramp') return null
+    const ramp = physicsLayout.terrainRamps.find((entry) => entry.id === 'upper-deck-ramp')!
+    const [x, , z] = getTerrainRampSurfacePosition(ramp, 0, -1)
+    return [x, z + 2] as const
+  }, [physicsLayout])
   const debugCollectionTarget = useMemo(() => {
     const teleportMode = new URLSearchParams(window.location.search).get(
       'teleport',
@@ -2668,6 +2610,7 @@ function GameWorld({
         ) ?? null
       : null
   const spawnX =
+    debugTerraceSpawn?.[0] ??
     (debugNaturalObstacle
       ? debugNaturalObstacle.x + debugNaturalObstacle.radius + 2.2
       : null) ??
@@ -2675,6 +2618,7 @@ function GameWorld({
     debugTunnel?.x ??
     (debugPushableTarget ? debugPushableTarget.x + 2.2 : 0)
   const spawnZ =
+    debugTerraceSpawn?.[1] ??
     debugNaturalObstacle?.z ??
     debugSurface?.z ??
     debugTunnel?.z ??
@@ -3731,6 +3675,11 @@ function GameWorld({
         layout={physicsLayout}
         reducedMotion={reducedMotion}
       />
+      <TerracedStructures
+        platforms={physicsLayout.elevatedPlatforms}
+        ramps={physicsLayout.terrainRamps.filter((ramp) => ramp.id.startsWith('upper-deck'))}
+        castShadow={renderQuality.shadows}
+      />
       <RoamingRunnerObstacles
         mapSize={stage.mapSize}
         theme={stage.theme}
@@ -3882,6 +3831,7 @@ function GameWorld({
         motion={motion}
         reducedMotion={reducedMotion}
       />
+      <CharacterSightline lowPower={renderQuality.lowPower} />
     </>
   )
 }
