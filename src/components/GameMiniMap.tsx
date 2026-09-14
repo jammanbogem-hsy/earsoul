@@ -24,7 +24,6 @@ export function GameMiniMap({
 }: GameMiniMapProps) {
   const layout = useMemo(() => createWorldPhysicsLayout(stage), [stage])
   const hasTunnels = layout.tunnels.length > 0
-  const hasAutomaticGates = layout.automaticGates.length > 0
   const hasSlickZones = layout.surfaceZones.some(
     (zone) => zone.kind === 'slick',
   )
@@ -148,20 +147,6 @@ export function GameMiniMap({
               rx="1.6"
             />
           ))}
-          {layout.elevatedWalkways.map((walkway) => {
-            const directionX = Math.sin(walkway.rotationY)
-            const directionZ = Math.cos(walkway.rotationY)
-            return (
-              <line
-                key={walkway.id}
-                className="is-walkway"
-                x1={toMapX(walkway.x - directionX * walkway.halfDepth)}
-                y1={toMapY(walkway.z - directionZ * walkway.halfDepth)}
-                x2={toMapX(walkway.x + directionX * walkway.halfDepth)}
-                y2={toMapY(walkway.z + directionZ * walkway.halfDepth)}
-              />
-            )
-          })}
           {layout.terrainRamps.map((ramp) => {
             const directionX = Math.sin(ramp.rotationY)
             const directionZ = Math.cos(ramp.rotationY)
@@ -184,21 +169,6 @@ export function GameMiniMap({
               <path d="M 0 -1.25 L 1.25 0.25 H 0.5 V 1.35 H -0.5 V 0.25 H -1.25 Z" />
             </g>
           ))}
-          {layout.automaticGates.map((gate) => {
-            const halfSpan = gate.panelHalfWidth * 2
-            const cosine = Math.cos(gate.rotationY)
-            const sine = Math.sin(gate.rotationY)
-            return (
-              <line
-                key={gate.id}
-                className="is-gate"
-                x1={toMapX(gate.x - cosine * halfSpan)}
-                y1={toMapY(gate.z + sine * halfSpan)}
-                x2={toMapX(gate.x + cosine * halfSpan)}
-                y2={toMapY(gate.z - sine * halfSpan)}
-              />
-            )
-          })}
         </g>
         <g className="minimap-items">
           {objects.map((item) => {
@@ -242,12 +212,6 @@ export function GameMiniMap({
         2층
         <i className="is-elevator" />
         승강기
-        {hasAutomaticGates && (
-          <>
-            <i className="is-gate" />
-            자동문
-          </>
-        )}
         {hasTunnels && (
           <>
             <i className="is-tunnel" />

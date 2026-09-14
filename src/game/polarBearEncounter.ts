@@ -126,11 +126,6 @@ function isDropPositionSafe(
           1.4,
         ),
     ) ||
-    layout.automaticGates.some(
-      (gate) =>
-        Math.hypot(x - gate.x, z - gate.z) <
-        gate.panelHalfWidth * 2 + 1.6,
-    ) ||
     layout.surfaceZones.some(
       (zone) =>
         (zone.kind === 'water' || zone.kind === 'mud') &&

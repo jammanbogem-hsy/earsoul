@@ -106,38 +106,6 @@ export interface ElevatedPlatform {
   rotationY: number
 }
 
-export interface ElevatedWalkway {
-  id: string
-  label: string
-  color: string
-  accentColor: string
-  x: number
-  y: number
-  z: number
-  halfWidth: number
-  halfHeight: number
-  halfDepth: number
-  rotationY: number
-  supportCount: number
-}
-
-export interface WorldAutomaticGate {
-  id: string
-  label: string
-  color: string
-  accentColor: string
-  x: number
-  z: number
-  rotationY: number
-  panelHalfWidth: number
-  panelHalfHeight: number
-  panelHalfDepth: number
-  openDistance: number
-  sensorRadius: number
-  openDuration: number
-  closeDuration: number
-}
-
 export interface WorldElevator {
   id: string
   label: string
@@ -197,57 +165,6 @@ export function getElevatorDeckY(
   )
 }
 
-export function isAutomaticGateTriggered(
-  gate: WorldAutomaticGate,
-  playerPosition: { x: number; z: number },
-  ballRadius: number,
-): boolean {
-  const responsiveRadius = gate.sensorRadius + Math.max(0, ballRadius) * 0.72
-  return (
-    Math.hypot(
-      playerPosition.x - gate.x,
-      playerPosition.z - gate.z,
-    ) <= responsiveRadius
-  )
-}
-
-export function stepAutomaticGateOpenAmount(
-  gate: WorldAutomaticGate,
-  currentAmount: number,
-  shouldOpen: boolean,
-  delta: number,
-): number {
-  const current = Math.max(0, Math.min(1, currentAmount))
-  const duration = shouldOpen ? gate.openDuration : gate.closeDuration
-  const step = Math.max(0, delta) / Math.max(0.08, duration)
-  return shouldOpen
-    ? Math.min(1, current + step)
-    : Math.max(0, current - step)
-}
-
-export function getAutomaticGatePanelPosition(
-  gate: WorldAutomaticGate,
-  side: -1 | 1,
-  openAmount: number,
-): [number, number, number] {
-  const easedAmount = smoothStep(openAmount)
-  const localX =
-    side * (gate.panelHalfWidth + gate.openDistance * easedAmount)
-  const cosine = Math.cos(gate.rotationY)
-  const sine = Math.sin(gate.rotationY)
-
-  return [
-    gate.x + localX * cosine,
-    gate.panelHalfHeight,
-    gate.z - localX * sine,
-  ]
-}
-
-function smoothStep(value: number): number {
-  const clamped = Math.max(0, Math.min(1, value))
-  return clamped * clamped * (3 - 2 * clamped)
-}
-
 export function getTerrainRampSurfacePosition(
   ramp: TerrainRamp,
   localXRatio: number,
@@ -294,9 +211,7 @@ export interface WorldPhysicsLayout {
   surfaceZones: SurfaceZone[]
   terrainRamps: TerrainRamp[]
   elevatedPlatforms: ElevatedPlatform[]
-  elevatedWalkways: ElevatedWalkway[]
   elevators: WorldElevator[]
-  automaticGates: WorldAutomaticGate[]
   pushableProps: PushableProp[]
   pushRewardSlots: [number, number, number][]
 }
@@ -357,16 +272,13 @@ function createInteriorTrees(
     [0.16, 0.08],
     [-0.1, 0.22],
     [-0.22, -0.02],
-    [0.245, -0.165],
-    [-0.245, 0.15],
   ] as const
   const memberOffsets = [
     [-2.2, -1.1],
     [1.8, -0.6],
     [-0.2, 2.2],
   ] as const
-  const clusterCount =
-    theme === 'forest-trail' ? 4 : theme === 'sunny-plaza' ? 7 : 5
+  const clusterCount = theme === 'forest-trail' ? 4 : 5
   const treeCount = clusterCount * memberOffsets.length
   const themeRotation =
     theme === 'forest-trail'
@@ -896,10 +808,10 @@ function createHill(
   rotationY: number,
   mapSize: number,
 ): TerrainRamp[] {
-  const halfDepth = Math.min(mapSize * 0.042, 6.8)
-  const halfWidth = Math.min(mapSize * 0.035, 5.6)
-  const halfHeight = 0.15
-  const rotationX = 0.083
+  const halfDepth = Math.min(mapSize * 0.034, 5.6)
+  const halfWidth = Math.min(mapSize * 0.027, 4.8)
+  const halfHeight = 0.13
+  const rotationX = 0.065
   const centerY =
     Math.sin(rotationX) * halfDepth -
     halfHeight * Math.cos(rotationX) +
@@ -982,9 +894,6 @@ function createTerrainRamps(
         )
       : []),
     createUpperDeckRamp(mapSize, theme),
-    ...(theme === 'sunny-plaza'
-      ? [createReturnDeckRamp(mapSize, theme)]
-      : []),
   ]
 }
 
@@ -1036,7 +945,7 @@ function createElevatedPlatforms(
     color: colors.elevator,
     x: -mapSize * 0.14,
     y: UPPER_DECK_SURFACE_Y - halfHeight,
-    z: (theme === 'sunny-plaza' ? -1 : 1) * mapSize * 0.2,
+    z: mapSize * 0.2,
     halfWidth: 5.2,
     halfHeight,
     halfDepth: 5.2,
@@ -1074,93 +983,6 @@ function createUpperDeckRamp(
     rotationX,
     rotationY: Math.PI,
   }
-}
-
-function createReturnDeckRamp(
-  mapSize: number,
-  theme: StageTheme,
-): TerrainRamp {
-  const platform = createElevatedPlatforms(mapSize, theme)[1]
-  const halfDepth = Math.min(14, mapSize * 0.085)
-  const halfWidth = 3.15
-  const halfHeight = 0.18
-  const baseSurfaceY = 0.04
-  const rotationX = -Math.asin(
-    (UPPER_DECK_SURFACE_Y - baseSurfaceY) / (halfDepth * 2),
-  )
-  const centerSurfaceY = (UPPER_DECK_SURFACE_Y + baseSurfaceY) / 2
-
-  return {
-    id: 'upper-deck-return-ramp',
-    label: '광장으로 내려오는 경사로',
-    color: getUpperDeckColors(theme).ramp,
-    x: platform.x,
-    y: centerSurfaceY - halfHeight * Math.cos(rotationX),
-    z: platform.z + platform.halfDepth + halfDepth,
-    halfWidth,
-    halfHeight,
-    halfDepth,
-    rotationX,
-    rotationY: Math.PI,
-  }
-}
-
-function createElevatedWalkways(
-  mapSize: number,
-  theme: StageTheme,
-): ElevatedWalkway[] {
-  if (theme !== 'sunny-plaza') return []
-
-  const [from, to] = createElevatedPlatforms(mapSize, theme)
-  const deltaX = to.x - from.x
-  const deltaZ = to.z - from.z
-  const distance = Math.hypot(deltaX, deltaZ)
-  const colors = getUpperDeckColors(theme)
-
-  return [
-    {
-      id: 'sunny-skywalk',
-      label: '햇살 순환 고가길',
-      color: colors.platform,
-      accentColor: '#FFF1B8',
-      x: (from.x + to.x) / 2,
-      y: UPPER_DECK_SURFACE_Y - 0.22,
-      z: (from.z + to.z) / 2,
-      halfWidth: 3.2,
-      halfHeight: 0.22,
-      halfDepth: distance / 2,
-      rotationY: Math.atan2(deltaX, deltaZ),
-      supportCount: 5,
-    },
-  ]
-}
-
-function createAutomaticGates(
-  mapSize: number,
-  theme: StageTheme,
-): WorldAutomaticGate[] {
-  if (theme !== 'sunny-plaza') return []
-  const entryRamp = createUpperDeckRamp(mapSize, theme)
-  const groundEnd = getTerrainRampSurfacePosition(entryRamp, 0, -1)
-
-  return [
-    {
-      id: 'sunny-lookout-gate',
-      label: '햇살 전망대 자동문',
-      color: '#3D91C7',
-      accentColor: '#FFE27A',
-      x: groundEnd[0],
-      z: groundEnd[2] + 2.1,
-      rotationY: 0,
-      panelHalfWidth: 1.65,
-      panelHalfHeight: 1.7,
-      panelHalfDepth: 0.16,
-      openDistance: 3.8,
-      sensorRadius: 5.4,
-      openDuration: 0.58,
-      closeDuration: 0.82,
-    },
-  ]
 }
 
 function createElevators(
@@ -1531,12 +1353,7 @@ export function createWorldPhysicsLayout(
     stage.mapSize,
     stage.theme,
   )
-  const elevatedWalkways = createElevatedWalkways(
-    stage.mapSize,
-    stage.theme,
-  )
   const elevators = createElevators(stage.mapSize, stage.theme)
-  const automaticGates = createAutomaticGates(stage.mapSize, stage.theme)
   const pushableProps = createPushableProps(stage.mapSize, stage.theme)
   const pushRewardSlots = createPushRewardSlots(stage.mapSize)
   const speedZones = createSpeedZones(stage.mapSize, stage.theme)
@@ -1556,28 +1373,10 @@ export function createWorldPhysicsLayout(
       z: platform.z,
       radius: Math.hypot(platform.halfWidth, platform.halfDepth) + 0.7,
     })),
-    ...elevatedWalkways.flatMap((walkway) => {
-      const sampleCount = Math.max(3, walkway.supportCount + 2)
-      const directionX = Math.sin(walkway.rotationY)
-      const directionZ = Math.cos(walkway.rotationY)
-      return Array.from({ length: sampleCount }, (_, index) => {
-        const ratio = -1 + (index / (sampleCount - 1)) * 2
-        return {
-          x: walkway.x + directionX * walkway.halfDepth * ratio,
-          z: walkway.z + directionZ * walkway.halfDepth * ratio,
-          radius: walkway.halfWidth + 1.1,
-        }
-      })
-    }),
     ...elevators.map((elevator) => ({
       x: elevator.x,
       z: elevator.z,
       radius: Math.hypot(elevator.halfWidth, elevator.halfDepth) + 0.8,
-    })),
-    ...automaticGates.map((gate) => ({
-      x: gate.x,
-      z: gate.z,
-      radius: gate.panelHalfWidth * 2 + gate.openDistance + 0.8,
     })),
     ...rideableObstacles
       .filter((obstacle) => obstacle.id.startsWith('forest-ridge-'))
@@ -1692,9 +1491,7 @@ export function createWorldPhysicsLayout(
     surfaceZones: [...baseSurfaceZones, ...mudZones],
     terrainRamps,
     elevatedPlatforms,
-    elevatedWalkways,
     elevators,
-    automaticGates,
     pushableProps,
     pushRewardSlots,
   }

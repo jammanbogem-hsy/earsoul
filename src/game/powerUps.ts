@@ -264,11 +264,6 @@ function isSafePowerUpPosition(
           0,
           2,
         ),
-    ) ||
-    layout.automaticGates.some(
-      (gate) =>
-        Math.hypot(x - gate.x, z - gate.z) <
-        gate.panelHalfWidth * 2 + 2.2,
     )
   ) {
     return false
