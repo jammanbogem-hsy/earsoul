@@ -16,6 +16,7 @@ import {
   Vector3,
 } from 'three'
 import { clone } from 'three/examples/jsm/utils/SkeletonUtils.js'
+import { CREW_PUSH_DISTANCE, CREW_PUSH_SIDE_OFFSET } from '../../game/hazardContact'
 import runModelUrl from '../../assets/game/crew_man_run2.glb?url'
 import standModelUrl from '../../assets/game/crew_man_stand.glb?url'
 import { makeInPlaceRunClip } from '../../game/crewAnimation'
@@ -36,9 +37,7 @@ interface RollingCrewCharacterProps {
 const RUN_START_SPEED = 0.055
 const RUN_STOP_SPEED = 0.035
 const CHARACTER_SCALE_RATIO = 0.7
-const PUSH_DISTANCE = 0.44
 const PUSH_LEAN = 0.08
-const PUSH_SIDE_OFFSET = 0.18
 // The running clip dips the shoes below the standing-pose bounds, while some
 // decorative ground surfaces sit slightly above the physics floor.
 const CHARACTER_FOOT_LIFT = 0.08
@@ -110,9 +109,9 @@ export function RollingCrewCharacter({
     if (!character) return
 
     const { x, z, speed } = motion.current
-    const distance = ballRadius + PUSH_DISTANCE
-    const targetX = -x * distance + z * PUSH_SIDE_OFFSET
-    const targetZ = -z * distance - x * PUSH_SIDE_OFFSET
+    const distance = ballRadius + CREW_PUSH_DISTANCE
+    const targetX = -x * distance + z * CREW_PUSH_SIDE_OFFSET
+    const targetZ = -z * distance - x * CREW_PUSH_SIDE_OFFSET
     character.position.x = MathUtils.damp(
       character.position.x,
       targetX,

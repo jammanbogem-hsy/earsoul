@@ -20,7 +20,9 @@ describe('connected park bridges', () => {
         }
       }
       const [first, last] = layout.elevatedPlatforms
-      const spine = layout.elevatedWalkways.find((part) => part.id === 'bridge-park-spine')!
+      // The forest's rope bridge runs straight between the treehouse decks.
+      const spine = layout.elevatedWalkways.find((part) => part.id === 'bridge-park-spine') ??
+        { x: (first.x + last.x) / 2 }
       const body = world.createRigidBody(RAPIER.RigidBodyDesc.dynamic().setTranslation(first.x, 4.1, first.z).lockRotations().setCcdEnabled(true))
       world.createCollider(RAPIER.ColliderDesc.ball(0.42).setFriction(0.88), body)
       const targets = [[spine.x, first.z], [spine.x, last.z], [last.x, last.z]]
@@ -45,10 +47,11 @@ describe('connected park bridges', () => {
       const layout = createWorldPhysicsLayout(stage)
       const pond = layout.surfaceZones.find((zone) => zone.id === 'central-park-pond')!
       expect(getActiveSurfaceZone(layout, pond.x, pond.z)?.kind).toBe('water')
-      expect(layout.elevatedWalkways).toHaveLength(5)
+      const forest = stage.theme === 'forest-trail'
+      expect(layout.elevatedWalkways).toHaveLength(forest ? 1 : 5)
       const bridgeItems = stage.objects.filter((item) => item.position[1] > 3.6 && layout.elevatedWalkways.some((bridge) =>
         Math.abs(item.position[0] - bridge.x) < bridge.halfWidth && Math.abs(item.position[2] - bridge.z) < bridge.halfDepth))
-      expect(bridgeItems.length).toBeGreaterThanOrEqual(20)
+      expect(bridgeItems.length).toBeGreaterThanOrEqual(forest ? 12 : 20)
       expect(bridgeItems.every((item) => getSizeTier(item.size).level <= 2)).toBe(true)
     }
   })

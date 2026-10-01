@@ -3,6 +3,7 @@ import { CuboidCollider, RigidBody } from '@react-three/rapier'
 import { BoxGeometry, Color, Euler, Float32BufferAttribute, Matrix4, Quaternion, Vector3 } from 'three'
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
+import type { StageTheme } from '../../types'
 import type { ElevatedPlatform, ElevatedWalkway, TerrainRamp } from '../../game/worldPhysics'
 import {
   createTerraceParts,
@@ -13,7 +14,20 @@ import {
   type TerracePart,
 } from '../../game/terraceParts'
 
-function mergeParts(parts: TerracePart[]) {
+/** Treehouse decks: steel and paving become bark, planks and rope. */
+const FOREST_PALETTE: Record<string, string> = {
+  '#48676C': '#4A3526',
+  '#9CB8AC': '#6B4A33',
+  '#C8C6B7': '#56615A',
+  '#D7B884': '#8A5E3B',
+  '#FAEACC': '#C9A66B',
+  '#DDD8BF': '#8A5E3B',
+  '#EAE4CF': '#9C6B44',
+  '#E7B95E': '#C79A4A',
+  '#C3C2AC': '#6E4B30',
+}
+
+function mergeParts(parts: TerracePart[], palette?: Record<string, string>) {
   if (parts.length === 0) return null
   const sources = parts.map((part) => {
     const source = part.bevel
@@ -23,7 +37,7 @@ function mergeParts(parts: TerracePart[]) {
     source.applyMatrix4(new Matrix4().compose(
       new Vector3(...part.position), rotation, new Vector3(1, 1, 1),
     ))
-    const color = new Color(part.color)
+    const color = new Color(palette?.[part.color.toUpperCase()] ?? part.color)
     const colors = new Float32Array(source.getAttribute('position').count * 3)
     for (let index = 0; index < colors.length; index += 3) {
       colors[index] = color.r
@@ -39,10 +53,14 @@ function mergeParts(parts: TerracePart[]) {
   return geometry
 }
 
-function AssemblyMeshes({ assembly, castShadow }: { assembly: TerraceAssembly; castShadow: boolean }) {
+function AssemblyMeshes({ assembly, castShadow, palette }: {
+  assembly: TerraceAssembly
+  castShadow: boolean
+  palette?: Record<string, string>
+}) {
   const geometries = useMemo(
-    () => [mergeParts(assembly.deck), mergeParts(assembly.frame), mergeParts(assembly.railing)],
-    [assembly],
+    () => [mergeParts(assembly.deck, palette), mergeParts(assembly.frame, palette), mergeParts(assembly.railing, palette)],
+    [assembly, palette],
   )
   useEffect(() => () => geometries.forEach((geometry) => geometry?.dispose()), [geometries])
   return (
@@ -59,7 +77,7 @@ function AssemblyMeshes({ assembly, castShadow }: { assembly: TerraceAssembly; c
   )
 }
 
-function Terrace({ platform, castShadow }: { platform: ElevatedPlatform; castShadow: boolean }) {
+function Terrace({ platform, castShadow, palette }: { platform: ElevatedPlatform; castShadow: boolean; palette?: Record<string, string> }) {
   const assembly = useMemo(() => createTerraceParts(platform), [platform])
   return (
     <RigidBody
@@ -67,12 +85,12 @@ function Terrace({ platform, castShadow }: { platform: ElevatedPlatform; castSha
       position={[platform.x, platform.y, platform.z]} rotation={[0, platform.rotationY, 0]}
       userData={{ sightOccluder: true, sightBoxes: assembly.colliders, physics: { kind: 'rideable', label: platform.label, response: 'bounce', quiet: true } }}
     >
-      <AssemblyMeshes assembly={assembly} castShadow={castShadow} />
+      <AssemblyMeshes assembly={assembly} castShadow={castShadow} palette={palette} />
     </RigidBody>
   )
 }
 
-function Approach({ ramp, castShadow }: { ramp: TerrainRamp; castShadow: boolean }) {
+function Approach({ ramp, castShadow, palette }: { ramp: TerrainRamp; castShadow: boolean; palette?: Record<string, string> }) {
   const assembly = useMemo(() => createTerraceRampParts(ramp), [ramp])
   const quaternion = useMemo(() => getTerraceRampQuaternion(ramp), [ramp])
   return (
@@ -81,12 +99,12 @@ function Approach({ ramp, castShadow }: { ramp: TerrainRamp; castShadow: boolean
       position={[ramp.x, ramp.y, ramp.z]} quaternion={quaternion}
       userData={{ sightOccluder: true, sightBoxes: assembly.colliders, physics: { kind: 'rideable', label: ramp.label, response: 'bounce', quiet: true } }}
     >
-      <AssemblyMeshes assembly={assembly} castShadow={castShadow} />
+      <AssemblyMeshes assembly={assembly} castShadow={castShadow} palette={palette} />
     </RigidBody>
   )
 }
 
-function Walkway({ walkway, castShadow }: { walkway: ElevatedWalkway; castShadow: boolean }) {
+function Walkway({ walkway, castShadow, palette }: { walkway: ElevatedWalkway; castShadow: boolean; palette?: Record<string, string> }) {
   const assembly = useMemo(() => createTerraceWalkwayParts(walkway), [walkway])
   return (
     <RigidBody
@@ -94,22 +112,24 @@ function Walkway({ walkway, castShadow }: { walkway: ElevatedWalkway; castShadow
       position={[walkway.x, walkway.y, walkway.z]} rotation={[0, walkway.rotationY, 0]}
       userData={{ sightOccluder: true, sightBoxes: assembly.colliders, physics: { kind: 'rideable', label: walkway.label, response: 'bounce', quiet: true } }}
     >
-      <AssemblyMeshes assembly={assembly} castShadow={castShadow} />
+      <AssemblyMeshes assembly={assembly} castShadow={castShadow} palette={palette} />
     </RigidBody>
   )
 }
 
-export function TerracedStructures({ platforms, ramps, walkways = [], castShadow }: {
+export function TerracedStructures({ platforms, ramps, walkways = [], castShadow, theme }: {
   platforms: readonly ElevatedPlatform[]
   ramps: readonly TerrainRamp[]
   walkways?: readonly ElevatedWalkway[]
   castShadow: boolean
+  theme?: StageTheme
 }) {
+  const palette = theme === 'forest-trail' ? FOREST_PALETTE : undefined
   return (
     <group name="terraced-structures">
-      {platforms.map((platform) => <Terrace key={platform.id} platform={platform} castShadow={castShadow} />)}
-      {ramps.map((ramp) => <Approach key={ramp.id} ramp={ramp} castShadow={castShadow} />)}
-      {walkways.map((walkway) => <Walkway key={walkway.id} walkway={walkway} castShadow={castShadow} />)}
+      {platforms.map((platform) => <Terrace key={platform.id} platform={platform} castShadow={castShadow} palette={palette} />)}
+      {ramps.map((ramp) => <Approach key={ramp.id} ramp={ramp} castShadow={castShadow} palette={palette} />)}
+      {walkways.map((walkway) => <Walkway key={walkway.id} walkway={walkway} castShadow={castShadow} palette={palette} />)}
     </group>
   )
 }

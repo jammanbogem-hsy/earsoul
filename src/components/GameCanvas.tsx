@@ -1,4 +1,4 @@
-import { Clone, Html, useGLTF } from '@react-three/drei'
+import { Clone, Html, useGLTF, useProgress } from '@react-three/drei'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import {
   BallCollider,
@@ -13,6 +13,7 @@ import {
 import {
   memo,
   Suspense,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -38,6 +39,7 @@ import type {
   AttachmentNormal,
   GameStage,
   LearningObject,
+  StageTheme,
 } from '../types'
 import {
   getArchitectureCameraDistanceOffset,
@@ -121,6 +123,7 @@ import type { DroppedLearningObject } from '../game/polarBearEncounter'
 import { MaterialIcon } from './MaterialIcon'
 import {
   AttachedObjectMesh,
+  CollectibleGpuWarmup,
   GardenSetDressing,
   LearningObjectMesh,
   NaturalObstacleModels,
@@ -128,9 +131,20 @@ import {
 import { RollingCrewCharacter } from './game/RollingCrewCharacter'
 import { TerracedStructures } from './game/TerracedStructures'
 import { CentralPark } from './game/CentralPark'
+import { NaturalTerrain } from './game/NaturalTerrain'
+import { getIceTexture } from './game/terrainTextures'
 import { CharacterSightline } from './game/CharacterSightline'
 import { getTerraceRampQuaternion } from '../game/terraceParts'
 import { RoamingRunnerObstacles } from './game/RoamingRunnerObstacles'
+import { getTreasureModel } from '../game/treasureModels'
+import type { PlayerContactProbe } from '../game/hazardContact'
+import {
+  FittedModel,
+  ForestLandmarks,
+  HollowLogTunnelVisual,
+  MoonSteppingStones,
+} from './game/ForestLandmarks'
+import { FOREST_MODEL_URLS, mushroomClusterUrl } from '../game/forestModelUrls'
 import coneRedV1Url from '../assets/game/cone_red_v1.glb?url'
 import coneRedV2Url from '../assets/game/cone_red_v2.glb?url'
 import coneRedV3Url from '../assets/game/cone_red_v3.glb?url'
@@ -880,7 +894,7 @@ function RadarTreasureItem({
   reducedMotion: boolean
 }) {
   const root = useRef<Group>(null)
-  const gem = useRef<Mesh>(null)
+  const gem = useRef<Group>(null)
   const runtimePosition = useRef(new Vector3(...item.position))
   const rings = useRef<(Mesh | null)[]>([])
   const visualScale = getObjectVisualScale(item.size)
@@ -921,16 +935,16 @@ function RadarTreasureItem({
           depthWrite={false}
         />
       </mesh>
-      <mesh ref={gem} castShadow position={[0, visualScale * 0.72, 0]} scale={visualScale * 0.72}>
-        <octahedronGeometry args={[1, 1]} />
-        <meshStandardMaterial
-          color={item.color}
-          emissive={item.color}
-          emissiveIntensity={0.28}
-          metalness={0.18}
-          roughness={0.28}
-        />
-      </mesh>
+      <group ref={gem} position={[0, visualScale * 0.72, 0]}>
+        <group position={[0, -visualScale * 0.55, 0]}>
+          <FittedModel
+            url={getTreasureModel(item.id).url}
+            height={visualScale * 1.15}
+            glow={{ color: '#FFD76A', intensity: 0.22 }}
+            sightOccluder={false}
+          />
+        </group>
+      </group>
       {colors.map((color, index) => (
         <mesh
           key={color}
@@ -1034,7 +1048,8 @@ function RollingBallCore({
   })
 
   return (
-    <group ref={core} scale={INITIAL_PLAYER_RADIUS} userData={{ sightOccluder: true }}>
+    // The player's own ball never fades; only attached props turn slightly glassy.
+    <group ref={core} scale={INITIAL_PLAYER_RADIUS}>
       <group scale={2.003914}>
         <Clone
           object={scene}
@@ -1199,64 +1214,150 @@ function MotionEffects({
 const WATER_VERTEX_SHADER = `
   uniform float uTime;
   varying vec2 vUv;
+  varying vec3 vWorld;
 
   void main() {
     vUv = uv;
     vec3 wavePosition = position;
-    float edgeFade =
-      1.0 - smoothstep(0.18, 0.5, distance(uv, vec2(0.5)));
-    float crossingWave =
-      sin(position.x * 5.5 + uTime * 1.8) * 0.022 +
-      cos(position.y * 7.2 - uTime * 1.35) * 0.016;
-    wavePosition.z += crossingWave * edgeFade;
-    gl_Position =
-      projectionMatrix * modelViewMatrix * vec4(wavePosition, 1.0);
+    float edgeFade = 1.0 - smoothstep(0.3, 0.5, distance(uv, vec2(0.5)));
+    vec4 world = modelMatrix * vec4(wavePosition, 1.0);
+    // A gentle swell; the fine detail lives in the per-pixel normal.
+    wavePosition.z +=
+      (sin(world.x * 0.9 + uTime * 1.3) * 0.018 +
+        sin(world.z * 1.3 - uTime * 1.05) * 0.014) * edgeFade;
+    world = modelMatrix * vec4(wavePosition, 1.0);
+    vWorld = world.xyz;
+    gl_Position = projectionMatrix * viewMatrix * world;
   }
 `
 
 const WATER_FRAGMENT_SHADER = `
   uniform float uTime;
   uniform vec3 uTint;
+  uniform vec3 uSky;
+  uniform vec3 uHorizon;
+  uniform vec3 uLightDir;
+  uniform vec3 uLightColor;
   varying vec2 vUv;
+  varying vec3 vWorld;
+
+  float hash(vec2 p) {
+    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+  }
+
+  float noise(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    vec2 u = f * f * (3.0 - 2.0 * f);
+    return mix(
+      mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x),
+      mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x),
+      u.y
+    );
+  }
+
+  // Sum of travelling directional waves: returns the height gradient.
+  vec2 waveGradient(vec2 p, float t) {
+    vec2 gradient = vec2(0.0);
+    vec2 dirs[5];
+    dirs[0] = normalize(vec2(1.0, 0.35));
+    dirs[1] = normalize(vec2(-0.6, 1.0));
+    dirs[2] = normalize(vec2(0.25, -1.0));
+    dirs[3] = normalize(vec2(-1.0, -0.45));
+    dirs[4] = normalize(vec2(0.8, 0.9));
+    float freq = 1.35;
+    float amp = 0.055;
+    float speed = 1.2;
+    for (int i = 0; i < 5; i++) {
+      float phase = dot(dirs[i], p) * freq + t * speed;
+      gradient += dirs[i] * freq * amp * cos(phase);
+      freq *= 1.72;
+      amp *= 0.58;
+      speed *= 1.24;
+    }
+    // Fine wind-ruffled chop.
+    vec2 q = p * 3.2 + vec2(t * 0.45, -t * 0.3);
+    float e = 0.12;
+    float n0 = noise(q);
+    gradient += vec2(noise(q + vec2(e, 0.0)) - n0, noise(q + vec2(0.0, e)) - n0) / e * 0.035;
+    return gradient;
+  }
 
   void main() {
     vec2 centered = vUv - vec2(0.5);
     float distanceFromCenter = length(centered);
     float edge = 1.0 - smoothstep(0.44, 0.5, distanceFromCenter);
-    float travelingRipple =
-      sin(distanceFromCenter * 55.0 - uTime * 4.6) * 0.5 + 0.5;
-    float crossingRipple =
-      sin(centered.x * 36.0 + centered.y * 24.0 + uTime * 2.8) * 0.5 + 0.5;
-    float shimmer = pow(
-      max(0.0, sin((centered.x - centered.y) * 48.0 + uTime * 3.2)),
-      12.0
-    );
-    vec3 shallowColor = mix(uTint, vec3(0.78, 0.96, 1.0), 0.48);
-    vec3 waterColor = mix(
-      uTint * 0.82,
-      shallowColor,
-      travelingRipple * 0.26 + crossingRipple * 0.18
-    );
-    waterColor += shimmer * 0.22;
-    gl_FragColor = vec4(waterColor, edge * 0.76);
+    float depth = smoothstep(0.47, 0.08, distanceFromCenter);
+
+    vec2 gradient = waveGradient(vWorld.xz, uTime);
+    vec3 normal = normalize(vec3(-gradient.x, 1.0, -gradient.y));
+    vec3 viewDir = normalize(cameraPosition - vWorld);
+    float facing = max(dot(normal, viewDir), 0.0);
+    float fresnel = 0.03 + 0.97 * pow(1.0 - facing, 5.0);
+
+    // Reflected sky: horizon near grazing angles, zenith looking down.
+    vec3 reflected = reflect(-viewDir, normal);
+    vec3 sky = mix(uHorizon, uSky, smoothstep(0.0, 0.6, reflected.y));
+
+    // Body colour: bright shallows by the bank, deep tint in the middle.
+    vec3 shallowColor = mix(uTint, vec3(0.62, 0.86, 0.82), 0.35);
+    vec3 deepColor = uTint * 0.38;
+    vec3 body = mix(shallowColor, deepColor, depth);
+    // Soft moving light patterns on the shallow bed.
+    float caustic = pow(noise(vWorld.xz * 1.6 + gradient * 6.0 + uTime * 0.25), 3.0);
+    body += caustic * (1.0 - depth) * 0.12;
+
+    vec3 color = mix(body, sky, clamp(fresnel * 0.9 + 0.08, 0.0, 1.0));
+    // Sun or moon glint on the wave facets.
+    vec3 halfVector = normalize(normalize(uLightDir) + viewDir);
+    float specular = pow(max(dot(normal, halfVector), 0.0), 180.0);
+    color += uLightColor * specular * 1.8;
+
+    // Lapping foam line that breathes along the shoreline.
+    float wobble =
+      sin(atan(centered.y, centered.x) * 9.0 + uTime * 1.4) * 0.006 +
+      (noise(vWorld.xz * 2.0 + uTime * 0.4) - 0.5) * 0.012;
+    float foam =
+      smoothstep(0.415 + wobble, 0.44 + wobble, distanceFromCenter) *
+      (1.0 - smoothstep(0.455, 0.48, distanceFromCenter));
+    color = mix(color, vec3(0.92, 0.97, 0.98), foam * 0.6);
+    float alpha = edge * clamp(mix(0.72, 0.94, depth) + fresnel * 0.2, 0.0, 1.0);
+    gl_FragColor = vec4(color, alpha);
   }
 `
 
+const WATER_LIGHTING: Record<StageTheme, {
+  sky: string
+  horizon: string
+  lightColor: string
+  lightDir: [number, number, number]
+}> = {
+  'sunny-plaza': { sky: '#6FB6E6', horizon: '#E4F4FF', lightColor: '#FFF3D2', lightDir: [0.45, 0.75, 0.5] },
+  'forest-trail': { sky: '#0E2238', horizon: '#3B5C7C', lightColor: '#D6E8FF', lightDir: [-0.35, 0.8, -0.55] },
+  'starlight-river': { sky: '#5E7FB0', horizon: '#C9DBF0', lightColor: '#EAF2FF', lightDir: [0.3, 0.8, 0.4] },
+}
+
 function AnimatedWaterSurface({
   zone,
+  theme,
   reducedMotion,
 }: {
   zone: SurfaceZone
+  theme: StageTheme
   reducedMotion: boolean
 }) {
   const material = useRef<ShaderMaterial>(null)
-  const uniforms = useMemo(
-    () => ({
+  const uniforms = useMemo(() => {
+    const lighting = WATER_LIGHTING[theme]
+    return {
       uTime: { value: 0 },
       uTint: { value: new Color(zone.color) },
-    }),
-    [zone.color],
-  )
+      uSky: { value: new Color(lighting.sky) },
+      uHorizon: { value: new Color(lighting.horizon) },
+      uLightColor: { value: new Color(lighting.lightColor) },
+      uLightDir: { value: new Vector3(...lighting.lightDir).normalize() },
+    }
+  }, [theme, zone.color])
 
   useFrame(({ clock }) => {
     if (!material.current) return
@@ -1275,7 +1376,7 @@ function AnimatedWaterSurface({
         scale={[zone.halfWidth, zone.halfDepth, 1]}
         receiveShadow
       >
-        <circleGeometry args={[1, 96]} />
+        <circleGeometry args={[1, 96, 0, Math.PI * 2]} />
         <shaderMaterial
           ref={material}
           uniforms={uniforms}
@@ -1285,47 +1386,12 @@ function AnimatedWaterSurface({
           depthWrite={false}
         />
       </mesh>
-      {[0.48, 0.86].map((radius, index) => (
-        <mesh
-          key={`${zone.id}-water-ring-${radius}`}
-          rotation={[-Math.PI / 2, 0, 0]}
-          position={[0, 0.01 + index * 0.003, 0]}
-          scale={[zone.halfWidth, zone.halfDepth, 1]}
-        >
-          <ringGeometry args={[radius - 0.012, radius, 72]} />
-          <meshBasicMaterial
-            color="#D9FAFF"
-            transparent
-            opacity={0.22 - index * 0.035}
-            depthWrite={false}
-          />
-        </mesh>
-      ))}
     </group>
   )
 }
 
 function SlickSurface({ zone }: { zone: SurfaceZone }) {
-  const streaks = [-0.68, -0.34, 0, 0.34, 0.68]
-  const crackSegments = [
-    [-0.46, -0.18, 0.18, 0.22],
-    [-0.33, -0.1, -0.74, 0.16],
-    [-0.3, -0.02, 0.9, 0.13],
-    [-0.08, 0.25, -0.22, 0.2],
-    [0.05, 0.17, 0.72, 0.14],
-    [0.12, 0.08, -0.95, 0.12],
-    [0.36, -0.2, 0.28, 0.19],
-    [0.46, -0.11, -0.8, 0.14],
-    [0.28, 0.22, 1.08, 0.17],
-  ] as const
-  const frostShards = Array.from({ length: 14 }, (_, index) => {
-    const angle = (index / 14) * Math.PI * 2
-    return {
-      x: Math.cos(angle) * zone.halfWidth * 0.965,
-      z: Math.sin(angle) * zone.halfDepth * 0.965,
-      scale: 0.16 + (index % 4) * 0.035,
-    }
-  })
+  const iceTexture = getIceTexture()
 
   return (
     <group
@@ -1340,101 +1406,18 @@ function SlickSurface({ zone }: { zone: SurfaceZone }) {
         <circleGeometry args={[1, 96]} />
         <meshPhysicalMaterial
           color={zone.color}
+          map={iceTexture}
           emissive="#7CA9D8"
-          emissiveIntensity={0.24}
+          emissiveIntensity={0.18}
           metalness={0.06}
-          roughness={0.025}
+          roughness={0.04}
           clearcoat={1}
-          clearcoatRoughness={0.018}
-          transmission={0.16}
-          thickness={0.18}
-          ior={1.31}
+          clearcoatRoughness={0.02}
           transparent
-          opacity={0.93}
+          opacity={0.95}
+          depthWrite={false}
         />
       </mesh>
-      {streaks.map((xRatio, index) => (
-        <mesh
-          key={`${zone.id}-glide-streak-${xRatio}`}
-          position={[zone.halfWidth * xRatio, 0.012 + index * 0.001, 0]}
-        >
-          <boxGeometry
-            args={[
-              0.055 + (index % 2) * 0.035,
-              0.012,
-              zone.halfDepth * (1.28 + (index % 3) * 0.12),
-            ]}
-          />
-          <meshBasicMaterial
-            color={index % 2 === 0 ? '#EAF8FF' : '#BBD9FF'}
-            transparent
-            opacity={0.46}
-            depthWrite={false}
-          />
-        </mesh>
-      ))}
-      {crackSegments.map(([xRatio, zRatio, rotationY, lengthRatio], index) => (
-        <mesh
-          key={`${zone.id}-ice-crack-${index}`}
-          position={[
-            zone.halfWidth * xRatio,
-            0.028 + (index % 2) * 0.002,
-            zone.halfDepth * zRatio,
-          ]}
-          rotation={[0, rotationY, 0]}
-        >
-          <boxGeometry
-            args={[zone.halfWidth * lengthRatio, 0.014, 0.045]}
-          />
-          <meshBasicMaterial
-            color="#F7FCFF"
-            transparent
-            opacity={0.88}
-            depthWrite={false}
-          />
-        </mesh>
-      ))}
-      {[0.42, 0.72, 0.965].map((radius, index) => (
-        <mesh
-          key={`${zone.id}-slick-ring-${radius}`}
-          rotation={[-Math.PI / 2, 0, 0]}
-          position={[0, 0.014 + index * 0.002, 0]}
-          scale={[zone.halfWidth, zone.halfDepth, 1]}
-        >
-          <ringGeometry
-            args={[
-              radius - (index === 2 ? 0.038 : 0.012),
-              radius,
-              96,
-            ]}
-          />
-          <meshBasicMaterial
-            color={index === 2 ? '#FFFFFF' : '#D9F1FF'}
-            transparent
-            opacity={index === 2 ? 0.68 : 0.36 - index * 0.06}
-            depthWrite={false}
-          />
-        </mesh>
-      ))}
-      {frostShards.map((shard, index) => (
-        <mesh
-          key={`${zone.id}-frost-shard-${index}`}
-          position={[shard.x, 0.08, shard.z]}
-          rotation={[0, index * 0.83, 0]}
-          scale={[shard.scale * 1.35, shard.scale * 0.42, shard.scale]}
-        >
-          <icosahedronGeometry args={[1, 0]} />
-          <meshPhysicalMaterial
-            color="#EAF9FF"
-            emissive="#A8D9F5"
-            emissiveIntensity={0.22}
-            roughness={0.18}
-            transmission={0.12}
-            transparent
-            opacity={0.82}
-          />
-        </mesh>
-      ))}
     </group>
   )
 }
@@ -1716,10 +1699,12 @@ function SlickContactEffects({
 function RapierWorldColliders({
   mapSize,
   layout,
+  theme,
   reducedMotion,
 }: {
   mapSize: number
   layout: WorldPhysicsLayout
+  theme: StageTheme
   reducedMotion: boolean
 }) {
   const halfMap = mapSize / 2
@@ -1887,7 +1872,6 @@ function RapierWorldColliders({
         const wallCenterX =
           tunnel.halfWidth + tunnel.wallThickness / 2
         const roofHalfWidth = tunnel.halfWidth + tunnel.wallThickness
-        const frameDepthRatios = [-0.82, -0.4, 0, 0.4, 0.82]
         const physics: PhysicsBodyData = {
           kind: 'obstacle',
           label: tunnel.label,
@@ -1934,78 +1918,9 @@ function RapierWorldColliders({
               friction={0.94}
               restitution={0.02}
             />
-            {[-1, 1].map((side) => (
-              <mesh
-                key={`${tunnel.id}-wall-mesh-${side}`}
-                castShadow
-                receiveShadow
-                position={[
-                  wallCenterX * side,
-                  tunnel.clearanceHeight / 2,
-                  0,
-                ]}
-              >
-                <boxGeometry
-                  args={[
-                    tunnel.wallThickness,
-                    tunnel.clearanceHeight,
-                    tunnel.halfDepth * 2,
-                  ]}
-                />
-                <meshStandardMaterial color={tunnel.color} roughness={0.96} />
-              </mesh>
-            ))}
-            <mesh
-              receiveShadow
-              position={[
-                0,
-                tunnel.clearanceHeight + tunnel.roofThickness / 2,
-                0,
-              ]}
-            >
-              <boxGeometry
-                args={[
-                  roofHalfWidth * 2,
-                  tunnel.roofThickness,
-                  tunnel.halfDepth * 2,
-                ]}
-              />
-              <meshStandardMaterial
-                color={tunnel.color}
-                transparent
-                opacity={0.76}
-                depthWrite={false}
-                roughness={0.92}
-              />
-            </mesh>
-            {frameDepthRatios.map((depthRatio) => (
-              <group
-                key={`${tunnel.id}-frame-${depthRatio}`}
-                position={[0, 0, tunnel.halfDepth * depthRatio]}
-              >
-                {[-1, 1].map((side) => (
-                  <mesh
-                    key={`${tunnel.id}-frame-${depthRatio}-${side}`}
-                    position={[
-                      wallCenterX * side,
-                      tunnel.clearanceHeight / 2,
-                      0,
-                    ]}
-                  >
-                    <boxGeometry
-                      args={[0.13, tunnel.clearanceHeight, 0.18]}
-                    />
-                    <meshBasicMaterial color={tunnel.accentColor} />
-                  </mesh>
-                ))}
-                <mesh position={[0, tunnel.clearanceHeight, 0]}>
-                  <boxGeometry
-                    args={[roofHalfWidth * 2, 0.13, 0.18]}
-                  />
-                  <meshBasicMaterial color={tunnel.accentColor} />
-                </mesh>
-              </group>
-            ))}
+            <Suspense fallback={null}>
+              <HollowLogTunnelVisual tunnel={tunnel} />
+            </Suspense>
             <Html
               center
               position={[0, tunnel.clearanceHeight + 0.82, -tunnel.halfDepth]}
@@ -2063,49 +1978,35 @@ function RapierWorldColliders({
           <AnimatedWaterSurface
             key={zone.id}
             zone={zone}
+            theme={theme}
             reducedMotion={reducedMotion}
           />
         ) : zone.kind === 'slick' ? (
           <SlickSurface key={zone.id} zone={zone} />
-        ) : (
-          <group
-            key={zone.id}
-            position={[zone.x, 0.026, zone.z]}
-            rotation={[0, zone.rotationY, 0]}
-          >
-            <mesh
-              rotation={[-Math.PI / 2, 0, 0]}
-              scale={[zone.halfWidth, zone.halfDepth, 1]}
-              receiveShadow
-            >
-              <circleGeometry args={[1, 64]} />
-              <meshStandardMaterial
-                color={zone.color}
-                roughness={0.96}
-                transparent
-                opacity={0.9}
-              />
-            </mesh>
-            <mesh
-              rotation={[-Math.PI / 2, 0, 0]}
-              position={[0, 0.006, 0]}
-              scale={[zone.halfWidth, zone.halfDepth, 1]}
-            >
-              <ringGeometry args={[0.88, 1, 64]} />
-              <meshBasicMaterial
-                color="#DDF4C8"
-                transparent
-                opacity={0.58}
-              />
-            </mesh>
-          </group>
-        ),
+        ) : null,
       )}
     </>
   )
 }
 
 function PushablePropVisual({ prop }: { prop: PushableProp }) {
+  // Forest cones are small glowing mushroom clumps instead of traffic cones.
+  if (prop.kind === 'cone' && prop.label.includes('버섯')) {
+    return (
+      <group position={[0, -prop.y, 0]}>
+        <FittedModel
+          url={mushroomClusterUrl}
+          height={0.95}
+          glow={{ color: '#7CF0D8', intensity: 0.6 }}
+          sightOccluder={false}
+        />
+      </group>
+    )
+  }
+  return <StandardPushablePropVisual prop={prop} />
+}
+
+function StandardPushablePropVisual({ prop }: { prop: PushableProp }) {
   const isBox = prop.kind === 'block'
   const isTrashCan = prop.kind === 'trash-can'
   const { scene } = useGLTF(
@@ -2552,7 +2453,7 @@ function GameWorld({
     const mode = new URLSearchParams(window.location.search).get('spawn')
     const platform = physicsLayout.elevatedPlatforms[0]
     if (mode === 'bridge') {
-      const spine = physicsLayout.elevatedWalkways.find((part) => part.id === 'bridge-park-spine')!
+      const spine = physicsLayout.elevatedWalkways.find((part) => part.id === 'bridge-park-spine') ?? physicsLayout.elevatedWalkways[0]
       return [spine.x, spine.z + spine.halfDepth - 2] as const
     }
     if (mode === 'park') {
@@ -2717,6 +2618,14 @@ function GameWorld({
     impact: 0,
     surface: null,
     slip: 0,
+  })
+  const playerProbe = useRef<PlayerContactProbe>({
+    x: spawnTranslation[0],
+    y: spawnTranslation[1],
+    z: spawnTranslation[2],
+    ballRadius,
+    motionX: 0,
+    motionZ: -1,
   })
 
   useEffect(() => {
@@ -3080,16 +2989,18 @@ function GameWorld({
     position: { x: number; z: number },
     runnerId: string,
   ) => {
-    if (!onRunnerHit(position, runnerId)) return
+    if (!onRunnerHit(position, runnerId)) return false
     applyHazardImpact(position, 'runner')
+    return true
   }
 
   const handlePolarBearHazardHit = (position: {
     x: number
     z: number
   }) => {
-    if (!onPolarBearHit(position)) return
+    if (!onPolarBearHit(position)) return false
     applyHazardImpact(position, 'polar-bear')
+    return true
   }
 
   useFrame((state, delta) => {
@@ -3130,6 +3041,13 @@ function GameWorld({
 
     const position = body.translation()
     playerPosition.current.set(position.x, position.y, position.z)
+    const probe = playerProbe.current
+    probe.x = position.x
+    probe.y = position.y
+    probe.z = position.z
+    probe.ballRadius = ballRadius
+    probe.motionX = motion.current.x
+    probe.motionZ = motion.current.z
     if (
       renderQuality.lowPower &&
       Math.hypot(
@@ -3674,6 +3592,14 @@ function GameWorld({
         ]}
       />
 
+      <NaturalTerrain
+        mapSize={stage.mapSize}
+        theme={stage.theme}
+        layout={physicsLayout}
+        lowPower={renderQuality.lowPower}
+        reducedMotion={reducedMotion}
+        receiveShadow={renderQuality.shadows}
+      />
       <GardenSetDressing
         floorSize={stage.mapSize}
         receiveShadow={renderQuality.shadows}
@@ -3688,6 +3614,7 @@ function GameWorld({
       <RapierWorldColliders
         mapSize={stage.mapSize}
         layout={physicsLayout}
+        theme={stage.theme}
         reducedMotion={reducedMotion}
       />
       <TerracedStructures
@@ -3695,14 +3622,25 @@ function GameWorld({
         walkways={physicsLayout.elevatedWalkways}
         ramps={physicsLayout.terrainRamps.filter((ramp) => ramp.id.startsWith('upper-deck'))}
         castShadow={renderQuality.shadows}
+        theme={stage.theme}
       />
-      <CentralPark zones={physicsLayout.surfaceZones} ramps={physicsLayout.terrainRamps} />
+      {stage.theme !== 'forest-trail' && (
+        <CentralPark ramps={physicsLayout.terrainRamps} theme={stage.theme} />
+      )}
+      <Suspense fallback={null}>
+        <ForestLandmarks
+          landmarks={physicsLayout.landmarks}
+          reducedMotion={reducedMotion}
+        />
+      </Suspense>
+      <MoonSteppingStones stones={physicsLayout.rideableObstacles} />
       <RoamingRunnerObstacles
         mapSize={stage.mapSize}
         theme={stage.theme}
         obstacles={roamingRunnerObstacles}
         paused={paused}
         reducedMotion={reducedMotion}
+        playerProbe={playerProbe}
         onRunnerHit={handleRunnerHazardHit}
         onPolarBearHit={handlePolarBearHazardHit}
       />
@@ -3727,17 +3665,18 @@ function GameWorld({
       ))}
 
       {renderedObjects.map((item) => (
-        <LearningItem
-          key={item.id}
-          item={item}
-          reducedMotion={reducedMotion}
-          available={canCollect(ballRadius, item.size)}
-          runtimePositions={runtimeItemPositions}
-        />
+        <Suspense key={item.id} fallback={null}>
+          <LearningItem
+            item={item}
+            reducedMotion={reducedMotion}
+            available={canCollect(ballRadius, item.size)}
+            runtimePositions={runtimeItemPositions}
+          />
+        </Suspense>
       ))}
       {droppedObjects.map((item) => (
+        <Suspense key={item.id} fallback={null}>
         <DroppedObjectPhysics
-          key={item.id}
           item={item}
           runtimePositions={runtimeItemPositions}
           playerPosition={playerPosition}
@@ -3746,6 +3685,7 @@ function GameWorld({
           obstacles={physicsLayout.obstacles}
           reducedMotion={reducedMotion}
         />
+        </Suspense>
       ))}
       <TooLargeItemColliders
         items={renderedObjects}
@@ -3759,12 +3699,13 @@ function GameWorld({
         />
       ))}
       {radarTreasures.map((treasure) => (
-        <RadarTreasureItem
-          key={treasure.id}
-          item={treasure}
-          runtimePositions={runtimeTreasurePositions}
-          reducedMotion={reducedMotion}
-        />
+        <Suspense key={treasure.id} fallback={null}>
+          <RadarTreasureItem
+            item={treasure}
+            runtimePositions={runtimeTreasurePositions}
+            reducedMotion={reducedMotion}
+          />
+        </Suspense>
       ))}
 
       <RigidBody
@@ -3808,14 +3749,15 @@ function GameWorld({
             reducedMotion={reducedMotion}
           />
           {collectedObjects.map((item, index) => (
-            <AttachedObjectMesh
-              key={item.id}
-              item={item}
-              index={index}
-              orbRadius={ballRadius}
-              slotCount={64}
-              attachmentNormal={attachmentNormals[item.id]}
-            />
+            <Suspense key={item.id} fallback={null}>
+              <AttachedObjectMesh
+                item={item}
+                index={index}
+                orbRadius={ballRadius}
+                slotCount={64}
+                attachmentNormal={attachmentNormals[item.id]}
+              />
+            </Suspense>
           ))}
         </group>
         <MotionEffects
@@ -3849,7 +3791,35 @@ function GameWorld({
         reducedMotion={reducedMotion}
       />
       <CharacterSightline lowPower={renderQuality.lowPower} />
+      <Suspense fallback={null}>
+        <CollectibleGpuWarmup extraUrls={FOREST_MODEL_URLS} />
+      </Suspense>
     </>
+  )
+}
+
+function SceneReadySignal({ onReady }: { onReady: () => void }) {
+  useEffect(() => {
+    onReady()
+  }, [onReady])
+  return null
+}
+
+function GameLoadingOverlay({ ready }: { ready: boolean }) {
+  const { progress, loaded, total } = useProgress()
+  if (ready) return null
+  return (
+    <div className="game-loading-overlay" role="status" aria-live="polite">
+      <div className="game-loading-card">
+        <strong>러닝 파크를 준비하고 있어요</strong>
+        <div className="game-loading-bar" aria-hidden="true">
+          <span style={{ width: `${Math.max(4, Math.round(progress))}%` }} />
+        </div>
+        <small>
+          {Math.round(progress)}% · 모델 {loaded}/{Math.max(total, loaded)}
+        </small>
+      </div>
+    </div>
   )
 }
 
@@ -3859,7 +3829,12 @@ export function GameCanvas(props: GameCanvasProps) {
     [],
   )
 
+  const [sceneReady, setSceneReady] = useState(false)
+  const markReady = useCallback(() => setSceneReady(true), [])
+
   return (
+    <>
+    <GameLoadingOverlay ready={sceneReady} />
     <Canvas
       className="game-canvas"
       shadows={renderQuality.shadows}
@@ -3885,7 +3860,9 @@ export function GameCanvas(props: GameCanvasProps) {
             renderQuality={renderQuality}
           />
         </Physics>
+        <SceneReadySignal onReady={markReady} />
       </Suspense>
     </Canvas>
+    </>
   )
 }

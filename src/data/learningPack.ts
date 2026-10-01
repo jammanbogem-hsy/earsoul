@@ -802,6 +802,9 @@ function createStageObjects(
           (coordinate) => Number(coordinate.toFixed(2)),
         ) as [number, number, number],
       })),
+    ).filter((slot) =>
+      // Forest decks wrap a giant tree trunk at their centre.
+      isCollectionPositionClear({ position: slot.position, size: 0.5 }, physicsLayout.obstacles),
     )
   const specialSlots = [
     ...pushRewardSlots,

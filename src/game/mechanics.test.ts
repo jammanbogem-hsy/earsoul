@@ -238,7 +238,8 @@ describe('rolling collection progression', () => {
 
       expect(elevatedObjects).toHaveLength(
         layout.terrainRamps.reduce((sum, ramp) => sum + (ramp.id.startsWith('upper-deck') ? 8 : 4), 0) +
-          layout.elevatedPlatforms.length * 12 +
+          // Forest decks lose their centre slot to the treehouse trunk.
+          layout.elevatedPlatforms.length * (stage.theme === 'forest-trail' ? 11 : 12) +
           layout.elevatedWalkways.reduce((sum, walkway) => sum + Math.max(2, Math.floor(Math.max(walkway.halfWidth, walkway.halfDepth) * 2 / 3.5)), 0),
       )
       expect(
@@ -271,7 +272,7 @@ describe('rolling collection progression', () => {
             item.position[1] > platform.y,
         )
 
-        expect(objectsOnPlatform).toHaveLength(12)
+        expect(objectsOnPlatform).toHaveLength(stage.theme === 'forest-trail' ? 11 : 12)
       })
 
       layout.pushRewardSlots.forEach((slot) => {

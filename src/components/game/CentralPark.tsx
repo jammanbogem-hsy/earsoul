@@ -1,9 +1,10 @@
 import { useEffect, useMemo } from 'react'
 import { ConvexHullCollider, RigidBody } from '@react-three/rapier'
 import { BufferGeometry, Color, DoubleSide, Float32BufferAttribute } from 'three'
-import { getTerrainRampSurfacePosition, type SurfaceZone, type TerrainRamp } from '../../game/worldPhysics'
+import type { StageTheme } from '../../types'
+import { getTerrainRampSurfacePosition, type TerrainRamp } from '../../game/worldPhysics'
 
-function ParkHill({ ramps }: { ramps: readonly TerrainRamp[] }) {
+function ParkHill({ ramps, faceColors }: { ramps: readonly TerrainRamp[]; faceColors: readonly [string, string, string] }) {
   const geometry = useMemo(() => {
     const [up, down] = ramps
     const points = [
@@ -15,7 +16,7 @@ function ParkHill({ ramps }: { ramps: readonly TerrainRamp[] }) {
     const positions: number[] = []
     const colors: number[] = []
     faces.forEach((face, index) => {
-      const color = new Color(index < 2 ? '#7A9C5B' : index < 4 ? '#96C675' : '#84B86A')
+      const color = new Color(index < 2 ? faceColors[0] : index < 4 ? faceColors[1] : faceColors[2])
       face.forEach((point) => {
         positions.push(...points[point])
         colors.push(color.r, color.g, color.b)
@@ -26,7 +27,7 @@ function ParkHill({ ramps }: { ramps: readonly TerrainRamp[] }) {
     mesh.setAttribute('color', new Float32BufferAttribute(colors, 3))
     mesh.computeVertexNormals()
     return { mesh, hull: new Float32Array(points.flat()) }
-  }, [ramps])
+  }, [faceColors, ramps])
   useEffect(() => () => geometry.mesh.dispose(), [geometry])
   return (
     <RigidBody type="fixed" colliders={false} name="central-park-hill"
@@ -40,39 +41,22 @@ function ParkHill({ ramps }: { ramps: readonly TerrainRamp[] }) {
   )
 }
 
-export function CentralPark({ zones, ramps }: { zones: readonly SurfaceZone[]; ramps: readonly TerrainRamp[] }) {
-  const lawn = zones.find((zone) => zone.id === 'central-park-lawn')!
-  const pond = zones.find((zone) => zone.id === 'central-park-pond')!
+/**
+ * The lawn, pond bed and shoreline are painted into the natural terrain and
+ * the pond surface is animated with the other water zones; only the walkable
+ * hill needs its own geometry here.
+ */
+const HILL_COLORS: Record<StageTheme, readonly [string, string, string]> = {
+  'sunny-plaza': ['#7A9C5B', '#96C675', '#84B86A'],
+  'forest-trail': ['#26402F', '#36573E', '#2F4D37'],
+  'starlight-river': ['#9EB4C2', '#E4EEF5', '#C6D6E1'],
+}
+
+export function CentralPark({ ramps, theme }: { ramps: readonly TerrainRamp[]; theme: StageTheme }) {
   const hills = useMemo(() => ramps.filter((ramp) => ramp.id.startsWith('central-park-hill')), [ramps])
   return (
     <group name="central-park">
-      <group position={[lawn.x, 0.052, lawn.z]} rotation={[0, lawn.rotationY, 0]}>
-        <mesh rotation={[-Math.PI / 2, 0, 0]} scale={[lawn.halfWidth, lawn.halfDepth, 1]} receiveShadow>
-          <circleGeometry args={[1, 64]} />
-          <meshStandardMaterial color={lawn.color} roughness={1} />
-        </mesh>
-        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.003, 0]} scale={[lawn.halfWidth, lawn.halfDepth, 1]}>
-          <ringGeometry args={[0.86, 0.965, 64]} />
-          <meshBasicMaterial color="#DFD1B3" />
-        </mesh>
-      </group>
-      <group position={[pond.x, 0.061, pond.z]} rotation={[0, pond.rotationY, 0]}>
-        <mesh rotation={[-Math.PI / 2, 0, 0]} scale={[pond.halfWidth, pond.halfDepth, 1]}>
-          <circleGeometry args={[1, 64]} />
-          <meshBasicMaterial color="#449BAE" />
-        </mesh>
-        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.004, 0]} scale={[pond.halfWidth, pond.halfDepth, 1]}>
-          <ringGeometry args={[0.98, 1.14, 64]} />
-          <meshBasicMaterial color="#D5CBB0" />
-        </mesh>
-        {[[-0.42, 0.13], [0.32, -0.23], [0.45, -0.4]].map(([x, z], index) => (
-          <mesh key={index} position={[pond.halfWidth * x, 0.035, pond.halfDepth * z]} rotation={[-Math.PI / 2, 0, index]}>
-            <circleGeometry args={[0.32 + index * 0.08, 9, 0.25, Math.PI * 1.85]} />
-            <meshBasicMaterial color={index === 1 ? '#7BB677' : '#539D70'} />
-          </mesh>
-        ))}
-      </group>
-      <ParkHill ramps={hills} />
+      <ParkHill ramps={hills} faceColors={HILL_COLORS[theme]} />
     </group>
   )
 }

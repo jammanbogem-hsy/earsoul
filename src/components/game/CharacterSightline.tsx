@@ -8,6 +8,12 @@ import {
   type OcclusionFade,
 } from '../../game/sightOcclusion'
 
+/** Scenery fades almost fully; the player's own ball only turns slightly glassy. */
+function getMinimumOpacity(root: Object3D): number {
+  const value = root.userData.sightMinOpacity
+  return typeof value === 'number' ? value : 0.14
+}
+
 export function CharacterSightline({ lowPower }: { lowPower: boolean }) {
   const { scene, camera } = useThree()
   const roots = useRef<Object3D[]>([])
@@ -61,7 +67,10 @@ export function CharacterSightline({ lowPower }: { lowPower: boolean }) {
         ) {
           blocked.current.add(root)
           if (!fades.current.has(root)) {
-            fades.current.set(root, createOcclusionFade(root))
+            fades.current.set(
+              root,
+              createOcclusionFade(root, getMinimumOpacity(root) >= 0.5),
+            )
           }
         }
       }
@@ -69,7 +78,7 @@ export function CharacterSightline({ lowPower }: { lowPower: boolean }) {
     fades.current.forEach((fade, root) => {
       const obscured = blocked.current.has(root) && root.parent !== null
       const amount = MathUtils.damp(
-        fade.amount, obscured ? 0.14 : 1, obscured ? 18 : 8, Math.min(delta, 0.1),
+        fade.amount, obscured ? getMinimumOpacity(root) : 1, obscured ? 18 : 8, Math.min(delta, 0.1),
       )
       fade.setAmount(amount)
       if (!obscured && amount > 0.995) {

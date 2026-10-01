@@ -3,6 +3,10 @@ import {
   createRoamingPolarBearSpec,
   createRoamingPolarBearSpecs,
   createRoamingRunnerSpecs,
+  createRoamingWander,
+  stepRoamingWander,
+  WANDER_SPRINT_MULTIPLIER,
+  WANDER_TURN_RATE,
   getRoamingHazardCounts,
   ROAMING_POLAR_BEAR_RADIUS,
   ROAMING_POLAR_BEAR_SPEED,
@@ -16,8 +20,8 @@ describe('roaming running crew', () => {
   it('keeps every runner deliberately slower than the player', () => {
     expect(ROAMING_RUNNER_SPEEDS).toHaveLength(12)
     ROAMING_RUNNER_SPEEDS.forEach((speed) => {
-      expect(speed).toBeGreaterThanOrEqual(0.5)
-      expect(speed).toBeLessThanOrEqual(0.8)
+      expect(speed).toBeGreaterThanOrEqual(1.4)
+      expect(speed).toBeLessThanOrEqual(2.3)
     })
   })
 
@@ -140,11 +144,36 @@ describe('roaming running crew', () => {
 
     expect(bear.id).toBe('scary-polar-bear')
     expect(bear.speed).toBe(ROAMING_POLAR_BEAR_SPEED)
-    expect(bear.speed).toBeLessThan(0.5)
+    expect(bear.speed).toBeLessThan(ROAMING_RUNNER_SPEEDS.at(-1)!)
     obstacles.forEach((obstacle) => {
       expect(
         Math.hypot(bear.x - obstacle.x, bear.z - obstacle.z),
       ).toBeGreaterThan(ROAMING_POLAR_BEAR_RADIUS + obstacle.radius)
     })
+  })
+
+  it('wanders erratically with sharp turns and short sprints', () => {
+    const run = () => {
+      const wander = createRoamingWander(7, 0)
+      let heading = 0
+      const headings: number[] = []
+      let sprinted = false
+      for (let frame = 0; frame < 60 * 20; frame += 1) {
+        const next = stepRoamingWander(wander, heading, 1 / 60)
+        expect(Math.abs(next.heading - heading)).toBeLessThanOrEqual(WANDER_TURN_RATE / 60 + 1e-9)
+        sprinted ||= next.speedMultiplier === WANDER_SPRINT_MULTIPLIER
+        heading = next.heading
+        headings.push(heading)
+      }
+      return { headings, sprinted }
+    }
+    const first = run()
+    expect(run().headings).toEqual(first.headings)
+    expect(first.sprinted).toBe(true)
+    // Over 20 s the direction swings through a wide range, not a straight line.
+    const swings = first.headings.filter((value, index) =>
+      index >= 60 && Math.abs(value - first.headings[index - 60]) > Math.PI / 2,
+    )
+    expect(swings.length).toBeGreaterThan(60)
   })
 })

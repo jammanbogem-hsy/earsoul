@@ -58,7 +58,7 @@ export interface OcclusionFade {
 }
 
 /** Imported GLBs share materials. Only the obscuring instance gets copies. */
-export function createOcclusionFade(root: Object3D): OcclusionFade {
+export function createOcclusionFade(root: Object3D, keepDepth = false): OcclusionFade {
   const originals = new Map<Mesh, Material | Material[]>()
   const copies = new Map<Material, Material>()
   root.traverse((object) => {
@@ -69,7 +69,8 @@ export function createOcclusionFade(root: Object3D): OcclusionFade {
       if (!copy) {
         copy = source.clone()
         copy.transparent = true
-        copy.depthWrite = false
+        // Mostly-opaque fades keep depth so a glassy ball does not show its own back faces.
+        copy.depthWrite = keepDepth
         copies.set(source, copy)
       }
       return copy

@@ -170,6 +170,21 @@ export function GameMiniMap({
             </g>
           ))}
         </g>
+        {layout.landmarks.length > 0 && (
+          <g className="minimap-landmarks">
+            {layout.landmarks
+              .filter((landmark) => landmark.kind !== 'lantern' && landmark.kind !== 'mushroom-cluster')
+              .map((landmark) => (
+                <circle
+                  key={landmark.id}
+                  cx={toMapX(landmark.x)}
+                  cy={toMapY(landmark.z)}
+                  r={landmark.kind === 'treehouse' ? 3.2 : landmark.kind === 'glow-mushroom' ? 1.6 : 2.2}
+                  className={`is-${landmark.kind}`}
+                />
+              ))}
+          </g>
+        )}
         <g className="minimap-items">
           {objects.map((item) => {
             if (collectedSet.has(item.id)) return null
@@ -210,8 +225,12 @@ export function GameMiniMap({
       <footer>
         <i className="is-upper" />
         2층
-        <i className="is-elevator" />
-        승강기
+        {layout.elevators.length > 0 && (
+          <>
+            <i className="is-elevator" />
+            승강기
+          </>
+        )}
         {hasTunnels && (
           <>
             <i className="is-tunnel" />

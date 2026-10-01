@@ -47,13 +47,13 @@ describe('rolling motion', () => {
   })
 
   it('gently increases speed as the ball grows and caps both ends', () => {
-    expect(getRollingTopSpeed(0.1)).toBe(4.85)
-    expect(getRollingTopSpeed(0.42)).toBe(4.85)
+    expect(getRollingTopSpeed(0.1)).toBe(5.85)
+    expect(getRollingTopSpeed(0.42)).toBe(5.85)
     expect(getRollingTopSpeed(0.9)).toBeGreaterThan(
       getRollingTopSpeed(0.42),
     )
-    expect(getRollingTopSpeed(2.08)).toBe(5.65)
-    expect(getRollingTopSpeed(20)).toBe(5.65)
+    expect(getRollingTopSpeed(2.08)).toBe(6.8)
+    expect(getRollingTopSpeed(20)).toBe(6.8)
   })
 
   it('caps combined roads and power-up boosts at a controllable speed', () => {

@@ -13,6 +13,7 @@ import {
 } from './worldPhysics'
 
 const stopLayout: WorldPhysicsLayout = {
+  landmarks: [],
   obstacles: [
     {
       id: 'tree',
@@ -40,11 +41,13 @@ describe('world physics', () => {
     for (const stage of fallbackLearningPack.stages) {
       const layout = createWorldPhysicsLayout(stage)
       const approaches = layout.terrainRamps.filter((ramp) => ramp.id.startsWith('upper-deck'))
-      expect(approaches).toHaveLength(4)
+      // Forest treehouse decks sit near the north edge: one ramp faces the lake.
+      const forest = stage.theme === 'forest-trail'
+      expect(approaches).toHaveLength(forest ? 2 : 4)
       for (const platform of layout.elevatedPlatforms) {
         const connections = approaches.filter((ramp) => Math.abs(ramp.x - platform.x) < 0.01)
-        expect(connections).toHaveLength(2)
-        expect(new Set(connections.map((ramp) => Math.sign(ramp.z - platform.z)))).toEqual(new Set([-1, 1]))
+        expect(connections).toHaveLength(forest ? 1 : 2)
+        expect(new Set(connections.map((ramp) => Math.sign(ramp.z - platform.z)))).toEqual(new Set(forest ? [1] : [-1, 1]))
         for (const ramp of connections) {
           const ground = getTerrainRampSurfacePosition(ramp, 0, -1)
           const top = getTerrainRampSurfacePosition(ramp, 0, 1)
@@ -71,7 +74,7 @@ describe('world physics', () => {
       ).toHaveLength(3)
       expect(
         layout.surfaceZones.filter((zone) => zone.kind === 'water'),
-      ).toHaveLength(stage.theme === 'forest-trail' ? 6 : 3)
+      ).toHaveLength(stage.theme === 'forest-trail' ? 4 : 3)
       const mudZones = layout.surfaceZones.filter((zone) => zone.kind === 'mud')
       expect(mudZones.length).toBeGreaterThanOrEqual(4)
       expect(new Set(mudZones.map((zone) => zone.assetVariant))).toEqual(
@@ -102,28 +105,24 @@ describe('world physics', () => {
               (zone.multiplier === 0.48 || zone.multiplier === 0.6),
           ),
       ).toBe(true)
-      expect(layout.terrainRamps).toHaveLength(
-        stage.theme === 'forest-trail' ? 12 : 10,
-      )
+      const forest = stage.theme === 'forest-trail'
+      expect(layout.terrainRamps).toHaveLength(forest ? 6 : 10)
       expect(layout.elevatedPlatforms).toHaveLength(2)
-      expect(layout.elevators).toHaveLength(2)
+      expect(layout.elevators).toHaveLength(forest ? 0 : 2)
       expect(layout.pushableProps.length).toBeGreaterThanOrEqual(18)
       expect(
         layout.pushableProps.filter((prop) => prop.kind === 'block'),
-      ).toHaveLength(3)
+      ).toHaveLength(forest ? 24 : 3)
       expect(
         layout.pushableProps.filter((prop) => prop.kind === 'cone'),
-      ).toHaveLength(27)
+      ).toHaveLength(forest ? 21 : 27)
       expect(
         layout.pushableProps.filter((prop) => prop.kind === 'trash-can'),
-      ).toHaveLength(15)
+      ).toHaveLength(forest ? 0 : 15)
       expect(new Set(layout.pushableProps.map((prop) => prop.label))).toEqual(
-        new Set([
-          '배송 상자',
-          '빨간 장애물 콘',
-          '파란 쓰레기통',
-          '보물 지킴 콘',
-        ]),
+        new Set(forest
+          ? ['탐험 보급 상자', '반딧불 버섯', '보물 지킴 버섯']
+          : ['배송 상자', '빨간 장애물 콘', '파란 쓰레기통', '보물 지킴 콘']),
       )
       const scatteredProps = layout.pushableProps.filter(
         (prop) => !prop.id.startsWith('treasure-cone'),
@@ -161,7 +160,7 @@ describe('world physics', () => {
         ),
       ).toBe(true)
       expect(
-        layout.elevatedPlatforms.every((platform) =>
+        forest || layout.elevatedPlatforms.every((platform) =>
           layout.elevators.some(
             (elevator) =>
               Math.abs(
@@ -218,8 +217,9 @@ describe('world physics', () => {
         ),
       ).toBe(true)
       expect(createWorldPhysicsLayout(stage)).toEqual(layout)
+      // Park benches belong to the open maps; the forest uses landmarks.
       expect(layout.obstacles.some((obstacle) => obstacle.label === '공원 의자')).toBe(
-        true,
+        stage.theme !== 'forest-trail',
       )
     })
   })
@@ -269,7 +269,7 @@ describe('world physics', () => {
       const hills = createWorldPhysicsLayout(stage).terrainRamps.filter(
         (ramp) => ramp.id.includes('-hill-'),
       )
-      expect(hills).toHaveLength(stage.theme === 'forest-trail' ? 8 : 6)
+      expect(hills).toHaveLength(stage.theme === 'forest-trail' ? 4 : 6)
 
       for (let index = 0; index < hills.length; index += 2) {
         const up = hills[index]
@@ -292,37 +292,51 @@ describe('world physics', () => {
     })
   })
 
-  it('gives the second map extra hills, water, mud, low ridges, and a tunnel', () => {
+  it('rebuilds the second map as a moonshade forest with its own landmarks', () => {
     const stage = fallbackLearningPack.stages[1]
     const layout = createWorldPhysicsLayout(stage)
 
     expect(stage.title).toBe('달그늘 탐험숲')
-    expect(layout.terrainRamps.filter((ramp) => ramp.id.includes('-hill-')))
-      .toHaveLength(8)
-    expect(layout.surfaceZones.filter((zone) => zone.kind === 'water'))
-      .toHaveLength(6)
-    expect(layout.surfaceZones.filter((zone) => zone.kind === 'mud'))
-      .toHaveLength(10)
+    expect(new Set(layout.landmarks.map((landmark) => landmark.kind))).toEqual(
+      new Set([
+        'treehouse', 'glow-mushroom', 'mushroom-cluster', 'stone-arch',
+        'moon-altar', 'explorer-camp', 'lantern',
+      ]),
+    )
+    // No park furniture or steel terraces carried over from the first map.
+    expect(layout.obstacles.some((obstacle) => /bench|kiosk|gear-rack/.test(obstacle.id))).toBe(false)
+    expect(layout.elevators).toHaveLength(0)
+    expect(layout.elevatedWalkways.map((walkway) => walkway.id)).toEqual(['forest-rope-bridge'])
+    const lake = layout.surfaceZones.find((zone) => zone.id === 'central-park-pond')!
+    expect(lake).toMatchObject({ kind: 'water', label: '달빛 연못' })
+    const altar = layout.landmarks.find((landmark) => landmark.kind === 'moon-altar')!
+    expect([altar.x, altar.z]).toEqual([lake.x, lake.z])
+    expect(layout.rideableObstacles.filter((stone) => stone.id.startsWith('moon-stepping-stone'))).toHaveLength(12)
+    // Each deck wraps a treehouse trunk and is joined by the rope bridge.
+    layout.elevatedPlatforms.forEach((platform) => {
+      expect(layout.obstacles.some((obstacle) =>
+        obstacle.id.startsWith('landmark-moon-lodge') &&
+        Math.hypot(obstacle.x - platform.x, obstacle.z - platform.z) < 0.01,
+      )).toBe(true)
+    })
+    // Stone arches leave a gap wide enough for the fully grown ball.
+    const pillars = layout.obstacles.filter((obstacle) => obstacle.id.includes('stone-arch'))
+    expect(pillars).toHaveLength(6)
+    for (let index = 0; index < pillars.length; index += 2) {
+      const [a, b] = [pillars[index], pillars[index + 1]]
+      expect(Math.hypot(a.x - b.x, a.z - b.z) - a.radius - b.radius).toBeGreaterThan(4.6)
+    }
     const ridges = layout.rideableObstacles.filter((obstacle) =>
       obstacle.id.startsWith('forest-ridge-'),
     )
-    expect(ridges).toHaveLength(14)
+    expect(ridges.length).toBeGreaterThanOrEqual(8)
     expect(ridges.every((ridge) => ridge.halfHeight <= 0.12)).toBe(true)
     expect(layout.tunnels).toHaveLength(1)
     expect(layout.tunnels[0]).toMatchObject({
       id: 'moon-water-tunnel',
-      label: '달빛 수로 터널',
-      halfWidth: 4.4,
-      clearanceHeight: 5.4,
+      label: '속 빈 통나무 터널',
     })
-    expect(
-      layout.surfaceZones.find((zone) => zone.id === 'forest-tunnel-runoff'),
-    ).toMatchObject({
-      kind: 'water',
-      x: layout.tunnels[0].x,
-      z: layout.tunnels[0].z,
-      rotationY: layout.tunnels[0].rotationY,
-    })
+    expect(layout.tunnels[0].x).toBeLessThan(0)
   })
 
   it('does not add the dark-forest tunnel to the other maps', () => {
@@ -463,6 +477,7 @@ describe('world physics', () => {
 
   it('applies a speed multiplier only while crossing a marked route', () => {
     const layout: WorldPhysicsLayout = {
+      landmarks: [],
       obstacles: [],
       rideableObstacles: [],
       tunnels: [],
